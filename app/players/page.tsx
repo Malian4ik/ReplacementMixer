@@ -1,0 +1,292 @@
+"use client";
+
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import type { Player } from "@/types";
+
+const inputStyle: React.CSSProperties = {
+  background: "rgba(0,0,0,0.5)",
+  border: "1px solid var(--border-light)",
+  color: "var(--text-primary)",
+  borderRadius: 4,
+  padding: "3px 6px",
+  fontSize: 12,
+  width: "100%",
+  outline: "none",
+};
+
+const EMPTY_FORM = {
+  nick: "", mmr: 8000, stake: 20, mainRole: 1 as 1|2|3|4|5,
+  flexRole: "" as "" | 1|2|3|4|5, wallet: "", telegramId: "", nightMatches: 0,
+};
+
+export default function PlayersPage() {
+  const qc = useQueryClient();
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editData, setEditData] = useState<Partial<Player>>({});
+  const [search, setSearch] = useState("");
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState({ ...EMPTY_FORM });
+
+  const { data: players = [], isLoading } = useQuery<Player[]>({
+    queryKey: ["players"],
+    queryFn: () => fetch("/api/players").then(r => r.json()),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<Player> }) =>
+      fetch(`/api/players/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      }).then(r => r.json()),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["players"] });
+      qc.invalidateQueries({ queryKey: ["teams"] });
+      qc.invalidateQueries({ queryKey: ["stats"] });
+      setEditId(null);
+    },
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (data: object) =>
+      fetch("/api/players", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      }).then(r => r.json()),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["players"] });
+      setShowAdd(false);
+      setForm({ ...EMPTY_FORM });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) =>
+      fetch(`/api/players/${id}`, { method: "DELETE" }).then(r => r.json()),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["players"] });
+      qc.invalidateQueries({ queryKey: ["teams"] });
+      qc.invalidateQueries({ queryKey: ["stats"] });
+    },
+  });
+
+  const filtered = players.filter(p =>
+    !search || p.nick.toLowerCase().includes(search.toLowerCase())
+  );
+  const active = players.filter(p => p.isActiveInDatabase).length;
+
+  function startEdit(p: Player) {
+    setEditId(p.id);
+    setEditData({
+      nick: p.nick, mmr: p.mmr, stake: p.stake,
+      mainRole: p.mainRole, flexRole: p.flexRole ?? undefined,
+      wallet: p.wallet ?? undefined, telegramId: p.telegramId ?? undefined,
+      nightMatches: p.nightMatches, isActiveInDatabase: p.isActiveInDatabase,
+    });
+  }
+
+  function set<K extends keyof Player>(key: K, val: Player[K]) {
+    setEditData(d => ({ ...d, [key]: val }));
+  }
+
+  function handleCreate() {
+    createMutation.mutate({
+      nick: form.nick,
+      mmr: Number(form.mmr),
+      stake: Number(form.stake),
+      mainRole: Number(form.mainRole),
+      flexRole: form.flexRole !== "" ? Number(form.flexRole) : null,
+      wallet: form.wallet || null,
+      telegramId: form.telegramId || null,
+      nightMatches: Number(form.nightMatches),
+    });
+  }
+
+  return (
+    <div style={{ height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      {/* Header */}
+      <div className="page-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div>
+          <div className="page-title">База игроков</div>
+          <div className="page-subtitle">{players.length} всего · {active} активных</div>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input
+            className="form-input"
+            style={{ width: 200 }}
+            placeholder="Поиск по нику..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          <button
+            className="btn btn-sm btn-success"
+            onClick={() => setShowAdd(v => !v)}
+          >
+            {showAdd ? "Отмена" : "+ Добавить"}
+          </button>
+        </div>
+      </div>
+
+      {/* Add form */}
+      {showAdd && (
+        <div style={{
+          background: "var(--bg-panel)",
+          borderBottom: "1px solid var(--border)",
+          padding: "12px 24px",
+          display: "flex",
+          gap: 8,
+          flexWrap: "wrap",
+          alignItems: "flex-end",
+        }}>
+          <div>
+            <div className="lbl">Ник</div>
+            <input style={{ ...inputStyle, width: 110 }} value={form.nick} onChange={e => setForm(f => ({ ...f, nick: e.target.value }))} />
+          </div>
+          <div>
+            <div className="lbl">MMR</div>
+            <input type="number" style={{ ...inputStyle, width: 80 }} value={form.mmr} onChange={e => setForm(f => ({ ...f, mmr: Number(e.target.value) }))} />
+          </div>
+          <div>
+            <div className="lbl">Stake</div>
+            <input type="number" style={{ ...inputStyle, width: 60 }} value={form.stake} onChange={e => setForm(f => ({ ...f, stake: Number(e.target.value) }))} />
+          </div>
+          <div>
+            <div className="lbl">Роль</div>
+            <select style={{ ...inputStyle, width: 55 }} value={form.mainRole} onChange={e => setForm(f => ({ ...f, mainRole: Number(e.target.value) as 1|2|3|4|5 }))}>
+              {[1,2,3,4,5].map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+          </div>
+          <div>
+            <div className="lbl">Flex</div>
+            <select style={{ ...inputStyle, width: 55 }} value={form.flexRole} onChange={e => setForm(f => ({ ...f, flexRole: e.target.value !== "" ? Number(e.target.value) as 1|2|3|4|5 : "" }))}>
+              <option value="">—</option>
+              {[1,2,3,4,5].map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+          </div>
+          <div>
+            <div className="lbl">Telegram ID</div>
+            <input style={{ ...inputStyle, width: 110 }} value={form.telegramId} placeholder="@username" onChange={e => setForm(f => ({ ...f, telegramId: e.target.value }))} />
+          </div>
+          <div>
+            <div className="lbl">Кошелёк</div>
+            <input style={{ ...inputStyle, width: 100 }} value={form.wallet} onChange={e => setForm(f => ({ ...f, wallet: e.target.value }))} />
+          </div>
+          <div>
+            <div className="lbl">Ночей</div>
+            <input type="number" style={{ ...inputStyle, width: 55 }} value={form.nightMatches} onChange={e => setForm(f => ({ ...f, nightMatches: Number(e.target.value) }))} />
+          </div>
+          <button
+            className="btn btn-sm btn-success"
+            onClick={handleCreate}
+            disabled={!form.nick || createMutation.isPending}
+          >
+            {createMutation.isPending ? "..." : "Создать"}
+          </button>
+          {createMutation.isError && (
+            <span style={{ color: "#f87171", fontSize: 12 }}>Ошибка</span>
+          )}
+        </div>
+      )}
+
+      {/* Table */}
+      <div style={{ flex: 1, overflow: "auto", padding: "16px 24px" }}>
+        {isLoading ? (
+          <div style={{ color: "var(--text-secondary)", padding: 40, textAlign: "center" }}>Загрузка...</div>
+        ) : (
+          <div className="card" style={{ overflow: "hidden" }}>
+            <table className="tbl">
+              <thead>
+                <tr>
+                  {["НИК", "MMR", "STAKE", "РОЛЬ", "FLEX", "TELEGRAM", "КОШЕЛЁК", "НОЧИ", "СТАТУС", "ДЕЙСТВИЯ"].map(h => (
+                    <th key={h}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(p => (
+                  <tr key={p.id} style={{ opacity: p.isActiveInDatabase ? 1 : 0.5 }}>
+                    {editId === p.id ? (
+                      <>
+                        <td><input style={{ ...inputStyle, width: 110 }} value={editData.nick ?? ""} onChange={e => set("nick", e.target.value)} /></td>
+                        <td><input type="number" style={{ ...inputStyle, width: 80 }} value={editData.mmr ?? 0} onChange={e => set("mmr", Number(e.target.value))} /></td>
+                        <td><input type="number" style={{ ...inputStyle, width: 60 }} value={editData.stake ?? 0} onChange={e => set("stake", Number(e.target.value))} /></td>
+                        <td>
+                          <select style={{ ...inputStyle, width: 60 }} value={editData.mainRole ?? 1} onChange={e => set("mainRole", Number(e.target.value) as 1|2|3|4|5)}>
+                            {[1,2,3,4,5].map(r => <option key={r} value={r}>{r}</option>)}
+                          </select>
+                        </td>
+                        <td>
+                          <select style={{ ...inputStyle, width: 60 }} value={editData.flexRole ?? ""} onChange={e => set("flexRole", e.target.value ? Number(e.target.value) as 1|2|3|4|5 : null as unknown as 1)}>
+                            <option value="">—</option>
+                            {[1,2,3,4,5].map(r => <option key={r} value={r}>{r}</option>)}
+                          </select>
+                        </td>
+                        <td><input style={{ ...inputStyle, width: 100 }} value={editData.telegramId ?? ""} onChange={e => set("telegramId", e.target.value || null as unknown as string)} /></td>
+                        <td><input style={{ ...inputStyle, width: 100 }} value={editData.wallet ?? ""} onChange={e => set("wallet", e.target.value || null as unknown as string)} /></td>
+                        <td><input type="number" style={{ ...inputStyle, width: 60 }} value={editData.nightMatches ?? 0} onChange={e => set("nightMatches", Number(e.target.value))} /></td>
+                        <td>
+                          <select style={{ ...inputStyle, width: 80 }} value={editData.isActiveInDatabase ? "1" : "0"} onChange={e => set("isActiveInDatabase", e.target.value === "1")}>
+                            <option value="1">Активен</option>
+                            <option value="0">Неактивен</option>
+                          </select>
+                        </td>
+                        <td>
+                          <div style={{ display: "flex", gap: 4 }}>
+                            <button className="btn btn-sm btn-success" onClick={() => updateMutation.mutate({ id: p.id, data: editData })}>
+                              Сохр.
+                            </button>
+                            <button className="btn btn-sm btn-ghost" onClick={() => setEditId(null)}>
+                              Отм.
+                            </button>
+                          </div>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td style={{ fontWeight: 600 }}>{p.nick}</td>
+                        <td>{p.mmr.toLocaleString()}</td>
+                        <td>{p.stake}</td>
+                        <td><span style={{ color: "var(--accent)" }}>R{p.mainRole}</span></td>
+                        <td style={{ color: "var(--text-secondary)" }}>{p.flexRole ? `R${p.flexRole}` : "—"}</td>
+                        <td style={{ color: "var(--text-secondary)", fontSize: 12 }}>{p.telegramId ?? "—"}</td>
+                        <td style={{ color: "var(--text-secondary)", fontSize: 12, fontFamily: "monospace" }}>{p.wallet ?? "—"}</td>
+                        <td>{p.nightMatches}</td>
+                        <td>
+                          <span className={p.isActiveInDatabase ? "badge badge-green" : "badge badge-gray"}>
+                            {p.isActiveInDatabase ? "Активен" : "Неактивен"}
+                          </span>
+                        </td>
+                        <td>
+                          <div style={{ display: "flex", gap: 4 }}>
+                            <button className="btn btn-sm btn-ghost" onClick={() => startEdit(p)}>
+                              Изменить
+                            </button>
+                            <button
+                              className="btn btn-sm btn-danger"
+                              onClick={() => { if (confirm(`Удалить ${p.nick}?`)) deleteMutation.mutate(p.id); }}
+                            >
+                              Удал.
+                            </button>
+                          </div>
+                        </td>
+                      </>
+                    )}
+                  </tr>
+                ))}
+                {filtered.length === 0 && (
+                  <tr>
+                    <td colSpan={10} style={{ textAlign: "center", color: "var(--text-muted)", padding: 32 }}>
+                      {search ? "Игроки не найдены" : "Нет игроков"}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

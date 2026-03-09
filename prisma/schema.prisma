@@ -1,0 +1,84 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Player {
+  id                 String   @id @default(cuid())
+  nick               String   @unique
+  mmr                Int
+  stake              Int
+  mainRole           Int
+  flexRole           Int?
+  wallet             String?
+  nightMatches       Int      @default(0)
+  telegramId         String?
+  isActiveInDatabase Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  poolEntries         ReplacementPoolEntry[]
+  replacedInLogs      MatchReplacementLog[]  @relation("ReplacedPlayer")
+  replacementInLogs   MatchReplacementLog[]  @relation("ReplacementPlayer")
+}
+
+model Team {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  player1Id String
+  player2Id String
+  player3Id String
+  player4Id String
+  player5Id String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  poolEntries ReplacementPoolEntry[]
+  logs        MatchReplacementLog[]
+}
+
+model ReplacementPoolEntry {
+  id             String     @id @default(cuid())
+  playerId       String
+  status         String     @default("Active")
+  joinTime       DateTime   @default(now())
+  assignedTeamId String?
+  pickedTime     DateTime?
+  source         String
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  player       Player  @relation(fields: [playerId], references: [id])
+  assignedTeam Team?   @relation(fields: [assignedTeamId], references: [id])
+  logs         MatchReplacementLog[]
+}
+
+model MatchReplacementLog {
+  id                    String   @id @default(cuid())
+  timestamp             DateTime @default(now())
+  actionType            String
+  matchId               String?
+  teamId                String?
+  teamName              String?
+  neededRole            Int?
+  replacedPlayerId      String?
+  replacedPlayerNick    String?
+  replacedPlayerMmr     Int?
+  replacementPlayerId   String?
+  replacementPlayerNick String?
+  replacementPlayerMmr  Int?
+  judgeName             String?
+  comment               String?
+  resultStatus          String
+  poolEntryId           String?
+  createdAt             DateTime @default(now())
+
+  team              Team?                @relation(fields: [teamId], references: [id])
+  replacedPlayer    Player?              @relation("ReplacedPlayer", fields: [replacedPlayerId], references: [id])
+  replacementPlayer Player?              @relation("ReplacementPlayer", fields: [replacementPlayerId], references: [id])
+  poolEntry         ReplacementPoolEntry? @relation(fields: [poolEntryId], references: [id])
+}
