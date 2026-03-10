@@ -62,7 +62,7 @@ export async function createUser(user: Omit<DbUser, "createdAt">): Promise<void>
 export async function countUsers(): Promise<number> {
   const client = getClient();
   const res = await client.execute(`SELECT COUNT(*) as cnt FROM "User"`);
-  return Number((res.rows[0] as { cnt: number }).cnt);
+  return Number((res.rows[0] as unknown as { cnt: number }).cnt);
 }
 
 export async function getAllUsers(): Promise<DbUser[]> {
@@ -74,7 +74,8 @@ export async function getAllUsers(): Promise<DbUser[]> {
 export async function updateUser(id: string, updates: { role?: string; isApproved?: number; name?: string }): Promise<void> {
   const client = getClient();
   const sets: string[] = [];
-  const args: unknown[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const args: any[] = [];
   if (updates.role !== undefined) { sets.push(`role = ?`); args.push(updates.role); }
   if (updates.isApproved !== undefined) { sets.push(`isApproved = ?`); args.push(updates.isApproved); }
   if (updates.name !== undefined) { sets.push(`name = ?`); args.push(updates.name); }
