@@ -27,6 +27,7 @@ export default function PlayersPage() {
   const [search, setSearch] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ ...EMPTY_FORM });
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const { data: players = [], isLoading } = useQuery<Player[]>({
     queryKey: ["players"],
@@ -49,17 +50,23 @@ export default function PlayersPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: object) =>
-      fetch("/api/players", {
+    mutationFn: async (data: object) => {
+      const res = await fetch("/api/players", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
-      }).then(r => r.json()),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Ошибка сервера");
+      return json;
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["players"] });
       setShowAdd(false);
       setForm({ ...EMPTY_FORM });
+      setCreateError(null);
     },
+    onError: (e: Error) => setCreateError(e.message),
   });
 
   const deleteMutation = useMutation({
@@ -92,6 +99,7 @@ export default function PlayersPage() {
   }
 
   function handleCreate() {
+    setCreateError(null);
     createMutation.mutate({
       nick: form.nick,
       mmr: Number(form.mmr),
@@ -184,8 +192,8 @@ export default function PlayersPage() {
           >
             {createMutation.isPending ? "..." : "Создать"}
           </button>
-          {createMutation.isError && (
-            <span style={{ color: "#f87171", fontSize: 12 }}>Ошибка</span>
+          {createError && (
+            <span style={{ color: "#f87171", fontSize: 11, maxWidth: 260, display: "block" }}>{createError}</span>
           )}
         </div>
       )}

@@ -4,14 +4,33 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { Team, Player } from "@/types";
 
+const selStyle: React.CSSProperties = {
+  background: "rgba(0,0,0,0.5)",
+  border: "1px solid var(--border-light)",
+  color: "var(--text-primary)",
+  borderRadius: 4,
+  padding: "3px 6px",
+  fontSize: 12,
+  width: "100%",
+  outline: "none",
+};
+
+const inputStyle: React.CSSProperties = {
+  ...selStyle,
+};
+
+const EMPTY_TEAM = {
+  name: "",
+  player1Id: "", player2Id: "", player3Id: "", player4Id: "", player5Id: "",
+};
+
 export default function TeamsPage() {
   const qc = useQueryClient();
   const [editId, setEditId] = useState<string | null>(null);
-  const [editData, setEditData] = useState<{
-    name: string;
-    player1Id: string; player2Id: string; player3Id: string;
-    player4Id: string; player5Id: string;
-  } | null>(null);
+  const [editData, setEditData] = useState<typeof EMPTY_TEAM | null>(null);
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState({ ...EMPTY_TEAM });
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const { data: teams = [], isLoading } = useQuery<Team[]>({
     queryKey: ["teams"],
@@ -40,6 +59,26 @@ export default function TeamsPage() {
       qc.invalidateQueries({ queryKey: ["stats"] });
       setEditId(null);
     },
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async (data: object) => {
+      const res = await fetch("/api/teams", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Ошибка сервера");
+      return json;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["teams"] });
+      setShowAdd(false);
+      setForm({ ...EMPTY_TEAM });
+      setCreateError(null);
+    },
+    onError: (e: Error) => setCreateError(e.message),
   });
 
   const targetAvgMmr = stats?.targetAvgMmr ?? 0;
@@ -81,18 +120,19 @@ export default function TeamsPage() {
     });
   }
 
-  const selStyle: React.CSSProperties = {
-    background: "rgba(0,0,0,0.5)",
-    border: "1px solid var(--border-light)",
-    color: "var(--text-primary)",
-    borderRadius: 4,
-    padding: "3px 6px",
-    fontSize: 12,
-    width: "100%",
-    outline: "none",
-  };
-
   const sortedPlayers = allPlayers.slice().sort((a, b) => a.nick.localeCompare(b.nick));
+
+  const formValid =
+    form.name.trim() &&
+    form.player1Id && form.player2Id && form.player3Id &&
+    form.player4Id && form.player5Id;
+
+  function handleCreate() {
+    setCreateError(null);
+    createMutation.mutate(form);
+  }
+
+  const SLOTS = ["player1Id", "player2Id", "player3Id", "player4Id", "player5Id"] as const;
 
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -101,21 +141,81 @@ export default function TeamsPage() {
           <div className="page-title">Команды</div>
           <div className="page-subtitle">{teams.length} команд · Avg MMR всех: {avgOfTeams.toLocaleString()}</div>
         </div>
-        {targetAvgMmr > 0 && (
-          <div style={{
-            padding: "6px 16px",
-            background: "rgba(240,165,0,0.1)",
-            border: "1px solid rgba(240,165,0,0.3)",
-            borderRadius: 6,
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-          }}>
-            <span style={{ fontSize: 10, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Target MMR</span>
-            <span style={{ fontSize: 18, fontWeight: 800, color: "var(--accent)" }}>{targetAvgMmr.toLocaleString()}</span>
-          </div>
-        )}
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {targetAvgMmr > 0 && (
+            <div style={{
+              padding: "6px 16px",
+              background: "rgba(240,165,0,0.1)",
+              border: "1px solid rgba(240,165,0,0.3)",
+              borderRadius: 6,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+            }}>
+              <span style={{ fontSize: 10, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Target MMR</span>
+              <span style={{ fontSize: 18, fontWeight: 800, color: "var(--accent)" }}>{targetAvgMmr.toLocaleString()}</span>
+            </div>
+          )}
+          <button
+            className="btn btn-sm btn-success"
+            onClick={() => { setShowAdd(v => !v); setCreateError(null); }}
+          >
+            {showAdd ? "Отмена" : "+ Создать команду"}
+          </button>
+        </div>
       </div>
+
+      {/* Create form */}
+      {showAdd && (
+        <div style={{
+          background: "var(--bg-panel)",
+          borderBottom: "1px solid var(--border)",
+          padding: "14px 24px",
+          display: "flex",
+          gap: 10,
+          flexWrap: "wrap",
+          alignItems: "flex-end",
+        }}>
+          <div>
+            <div className="lbl">Название команды</div>
+            <input
+              style={{ ...inputStyle, width: 140 }}
+              placeholder="Команда 1"
+              value={form.name}
+              onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+            />
+          </div>
+          {SLOTS.map((slot, i) => (
+            <div key={slot}>
+              <div className="lbl">Игрок {i + 1}</div>
+              <select
+                style={{ ...selStyle, width: 170 }}
+                value={form[slot]}
+                onChange={e => setForm(f => ({ ...f, [slot]: e.target.value }))}
+              >
+                <option value="">— выберите —</option>
+                {sortedPlayers.map(p => (
+                  <option key={p.id} value={p.id}>
+                    {p.nick} ({p.mmr.toLocaleString()}) R{p.mainRole}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ))}
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <button
+              className="btn btn-sm btn-success"
+              onClick={handleCreate}
+              disabled={!formValid || createMutation.isPending}
+            >
+              {createMutation.isPending ? "..." : "Создать"}
+            </button>
+            {createError && (
+              <span style={{ color: "#f87171", fontSize: 11, maxWidth: 220 }}>{createError}</span>
+            )}
+          </div>
+        </div>
+      )}
 
       <div style={{ flex: 1, overflow: "auto", padding: "16px 24px" }}>
         {isLoading ? (
@@ -154,7 +254,7 @@ export default function TeamsPage() {
 
                   <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                     {isEditing && editData ? (
-                      (["player1Id", "player2Id", "player3Id", "player4Id", "player5Id"] as const).map((slot, i) => (
+                      SLOTS.map((slot, i) => (
                         <div key={slot} style={{ display: "flex", alignItems: "center", gap: 6 }}>
                           <span style={{ color: "var(--text-muted)", fontSize: 10, minWidth: 14 }}>{i + 1}</span>
                           <select
@@ -222,6 +322,17 @@ export default function TeamsPage() {
                 </div>
               );
             })}
+
+            {teams.length === 0 && !isLoading && (
+              <div style={{
+                gridColumn: "1 / -1",
+                textAlign: "center",
+                color: "var(--text-muted)",
+                padding: 40,
+              }}>
+                Нет команд. Нажмите «+ Создать команду».
+              </div>
+            )}
           </div>
         )}
       </div>
