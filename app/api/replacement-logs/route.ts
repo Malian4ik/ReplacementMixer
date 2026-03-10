@@ -20,6 +20,16 @@ const CreateLogSchema = z.object({
   poolEntryId: z.string().optional(),
 });
 
+export async function DELETE() {
+  try {
+    await prisma.matchReplacementLog.deleteMany({});
+    return NextResponse.json({ ok: true });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Error";
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
+
 export async function GET() {
   const logs = await prisma.matchReplacementLog.findMany({
     orderBy: { timestamp: "desc" },
