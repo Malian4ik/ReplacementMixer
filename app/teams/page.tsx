@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { Team, Player } from "@/types";
 
-const selStyle: React.CSSProperties = {
+const inputStyle: React.CSSProperties = {
   background: "rgba(0,0,0,0.5)",
   border: "1px solid var(--border-light)",
   color: "var(--text-primary)",
@@ -15,15 +15,120 @@ const selStyle: React.CSSProperties = {
   outline: "none",
 };
 
-const inputStyle: React.CSSProperties = {
-  ...selStyle,
-};
-
 const EMPTY_TEAM = {
   name: "",
   player1Id: "", player2Id: "", player3Id: "", player4Id: "", player5Id: "",
 };
 
+const SLOTS = ["player1Id", "player2Id", "player3Id", "player4Id", "player5Id"] as const;
+type Slot = typeof SLOTS[number];
+
+// ── Searchable player picker for one slot ──────────────────────────────────
+function PlayerPicker({
+  value,
+  allPlayers,
+  onChange,
+}: {
+  value: string;
+  allPlayers: Player[];
+  onChange: (id: string) => void;
+}) {
+  const current = allPlayers.find(p => p.id === value);
+  const [search, setSearch] = useState(current?.nick ?? "");
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Sync label if value changes externally
+  useEffect(() => {
+    const p = allPlayers.find(p => p.id === value);
+    if (p) setSearch(p.nick);
+  }, [value, allPlayers]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function onClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        // Restore current player nick if nothing was confirmed
+        const p = allPlayers.find(p => p.id === value);
+        if (p) setSearch(p.nick);
+      }
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, [value, allPlayers]);
+
+  const filtered = search.trim()
+    ? allPlayers.filter(p =>
+        p.nick.toLowerCase().includes(search.toLowerCase())
+      ).slice(0, 10)
+    : allPlayers.slice(0, 10);
+
+  function select(p: Player) {
+    onChange(p.id);
+    setSearch(p.nick);
+    setOpen(false);
+  }
+
+  return (
+    <div ref={ref} style={{ position: "relative", flex: 1 }}>
+      <input
+        style={inputStyle}
+        value={search}
+        placeholder="Поиск по нику..."
+        onFocus={() => setOpen(true)}
+        onChange={e => {
+          setSearch(e.target.value);
+          setOpen(true);
+        }}
+      />
+      {open && (
+        <div style={{
+          position: "absolute",
+          top: "calc(100% + 2px)",
+          left: 0,
+          right: 0,
+          background: "var(--bg-panel)",
+          border: "1px solid var(--border-light)",
+          borderRadius: 4,
+          zIndex: 50,
+          maxHeight: 200,
+          overflowY: "auto",
+          boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
+        }}>
+          {filtered.length === 0 ? (
+            <div style={{ padding: "8px 10px", fontSize: 12, color: "var(--text-muted)" }}>Не найдено</div>
+          ) : (
+            filtered.map(p => (
+              <div
+                key={p.id}
+                onMouseDown={() => select(p)}
+                style={{
+                  padding: "6px 10px",
+                  fontSize: 12,
+                  cursor: "pointer",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  background: p.id === value ? "rgba(240,165,0,0.15)" : "transparent",
+                  borderLeft: p.id === value ? "2px solid var(--accent)" : "2px solid transparent",
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.05)")}
+                onMouseLeave={e => (e.currentTarget.style.background = p.id === value ? "rgba(240,165,0,0.15)" : "transparent")}
+              >
+                <span style={{ fontWeight: p.id === value ? 700 : 400 }}>{p.nick}</span>
+                <span style={{ color: "var(--text-secondary)", fontFamily: "monospace" }}>
+                  {p.mmr.toLocaleString()} · R{p.mainRole}{p.flexRole ? `/R${p.flexRole}` : ""}
+                </span>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Main page ──────────────────────────────────────────────────────────────
 export default function TeamsPage() {
   const qc = useQueryClient();
   const [editId, setEditId] = useState<string | null>(null);
@@ -127,13 +232,6 @@ export default function TeamsPage() {
     form.player1Id && form.player2Id && form.player3Id &&
     form.player4Id && form.player5Id;
 
-  function handleCreate() {
-    setCreateError(null);
-    createMutation.mutate(form);
-  }
-
-  const SLOTS = ["player1Id", "player2Id", "player3Id", "player4Id", "player5Id"] as const;
-
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
       <div className="page-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -171,47 +269,40 @@ export default function TeamsPage() {
           background: "var(--bg-panel)",
           borderBottom: "1px solid var(--border)",
           padding: "14px 24px",
-          display: "flex",
-          gap: 10,
-          flexWrap: "wrap",
-          alignItems: "flex-end",
         }}>
-          <div>
-            <div className="lbl">Название команды</div>
-            <input
-              style={{ ...inputStyle, width: 140 }}
-              placeholder="Команда 1"
-              value={form.name}
-              onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-            />
-          </div>
-          {SLOTS.map((slot, i) => (
-            <div key={slot}>
-              <div className="lbl">Игрок {i + 1}</div>
-              <select
-                style={{ ...selStyle, width: 170 }}
-                value={form[slot]}
-                onChange={e => setForm(f => ({ ...f, [slot]: e.target.value }))}
-              >
-                <option value="">— выберите —</option>
-                {sortedPlayers.map(p => (
-                  <option key={p.id} value={p.id}>
-                    {p.nick} ({p.mmr.toLocaleString()}) R{p.mainRole}
-                  </option>
-                ))}
-              </select>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 8 }}>
+            <div>
+              <div className="lbl">Название команды</div>
+              <input
+                style={{ ...inputStyle, width: 150 }}
+                placeholder="Команда X"
+                value={form.name}
+                onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+              />
             </div>
-          ))}
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8, marginBottom: 10 }}>
+            {SLOTS.map((slot, i) => (
+              <div key={slot}>
+                <div className="lbl">Игрок {i + 1}</div>
+                <PlayerPicker
+                  value={form[slot]}
+                  allPlayers={sortedPlayers}
+                  onChange={id => setForm(f => ({ ...f, [slot]: id }))}
+                />
+              </div>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <button
               className="btn btn-sm btn-success"
-              onClick={handleCreate}
+              onClick={() => { setCreateError(null); createMutation.mutate(form); }}
               disabled={!formValid || createMutation.isPending}
             >
               {createMutation.isPending ? "..." : "Создать"}
             </button>
             {createError && (
-              <span style={{ color: "#f87171", fontSize: 11, maxWidth: 220 }}>{createError}</span>
+              <span style={{ color: "#f87171", fontSize: 11 }}>{createError}</span>
             )}
           </div>
         </div>
@@ -233,7 +324,7 @@ export default function TeamsPage() {
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                     {isEditing && editData ? (
                       <input
-                        style={{ ...selStyle, width: 120 }}
+                        style={{ ...inputStyle, width: 120 }}
                         value={editData.name}
                         onChange={e => setEditData(d => d ? { ...d, name: e.target.value } : d)}
                       />
@@ -252,22 +343,16 @@ export default function TeamsPage() {
                     </span>
                   </div>
 
-                  <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                     {isEditing && editData ? (
                       SLOTS.map((slot, i) => (
                         <div key={slot} style={{ display: "flex", alignItems: "center", gap: 6 }}>
                           <span style={{ color: "var(--text-muted)", fontSize: 10, minWidth: 14 }}>{i + 1}</span>
-                          <select
-                            style={selStyle}
+                          <PlayerPicker
                             value={editData[slot]}
-                            onChange={e => setEditData(d => d ? { ...d, [slot]: e.target.value } : d)}
-                          >
-                            {sortedPlayers.map(p => (
-                              <option key={p.id} value={p.id}>
-                                {p.nick} ({p.mmr.toLocaleString()}) R{p.mainRole}
-                              </option>
-                            ))}
-                          </select>
+                            allPlayers={sortedPlayers}
+                            onChange={id => setEditData(d => d ? { ...d, [slot]: id } : d)}
+                          />
                         </div>
                       ))
                     ) : (
