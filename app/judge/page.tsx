@@ -155,6 +155,16 @@ export default function JudgePage() {
   };
   const field: React.CSSProperties = { marginBottom: 10 };
 
+  if (!canEdit) {
+    return (
+      <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12 }}>
+        <div style={{ fontSize: 40 }}>🔒</div>
+        <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)" }}>Нет доступа</div>
+        <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>Панель судьи доступна только для JUDGE и OWNER</div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
       {/* Header */}
