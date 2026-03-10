@@ -235,4 +235,16 @@ body {
     padding: 7px 8px;
     font-size: 12px;
   }
+
+  /* Judge page: stack 3 columns vertically */
+  .judge-cols {
+    grid-template-columns: 1fr !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+  }
+
+  /* Teams create grid: 1 column */
+  .teams-create-grid {
+    grid-template-columns: 1fr !important;
+  }
 }

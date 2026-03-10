@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Gavel, ListOrdered, Users2, ShieldCheck, Trophy, ScrollText } from "lucide-react";
+import { useUser } from "@/components/UserContext";
 
 const nav = [
   { href: "/judge",   label: "Судья",    icon: Gavel,       desc: "Назначение замен" },
@@ -70,9 +71,8 @@ export function Sidebar() {
         </nav>
         <div style={{
           padding: "12px 16px", borderTop: "1px solid var(--border)",
-          fontSize: 10, color: "var(--text-muted)", letterSpacing: "0.03em",
         }}>
-          v0.1 · MixerCup 2026
+          <UserInfo />
         </div>
       </aside>
 
@@ -107,5 +107,41 @@ export function Sidebar() {
         })}
       </nav>
     </>
+  );
+}
+
+function UserInfo() {
+  const { user } = useUser();
+  const router = useRouter();
+
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/login");
+  }
+
+  if (!user) return null;
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 130 }}>{user.name}</span>
+        <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 4, background: user.role === "OWNER" ? "rgba(240,165,0,0.2)" : "rgba(96,165,250,0.15)", color: user.role === "OWNER" ? "var(--accent)" : "#60a5fa" }}>{user.role}</span>
+      </div>
+      <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 8, overflow: "hidden", textOverflow: "ellipsis" }}>{user.email}</div>
+      <div style={{ display: "flex", gap: 4 }}>
+        {user.role === "OWNER" && (
+          <Link href="/admin/users" style={{ flex: 1, textDecoration: "none" }}>
+            <button style={{ width: "100%", background: "rgba(240,165,0,0.08)", border: "1px solid rgba(240,165,0,0.2)", color: "var(--accent)", borderRadius: 4, padding: "4px 0", fontSize: 10, cursor: "pointer" }}>
+              👥 Пользователи
+            </button>
+          </Link>
+        )}
+        <button
+          onClick={logout}
+          style={{ flex: 1, background: "rgba(255,255,255,0.04)", border: "1px solid var(--border-light)", color: "var(--text-secondary)", borderRadius: 4, padding: "4px 0", fontSize: 10, cursor: "pointer" }}
+        >
+          Выйти
+        </button>
+      </div>
+    </div>
   );
 }

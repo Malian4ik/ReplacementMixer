@@ -328,7 +328,7 @@ export default function TeamsPage() {
               {SLOTS.filter(s => form[s] !== "").length} / 5 игроков выбраны
             </div>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8, marginBottom: 10 }}>
+          <div className="teams-create-grid" style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8, marginBottom: 10 }}>
             {SLOTS.map((slot, i) => (
               <div key={slot}>
                 <div className="lbl">Игрок {i + 1}</div>

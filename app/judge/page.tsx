@@ -187,7 +187,7 @@ export default function JudgePage() {
       </div>
 
       {/* 3 columns */}
-      <div style={{
+      <div className="judge-cols" style={{
         flex: 1, overflow: "hidden",
         display: "grid",
         gridTemplateColumns: "280px 1fr 260px",

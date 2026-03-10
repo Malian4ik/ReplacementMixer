@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatMoscow } from "@/lib/date";
 import type { MatchReplacementLog } from "@/types";
+import { useUser } from "@/components/UserContext";
 
 const ACTION_BADGE: Record<string, string> = {
   Assign:    "badge badge-green",
@@ -21,6 +22,7 @@ type TgUpdate = { chatId: string; name: string; text: string };
 
 export default function LogsPage() {
   const qc = useQueryClient();
+  const { user } = useUser();
   const [showTgSetup, setShowTgSetup] = useState(false);
   const [tgUpdates, setTgUpdates] = useState<TgUpdate[]>([]);
   const [tgSetupLoading, setTgSetupLoading] = useState(false);
@@ -87,14 +89,16 @@ export default function LogsPage() {
             {sendMutation.isPending ? "Отправка..." : "📤 Отправить в Telegram"}
           </button>
           {/* Setup */}
-          <button
-            className="btn btn-sm btn-ghost"
-            style={{ fontSize: 11 }}
-            onClick={loadTgSetup}
-            disabled={tgSetupLoading}
-          >
-            {tgSetupLoading ? "..." : "⚙ Настроить бот"}
-          </button>
+          {user?.role === "OWNER" && (
+            <button
+              className="btn btn-sm btn-ghost"
+              style={{ fontSize: 11 }}
+              onClick={loadTgSetup}
+              disabled={tgSetupLoading}
+            >
+              {tgSetupLoading ? "..." : "⚙ Настроить бот"}
+            </button>
+          )}
           {/* Clear logs */}
           <button
             className="btn btn-sm btn-danger"
@@ -126,7 +130,7 @@ export default function LogsPage() {
       )}
 
       {/* Telegram setup panel */}
-      {showTgSetup && (
+      {user?.role === "OWNER" && showTgSetup && (
         <div style={{
           background: "var(--bg-panel)",
           borderBottom: "1px solid var(--border)",
