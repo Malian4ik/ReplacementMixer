@@ -21,27 +21,33 @@ const EMPTY_TEAM = {
 };
 
 const SLOTS = ["player1Id", "player2Id", "player3Id", "player4Id", "player5Id"] as const;
-type Slot = typeof SLOTS[number];
+type SlotKey = typeof SLOTS[number];
 
 // ── Searchable player picker for one slot ──────────────────────────────────
 function PlayerPicker({
   value,
   allPlayers,
   onChange,
+  onClear,
 }: {
   value: string;
   allPlayers: Player[];
   onChange: (id: string) => void;
+  onClear: () => void;
 }) {
   const current = allPlayers.find(p => p.id === value);
   const [search, setSearch] = useState(current?.nick ?? "");
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  // Sync label if value changes externally
+  // Sync label when value changes externally (including clear → "")
   useEffect(() => {
-    const p = allPlayers.find(p => p.id === value);
-    if (p) setSearch(p.nick);
+    if (!value) {
+      setSearch("");
+    } else {
+      const p = allPlayers.find(p => p.id === value);
+      if (p) setSearch(p.nick);
+    }
   }, [value, allPlayers]);
 
   // Close dropdown on outside click
@@ -49,9 +55,13 @@ function PlayerPicker({
     function onClickOutside(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) {
         setOpen(false);
-        // Restore current player nick if nothing was confirmed
-        const p = allPlayers.find(p => p.id === value);
-        if (p) setSearch(p.nick);
+        // Restore nick or clear if empty
+        if (!value) {
+          setSearch("");
+        } else {
+          const p = allPlayers.find(p => p.id === value);
+          if (p) setSearch(p.nick);
+        }
       }
     }
     document.addEventListener("mousedown", onClickOutside);
@@ -70,18 +80,43 @@ function PlayerPicker({
     setOpen(false);
   }
 
+  const isEmpty = !value;
+
   return (
-    <div ref={ref} style={{ position: "relative", flex: 1 }}>
+    <div ref={ref} style={{ position: "relative", display: "flex", gap: 4, flex: 1 }}>
       <input
-        style={inputStyle}
+        style={{
+          ...inputStyle,
+          borderColor: isEmpty ? "rgba(248,113,113,0.5)" : "var(--border-light)",
+        }}
         value={search}
-        placeholder="Поиск по нику..."
+        placeholder="— не выбран —"
         onFocus={() => setOpen(true)}
         onChange={e => {
           setSearch(e.target.value);
           setOpen(true);
         }}
       />
+      {/* Clear button */}
+      {!isEmpty && (
+        <button
+          onMouseDown={e => { e.preventDefault(); onClear(); }}
+          style={{
+            background: "rgba(248,113,113,0.15)",
+            border: "1px solid rgba(248,113,113,0.3)",
+            color: "#f87171",
+            borderRadius: 4,
+            padding: "2px 7px",
+            fontSize: 13,
+            cursor: "pointer",
+            lineHeight: 1,
+            flexShrink: 0,
+          }}
+          title="Убрать игрока"
+        >
+          ×
+        </button>
+      )}
       {open && (
         <div style={{
           position: "absolute",
@@ -92,12 +127,14 @@ function PlayerPicker({
           border: "1px solid var(--border-light)",
           borderRadius: 4,
           zIndex: 50,
-          maxHeight: 200,
+          maxHeight: 220,
           overflowY: "auto",
-          boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
+          boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
         }}>
           {filtered.length === 0 ? (
-            <div style={{ padding: "8px 10px", fontSize: 12, color: "var(--text-muted)" }}>Не найдено</div>
+            <div style={{ padding: "8px 10px", fontSize: 12, color: "var(--text-muted)" }}>
+              Не найдено
+            </div>
           ) : (
             filtered.map(p => (
               <div
@@ -109,14 +146,15 @@ function PlayerPicker({
                   cursor: "pointer",
                   display: "flex",
                   justifyContent: "space-between",
+                  alignItems: "center",
                   background: p.id === value ? "rgba(240,165,0,0.15)" : "transparent",
                   borderLeft: p.id === value ? "2px solid var(--accent)" : "2px solid transparent",
                 }}
-                onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.05)")}
+                onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.07)")}
                 onMouseLeave={e => (e.currentTarget.style.background = p.id === value ? "rgba(240,165,0,0.15)" : "transparent")}
               >
                 <span style={{ fontWeight: p.id === value ? 700 : 400 }}>{p.nick}</span>
-                <span style={{ color: "var(--text-secondary)", fontFamily: "monospace" }}>
+                <span style={{ color: "var(--text-secondary)", fontFamily: "monospace", fontSize: 11 }}>
                   {p.mmr.toLocaleString()} · R{p.mainRole}{p.flexRole ? `/R${p.flexRole}` : ""}
                 </span>
               </div>
@@ -227,10 +265,16 @@ export default function TeamsPage() {
 
   const sortedPlayers = allPlayers.slice().sort((a, b) => a.nick.localeCompare(b.nick));
 
-  const formValid =
-    form.name.trim() &&
-    form.player1Id && form.player2Id && form.player3Id &&
-    form.player4Id && form.player5Id;
+  function editAllFilled(d: typeof EMPTY_TEAM) {
+    return SLOTS.every(s => d[s] !== "");
+  }
+
+  function formAllFilled(f: typeof EMPTY_TEAM) {
+    return f.name.trim() !== "" && SLOTS.every(s => f[s] !== "");
+  }
+
+  // Count filled slots for edit progress indicator
+  const editFilledCount = editData ? SLOTS.filter(s => editData[s] !== "").length : 0;
 
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -270,7 +314,7 @@ export default function TeamsPage() {
           borderBottom: "1px solid var(--border)",
           padding: "14px 24px",
         }}>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 8 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "flex-end", marginBottom: 10 }}>
             <div>
               <div className="lbl">Название команды</div>
               <input
@@ -279,6 +323,9 @@ export default function TeamsPage() {
                 value={form.name}
                 onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
               />
+            </div>
+            <div style={{ marginLeft: "auto", color: "var(--text-muted)", fontSize: 11 }}>
+              {SLOTS.filter(s => form[s] !== "").length} / 5 игроков выбраны
             </div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8, marginBottom: 10 }}>
@@ -289,6 +336,7 @@ export default function TeamsPage() {
                   value={form[slot]}
                   allPlayers={sortedPlayers}
                   onChange={id => setForm(f => ({ ...f, [slot]: id }))}
+                  onClear={() => setForm(f => ({ ...f, [slot]: "" }))}
                 />
               </div>
             ))}
@@ -297,9 +345,12 @@ export default function TeamsPage() {
             <button
               className="btn btn-sm btn-success"
               onClick={() => { setCreateError(null); createMutation.mutate(form); }}
-              disabled={!formValid || createMutation.isPending}
+              disabled={!formAllFilled(form) || createMutation.isPending}
             >
               {createMutation.isPending ? "..." : "Создать"}
+            </button>
+            <button className="btn btn-sm btn-ghost" onClick={() => setForm({ ...EMPTY_TEAM })}>
+              Очистить всё
             </button>
             {createError && (
               <span style={{ color: "#f87171", fontSize: 11 }}>{createError}</span>
@@ -314,7 +365,7 @@ export default function TeamsPage() {
         ) : (
           <div style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+            gridTemplateColumns: "repeat(auto-fill, minmax(290px, 1fr))",
             gap: 12,
           }}>
             {teams.map(t => {
@@ -345,16 +396,41 @@ export default function TeamsPage() {
 
                   <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                     {isEditing && editData ? (
-                      SLOTS.map((slot, i) => (
-                        <div key={slot} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <span style={{ color: "var(--text-muted)", fontSize: 10, minWidth: 14 }}>{i + 1}</span>
-                          <PlayerPicker
-                            value={editData[slot]}
-                            allPlayers={sortedPlayers}
-                            onChange={id => setEditData(d => d ? { ...d, [slot]: id } : d)}
-                          />
-                        </div>
-                      ))
+                      <>
+                        {SLOTS.map((slot, i) => (
+                          <div key={slot} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span style={{ color: "var(--text-muted)", fontSize: 10, minWidth: 14 }}>{i + 1}</span>
+                            <PlayerPicker
+                              value={editData[slot]}
+                              allPlayers={sortedPlayers}
+                              onChange={id => setEditData(d => d ? { ...d, [slot]: id } : d)}
+                              onClear={() => setEditData(d => d ? { ...d, [slot]: "" } : d)}
+                            />
+                          </div>
+                        ))}
+                        {editFilledCount < 5 && (
+                          <div style={{
+                            fontSize: 11,
+                            color: "#fbbf24",
+                            marginTop: 2,
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                          }}>
+                            <span>Выбрано {editFilledCount} из 5 игроков</span>
+                            <button
+                              className="btn btn-sm btn-ghost"
+                              style={{ fontSize: 10, padding: "1px 6px" }}
+                              onClick={() => setEditData(d => d ? {
+                                ...d,
+                                player1Id: "", player2Id: "", player3Id: "", player4Id: "", player5Id: ""
+                              } : d)}
+                            >
+                              Очистить всё
+                            </button>
+                          </div>
+                        )}
+                      </>
                     ) : (
                       (t.players ?? []).map((p, i) => p && (
                         <div key={p.id} style={{
@@ -386,9 +462,10 @@ export default function TeamsPage() {
                           className="btn btn-sm btn-success"
                           style={{ flex: 1 }}
                           onClick={() => updateMutation.mutate({ id: t.id, data: editData })}
-                          disabled={updateMutation.isPending}
+                          disabled={!editAllFilled(editData) || updateMutation.isPending}
+                          title={!editAllFilled(editData) ? "Заполните все 5 слотов" : ""}
                         >
-                          Сохранить
+                          Сохранить {!editAllFilled(editData) ? `(${editFilledCount}/5)` : ""}
                         </button>
                         <button className="btn btn-sm btn-ghost" onClick={() => setEditId(null)}>
                           Отмена
