@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { Team, Player, CandidateScore, ReplacementPoolEntry } from "@/types";
+import { useUser } from "@/components/UserContext";
 
 const MAX_DEVIATION = 800;
 
@@ -22,6 +23,8 @@ function rfColor(rf: number) {
 
 export default function JudgePage() {
   const qc = useQueryClient();
+  const { user } = useUser();
+  const canEdit = user?.role === "OWNER" || user?.role === "JUDGE";
 
   const { data: teams = [] } = useQuery<Team[]>({
     queryKey: ["teams"],
@@ -297,14 +300,16 @@ export default function JudgePage() {
               </div>
             )}
 
-            <button
-              className="btn btn-accent"
-              style={{ width: "100%", justifyContent: "center", padding: "10px 0", fontSize: 13 }}
-              disabled={!selectedCandidateId || !replacedPlayerId || assignMutation.isPending}
-              onClick={() => selectedCandidateId && assignMutation.mutate(selectedCandidateId)}
-            >
-              {assignMutation.isPending ? "Назначаю..." : "✓ Назначить замену"}
-            </button>
+            {canEdit && (
+              <button
+                className="btn btn-accent"
+                style={{ width: "100%", justifyContent: "center", padding: "10px 0", fontSize: 13 }}
+                disabled={!selectedCandidateId || !replacedPlayerId || assignMutation.isPending}
+                onClick={() => selectedCandidateId && assignMutation.mutate(selectedCandidateId)}
+              >
+                {assignMutation.isPending ? "Назначаю..." : "✓ Назначить замену"}
+              </button>
+            )}
 
             {assignMutation.isSuccess && (
               <div style={{ color: "#34d399", fontSize: 12, marginTop: 6, textAlign: "center" }}>
@@ -419,13 +424,15 @@ export default function JudgePage() {
                         <span>S{p.stake}</span>
                         <span>R{p.mainRole}{p.flexRole ? `/R${p.flexRole}` : ""}</span>
                       </div>
-                      <button
-                        className={`btn btn-sm ${inPool ? "btn-ghost" : "btn-blue"}`}
-                        disabled={inPool || addToPoolMutation.isPending}
-                        onClick={() => addToPoolMutation.mutate(p.id)}
-                      >
-                        {inPool ? "Уже в пуле" : "+ В пул"}
-                      </button>
+                      {canEdit && (
+                        <button
+                          className={`btn btn-sm ${inPool ? "btn-ghost" : "btn-blue"}`}
+                          disabled={inPool || addToPoolMutation.isPending}
+                          onClick={() => addToPoolMutation.mutate(p.id)}
+                        >
+                          {inPool ? "Уже в пуле" : "+ В пул"}
+                        </button>
+                      )}
                     </div>
                   );
                 })}

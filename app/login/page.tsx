@@ -19,7 +19,7 @@ export default function LoginPage() {
       body: JSON.stringify({ email, password }),
     });
     const data = await res.json();
-    if (res.ok) router.replace("/judge");
+    if (res.ok) { window.location.href = "/judge"; }
     else { setError(data.error); setLoading(false); }
   }
 

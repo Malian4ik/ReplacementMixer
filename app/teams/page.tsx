@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { Team, Player } from "@/types";
+import { useUser } from "@/components/UserContext";
 
 const inputStyle: React.CSSProperties = {
   background: "rgba(0,0,0,0.5)",
@@ -169,6 +170,8 @@ function PlayerPicker({
 // ── Main page ──────────────────────────────────────────────────────────────
 export default function TeamsPage() {
   const qc = useQueryClient();
+  const { user } = useUser();
+  const canEdit = user?.role === "OWNER" || user?.role === "JUDGE";
   const [editId, setEditId] = useState<string | null>(null);
   const [editData, setEditData] = useState<typeof EMPTY_TEAM | null>(null);
   const [showAdd, setShowAdd] = useState(false);
@@ -298,17 +301,19 @@ export default function TeamsPage() {
               <span style={{ fontSize: 18, fontWeight: 800, color: "var(--accent)" }}>{targetAvgMmr.toLocaleString()}</span>
             </div>
           )}
-          <button
-            className="btn btn-sm btn-success"
-            onClick={() => { setShowAdd(v => !v); setCreateError(null); }}
-          >
-            {showAdd ? "Отмена" : "+ Создать команду"}
-          </button>
+          {canEdit && (
+            <button
+              className="btn btn-sm btn-success"
+              onClick={() => { setShowAdd(v => !v); setCreateError(null); }}
+            >
+              {showAdd ? "Отмена" : "+ Создать команду"}
+            </button>
+          )}
         </div>
       </div>
 
       {/* Create form */}
-      {showAdd && (
+      {canEdit && showAdd && (
         <div style={{
           background: "var(--bg-panel)",
           borderBottom: "1px solid var(--border)",
@@ -455,32 +460,34 @@ export default function TeamsPage() {
                     )}
                   </div>
 
-                  <div style={{ marginTop: 10, display: "flex", gap: 6 }}>
-                    {isEditing && editData ? (
-                      <>
+                  {canEdit && (
+                    <div style={{ marginTop: 10, display: "flex", gap: 6 }}>
+                      {isEditing && editData ? (
+                        <>
+                          <button
+                            className="btn btn-sm btn-success"
+                            style={{ flex: 1 }}
+                            onClick={() => updateMutation.mutate({ id: t.id, data: editData })}
+                            disabled={!editAllFilled(editData) || updateMutation.isPending}
+                            title={!editAllFilled(editData) ? "Заполните все 5 слотов" : ""}
+                          >
+                            Сохранить {!editAllFilled(editData) ? `(${editFilledCount}/5)` : ""}
+                          </button>
+                          <button className="btn btn-sm btn-ghost" onClick={() => setEditId(null)}>
+                            Отмена
+                          </button>
+                        </>
+                      ) : (
                         <button
-                          className="btn btn-sm btn-success"
-                          style={{ flex: 1 }}
-                          onClick={() => updateMutation.mutate({ id: t.id, data: editData })}
-                          disabled={!editAllFilled(editData) || updateMutation.isPending}
-                          title={!editAllFilled(editData) ? "Заполните все 5 слотов" : ""}
+                          className="btn btn-sm btn-ghost"
+                          style={{ width: "100%" }}
+                          onClick={() => startEdit(t)}
                         >
-                          Сохранить {!editAllFilled(editData) ? `(${editFilledCount}/5)` : ""}
+                          Изменить
                         </button>
-                        <button className="btn btn-sm btn-ghost" onClick={() => setEditId(null)}>
-                          Отмена
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        className="btn btn-sm btn-ghost"
-                        style={{ width: "100%" }}
-                        onClick={() => startEdit(t)}
-                      >
-                        Изменить
-                      </button>
-                    )}
-                  </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}

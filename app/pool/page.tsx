@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatMoscow } from "@/lib/date";
 import type { ReplacementPoolEntry } from "@/types";
+import { useUser } from "@/components/UserContext";
 
 const STATUS_BADGE: Record<string, string> = {
   Active:   "badge badge-green",
@@ -20,6 +21,8 @@ const SOURCE_LABELS: Record<string, string> = {
 
 export default function PoolPage() {
   const qc = useQueryClient();
+  const { user } = useUser();
+  const canEdit = user?.role === "OWNER" || user?.role === "JUDGE";
   const [statusFilter, setStatusFilter] = useState<string>("");
 
   const { data: entries = [], isLoading } = useQuery<ReplacementPoolEntry[]>({
@@ -95,7 +98,7 @@ export default function PoolPage() {
             <table className="tbl">
               <thead>
                 <tr>
-                  {["НИК", "MMR", "STAKE", "РОЛЬ", "СТАТУС", "ИСТОЧНИК", "ДОБАВЛЕН В ПУЛ", "ДЕЙСТВИЯ"].map(h => (
+                  {[...["НИК", "MMR", "STAKE", "РОЛЬ", "СТАТУС", "ИСТОЧНИК", "ДОБАВЛЕН В ПУЛ"], ...(canEdit ? ["ДЕЙСТВИЯ"] : [])].map(h => (
                     <th key={h}>{h}</th>
                   ))}
                 </tr>
@@ -114,34 +117,36 @@ export default function PoolPage() {
                     <td style={{ color: "var(--text-secondary)", fontSize: 12, fontFamily: "monospace" }}>
                       {formatMoscow(e.joinTime)}
                     </td>
-                    <td>
-                      <div style={{ display: "flex", gap: 6 }}>
-                        {e.status === "Picked" && (
-                          <button
-                            className="btn btn-sm btn-blue"
-                            onClick={() => returnMutation.mutate(e.id)}
-                          >
-                            Вернуть
-                          </button>
-                        )}
-                        {e.status === "Active" && (
-                          <button
-                            className="btn btn-sm btn-danger"
-                            onClick={() => patchMutation.mutate({ id: e.id, status: "Inactive" })}
-                          >
-                            Деактив.
-                          </button>
-                        )}
-                        {e.status === "Inactive" && (
-                          <button
-                            className="btn btn-sm btn-success"
-                            onClick={() => patchMutation.mutate({ id: e.id, status: "Active" })}
-                          >
-                            Активировать
-                          </button>
-                        )}
-                      </div>
-                    </td>
+                    {canEdit && (
+                      <td>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          {e.status === "Picked" && (
+                            <button
+                              className="btn btn-sm btn-blue"
+                              onClick={() => returnMutation.mutate(e.id)}
+                            >
+                              Вернуть
+                            </button>
+                          )}
+                          {e.status === "Active" && (
+                            <button
+                              className="btn btn-sm btn-danger"
+                              onClick={() => patchMutation.mutate({ id: e.id, status: "Inactive" })}
+                            >
+                              Деактив.
+                            </button>
+                          )}
+                          {e.status === "Inactive" && (
+                            <button
+                              className="btn btn-sm btn-success"
+                              onClick={() => patchMutation.mutate({ id: e.id, status: "Active" })}
+                            >
+                              Активировать
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
                 {entries.length === 0 && (

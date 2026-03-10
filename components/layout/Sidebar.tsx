@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { Gavel, ListOrdered, Users2, ShieldCheck, Trophy, ScrollText } from "lucide-react";
 import { useUser } from "@/components/UserContext";
 
@@ -112,11 +112,10 @@ export function Sidebar() {
 
 function UserInfo() {
   const { user } = useUser();
-  const router = useRouter();
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
-    router.push("/login");
+    window.location.href = "/login";
   }
 
   if (!user) return null;

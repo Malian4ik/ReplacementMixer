@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { Player } from "@/types";
+import { useUser } from "@/components/UserContext";
 
 const inputStyle: React.CSSProperties = {
   background: "rgba(0,0,0,0.5)",
@@ -22,6 +23,8 @@ const EMPTY_FORM = {
 
 export default function PlayersPage() {
   const qc = useQueryClient();
+  const { user } = useUser();
+  const canEdit = user?.role === "OWNER" || user?.role === "JUDGE";
   const [editId, setEditId] = useState<string | null>(null);
   const [editData, setEditData] = useState<Partial<Player>>({});
   const [search, setSearch] = useState("");
@@ -128,17 +131,19 @@ export default function PlayersPage() {
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
-          <button
-            className="btn btn-sm btn-success"
-            onClick={() => setShowAdd(v => !v)}
-          >
-            {showAdd ? "Отмена" : "+ Добавить"}
-          </button>
+          {canEdit && (
+            <button
+              className="btn btn-sm btn-success"
+              onClick={() => setShowAdd(v => !v)}
+            >
+              {showAdd ? "Отмена" : "+ Добавить"}
+            </button>
+          )}
         </div>
       </div>
 
       {/* Add form */}
-      {showAdd && (
+      {canEdit && showAdd && (
         <div style={{
           background: "var(--bg-panel)",
           borderBottom: "1px solid var(--border)",
@@ -207,7 +212,7 @@ export default function PlayersPage() {
             <table className="tbl">
               <thead>
                 <tr>
-                  {["НИК", "MMR", "STAKE", "РОЛЬ", "FLEX", "TELEGRAM", "КОШЕЛЁК", "НОЧИ", "СТАТУС", "ДЕЙСТВИЯ"].map(h => (
+                  {[...["НИК", "MMR", "STAKE", "РОЛЬ", "FLEX", "TELEGRAM", "КОШЕЛЁК", "НОЧИ", "СТАТУС"], ...(canEdit ? ["ДЕЙСТВИЯ"] : [])].map(h => (
                     <th key={h}>{h}</th>
                   ))}
                 </tr>
@@ -267,17 +272,19 @@ export default function PlayersPage() {
                           </span>
                         </td>
                         <td>
-                          <div style={{ display: "flex", gap: 4 }}>
-                            <button className="btn btn-sm btn-ghost" onClick={() => startEdit(p)}>
-                              Изменить
-                            </button>
-                            <button
-                              className="btn btn-sm btn-danger"
-                              onClick={() => { if (confirm(`Удалить ${p.nick}?`)) deleteMutation.mutate(p.id); }}
-                            >
-                              Удал.
-                            </button>
-                          </div>
+                          {canEdit && (
+                            <div style={{ display: "flex", gap: 4 }}>
+                              <button className="btn btn-sm btn-ghost" onClick={() => startEdit(p)}>
+                                Изменить
+                              </button>
+                              <button
+                                className="btn btn-sm btn-danger"
+                                onClick={() => { if (confirm(`Удалить ${p.nick}?`)) deleteMutation.mutate(p.id); }}
+                              >
+                                Удал.
+                              </button>
+                            </div>
+                          )}
                         </td>
                       </>
                     )}

@@ -23,6 +23,7 @@ type TgUpdate = { chatId: string; name: string; text: string };
 export default function LogsPage() {
   const qc = useQueryClient();
   const { user } = useUser();
+  const isOwner = user?.role === "OWNER";
   const [showTgSetup, setShowTgSetup] = useState(false);
   const [tgUpdates, setTgUpdates] = useState<TgUpdate[]>([]);
   const [tgSetupLoading, setTgSetupLoading] = useState(false);
@@ -79,17 +80,19 @@ export default function LogsPage() {
           <div className="page-subtitle">{logs.length} записей · обновляется автоматически</div>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          {/* Telegram send */}
-          <button
-            className="btn btn-sm btn-ghost"
-            style={{ borderColor: "rgba(96,165,250,0.4)", color: "#60a5fa" }}
-            onClick={() => { setSendStatus(null); sendMutation.mutate(); }}
-            disabled={sendMutation.isPending}
-          >
-            {sendMutation.isPending ? "Отправка..." : "📤 Отправить в Telegram"}
-          </button>
-          {/* Setup */}
-          {user?.role === "OWNER" && (
+          {/* Telegram send — OWNER only */}
+          {isOwner && (
+            <button
+              className="btn btn-sm btn-ghost"
+              style={{ borderColor: "rgba(96,165,250,0.4)", color: "#60a5fa" }}
+              onClick={() => { setSendStatus(null); sendMutation.mutate(); }}
+              disabled={sendMutation.isPending}
+            >
+              {sendMutation.isPending ? "Отправка..." : "📤 Отправить в Telegram"}
+            </button>
+          )}
+          {/* Setup — OWNER only */}
+          {isOwner && (
             <button
               className="btn btn-sm btn-ghost"
               style={{ fontSize: 11 }}
@@ -99,17 +102,19 @@ export default function LogsPage() {
               {tgSetupLoading ? "..." : "⚙ Настроить бот"}
             </button>
           )}
-          {/* Clear logs */}
-          <button
-            className="btn btn-sm btn-danger"
-            onClick={() => {
-              if (confirm(`Удалить все ${logs.length} записей журнала? Это действие нельзя отменить.`))
-                clearMutation.mutate();
-            }}
-            disabled={clearMutation.isPending || logs.length === 0}
-          >
-            🗑 Очистить журнал
-          </button>
+          {/* Clear logs — OWNER only */}
+          {isOwner && (
+            <button
+              className="btn btn-sm btn-danger"
+              onClick={() => {
+                if (confirm(`Удалить все ${logs.length} записей журнала? Это действие нельзя отменить.`))
+                  clearMutation.mutate();
+              }}
+              disabled={clearMutation.isPending || logs.length === 0}
+            >
+              🗑 Очистить журнал
+            </button>
+          )}
         </div>
       </div>
 
@@ -130,7 +135,7 @@ export default function LogsPage() {
       )}
 
       {/* Telegram setup panel */}
-      {user?.role === "OWNER" && showTgSetup && (
+      {isOwner && showTgSetup && (
         <div style={{
           background: "var(--bg-panel)",
           borderBottom: "1px solid var(--border)",
