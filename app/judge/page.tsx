@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import type { Team, Player, CandidateScore, ReplacementPoolEntry } from "@/types";
+import type { Team, CandidateScore, ReplacementPoolEntry } from "@/types";
 import { useUser } from "@/components/UserContext";
 
 const MAX_DEVIATION = 800;
@@ -52,8 +52,6 @@ export default function JudgePage() {
   const [judgeName, setJudgeName] = useState("");
   const [comment, setComment] = useState("");
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
-  const [searchQ, setSearchQ] = useState("");
-  const [searchResults, setSearchResults] = useState<Player[]>([]);
 
   const selectedTeam = teams.find(t => t.id === teamId);
   const teamPlayers = selectedTeam?.players ?? [];
@@ -115,32 +113,6 @@ export default function JudgePage() {
       setReplacedPlayerId("");
     },
   });
-
-  const addToPoolMutation = useMutation({
-    mutationFn: async (playerId: string) => {
-      const res = await fetch("/api/replacement-pool", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ playerId, source: "manual_add", judgeName: judgeName || undefined }),
-      });
-      if (!res.ok) throw new Error((await res.json()).error);
-      return res.json();
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["pool"] });
-      qc.invalidateQueries({ queryKey: ["queue-judge"] });
-      setSearchQ("");
-      setSearchResults([]);
-    },
-    onError: (e: Error) => alert(e.message),
-  });
-
-  async function handleSearch(q: string) {
-    setSearchQ(q);
-    if (!q.trim()) { setSearchResults([]); return; }
-    const r = await fetch(`/api/players/search?q=${encodeURIComponent(q)}`);
-    setSearchResults(await r.json());
-  }
 
   const col: React.CSSProperties = {
     display: "flex", flexDirection: "column",
@@ -359,49 +331,16 @@ export default function JudgePage() {
 
         {/* Col 3 */}
         <div style={col}>
-          <div style={colHeader}>Поиск и пул</div>
+          <div style={colHeader}>Активный пул замен · {poolEntries.length}</div>
           <div style={colBody}>
-            <div style={field}>
-              <div className="lbl">Поиск игрока</div>
-              <input className="form-input" value={searchQ} onChange={e => handleSearch(e.target.value)} placeholder="Введите ник..." />
-            </div>
-            {searchResults.length > 0 && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 12 }}>
-                {searchResults.map(p => {
-                  const inPool = poolEntries.some(e => e.playerId === p.id);
-                  const inTeam = teams.some(t =>
-                    [t.player1Id, t.player2Id, t.player3Id, t.player4Id, t.player5Id].includes(p.id)
-                  );
-                  return (
-                    <div key={p.id} style={{ padding: "8px 10px", borderRadius: 5, background: "rgba(0,0,0,0.2)", border: "1px solid var(--border)", fontSize: 12 }}>
-                      <div style={{ fontWeight: 600, marginBottom: 2 }}>{p.nick}</div>
-                      <div style={{ color: "var(--text-secondary)", display: "flex", gap: 8, marginBottom: 6 }}>
-                        <span>{p.mmr.toLocaleString()} MMR</span>
-                        <span>S{p.stake}</span>
-                        <span>R{p.mainRole}{p.flexRole ? `/R${p.flexRole}` : ""}</span>
-                        {inTeam && <span style={{ color: "#f87171" }}>В команде</span>}
-                      </div>
-                      {canEdit && (
-                        <button className={`btn btn-sm ${(inPool || inTeam) ? "btn-ghost" : "btn-blue"}`} disabled={inPool || inTeam || addToPoolMutation.isPending} onClick={() => addToPoolMutation.mutate(p.id)}>
-                          {inTeam ? "В команде" : inPool ? "Уже в пуле" : "+ В пул"}
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            <div style={{ borderTop: "1px solid var(--border)", paddingTop: 10 }}>
-              <div className="lbl" style={{ marginBottom: 8 }}>Активный пул замен · {poolEntries.length} игроков</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                {poolEntries.length === 0 && <div style={{ color: "var(--text-muted)", fontSize: 12, textAlign: "center", padding: 12 }}>Пул пуст</div>}
-                {poolEntries.map((e, i) => (
-                  <div key={e.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 8px", borderRadius: 4, background: i === 0 ? "rgba(16,185,129,0.06)" : "rgba(0,0,0,0.15)", border: `1px solid ${i === 0 ? "rgba(16,185,129,0.2)" : "var(--border)"}`, fontSize: 11 }}>
-                    <span style={{ fontWeight: 500 }}>{e.player.nick}</span>
-                    <span style={{ color: "var(--text-secondary)", fontFamily: "monospace" }}>{e.player.mmr.toLocaleString()} · S{e.player.stake}</span>
-                  </div>
-                ))}
-              </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+              {poolEntries.length === 0 && <div style={{ color: "var(--text-muted)", fontSize: 12, textAlign: "center", padding: 24 }}>Пул пуст</div>}
+              {poolEntries.map((e, i) => (
+                <div key={e.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 8px", borderRadius: 4, background: i === 0 ? "rgba(16,185,129,0.06)" : "rgba(0,0,0,0.15)", border: `1px solid ${i === 0 ? "rgba(16,185,129,0.2)" : "var(--border)"}`, fontSize: 11 }}>
+                  <span style={{ fontWeight: 500 }}>{e.player.nick}</span>
+                  <span style={{ color: "var(--text-secondary)", fontFamily: "monospace" }}>{e.player.mmr.toLocaleString()} · S{e.player.stake}</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>

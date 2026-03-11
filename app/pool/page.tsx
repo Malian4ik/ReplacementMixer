@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatMoscow } from "@/lib/date";
-import type { ReplacementPoolEntry } from "@/types";
+import type { Player, ReplacementPoolEntry } from "@/types";
 import { useUser } from "@/components/UserContext";
 
 const STATUS_BADGE: Record<string, string> = {
@@ -24,6 +24,8 @@ export default function PoolPage() {
   const { user } = useUser();
   const canEdit = user?.role === "OWNER" || user?.role === "JUDGE";
   const [statusFilter, setStatusFilter] = useState<string>("");
+  const [searchQ, setSearchQ] = useState("");
+  const [searchResults, setSearchResults] = useState<Player[]>([]);
 
   const { data: entries = [], isLoading } = useQuery<ReplacementPoolEntry[]>({
     queryKey: ["pool", statusFilter],
@@ -74,10 +76,39 @@ export default function PoolPage() {
     },
   });
 
+  const addToPoolMutation = useMutation({
+    mutationFn: async (playerId: string) => {
+      const res = await fetch("/api/replacement-pool", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playerId, source: "manual_add" }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error);
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pool"] });
+      qc.invalidateQueries({ queryKey: ["queue"] });
+      setSearchQ("");
+      setSearchResults([]);
+    },
+    onError: (e: Error) => alert(e.message),
+  });
+
+  async function handleSearch(q: string) {
+    setSearchQ(q);
+    if (!q.trim()) { setSearchResults([]); return; }
+    const r = await fetch(`/api/players/search?q=${encodeURIComponent(q)}`);
+    setSearchResults(await r.json());
+  }
+
   const counts = entries.reduce((acc, e) => {
     acc[e.status] = (acc[e.status] ?? 0) + 1;
     return acc;
   }, {} as Record<string, number>);
+
+  // Active player IDs already in pool (for search results)
+  const inPoolIds = new Set(entries.filter(e => e.status === "Active").map(e => e.playerId));
 
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -105,6 +136,47 @@ export default function PoolPage() {
           </select>
         </div>
       </div>
+
+      {/* Add to pool (JUDGE / OWNER only) */}
+      {canEdit && (
+        <div style={{ borderBottom: "1px solid var(--border)", padding: "10px 24px", background: "var(--bg-panel)" }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "flex-start", maxWidth: 500 }}>
+            <div style={{ flex: 1 }}>
+              <div className="lbl" style={{ marginBottom: 4 }}>Добавить игрока в пул</div>
+              <input
+                className="form-input"
+                value={searchQ}
+                onChange={e => handleSearch(e.target.value)}
+                placeholder="Поиск по нику..."
+              />
+            </div>
+          </div>
+          {searchResults.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 8, maxWidth: 500 }}>
+              {searchResults.map(p => {
+                const inPool = inPoolIds.has(p.id);
+                return (
+                  <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "7px 10px", borderRadius: 5, background: "rgba(0,0,0,0.2)", border: "1px solid var(--border)", fontSize: 12 }}>
+                    <div>
+                      <span style={{ fontWeight: 600 }}>{p.nick}</span>
+                      <span style={{ color: "var(--text-secondary)", marginLeft: 10 }}>
+                        {p.mmr.toLocaleString()} MMR · S{p.stake} · R{p.mainRole}{p.flexRole ? `/R${p.flexRole}` : ""}
+                      </span>
+                    </div>
+                    <button
+                      className={`btn btn-sm ${inPool ? "btn-ghost" : "btn-blue"}`}
+                      disabled={inPool || addToPoolMutation.isPending}
+                      onClick={() => addToPoolMutation.mutate(p.id)}
+                    >
+                      {inPool ? "Уже в пуле" : "+ В пул"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Table */}
       <div style={{ flex: 1, overflow: "auto", padding: "16px 24px" }}>
