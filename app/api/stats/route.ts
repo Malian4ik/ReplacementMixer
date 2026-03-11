@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET() {
   const teams = await prisma.team.findMany();
-  if (teams.length === 0) return NextResponse.json({ targetAvgMmr: 9000 });
+  if (teams.length === 0) return NextResponse.json({ targetAvgMmr: 0 });
 
   const playerIds = [...new Set(teams.flatMap(t =>
     [t.player1Id, t.player2Id, t.player3Id, t.player4Id, t.player5Id].filter(Boolean) as string[]
@@ -20,6 +20,6 @@ export async function GET() {
     }
   }
 
-  const targetAvgMmr = totalPlayers > 0 ? Math.round(totalMmr / totalPlayers) : 9000;
+  const targetAvgMmr = totalPlayers > 0 ? Math.round(totalMmr / totalPlayers) : 0;
   return NextResponse.json({ targetAvgMmr });
 }
