@@ -59,3 +59,27 @@ export async function PATCH(
     return NextResponse.json({ error: msg }, { status: 400 });
   }
 }
+
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  try {
+    // Nullify assignedTeamId in pool entries referencing this team
+    await prisma.replacementPoolEntry.updateMany({
+      where: { assignedTeamId: id },
+      data: { assignedTeamId: null },
+    });
+    // Nullify teamId in logs referencing this team
+    await prisma.matchReplacementLog.updateMany({
+      where: { teamId: id },
+      data: { teamId: null },
+    });
+    await prisma.team.delete({ where: { id } });
+    return NextResponse.json({ ok: true });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Bad request";
+    return NextResponse.json({ error: msg }, { status: 400 });
+  }
+}

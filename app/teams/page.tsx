@@ -207,6 +207,16 @@ export default function TeamsPage() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) =>
+      fetch(`/api/teams/${id}`, { method: "DELETE" }).then(r => r.json()),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["teams"] });
+      qc.invalidateQueries({ queryKey: ["stats"] });
+      qc.invalidateQueries({ queryKey: ["pool"] });
+    },
+  });
+
   const createMutation = useMutation({
     mutationFn: async (data: object) => {
       const res = await fetch("/api/teams", {
@@ -485,13 +495,26 @@ export default function TeamsPage() {
                           </button>
                         </>
                       ) : (
-                        <button
-                          className="btn btn-sm btn-ghost"
-                          style={{ width: "100%" }}
-                          onClick={() => startEdit(t)}
-                        >
-                          Изменить
-                        </button>
+                        <>
+                          <button
+                            className="btn btn-sm btn-ghost"
+                            style={{ flex: 1 }}
+                            onClick={() => startEdit(t)}
+                          >
+                            Изменить
+                          </button>
+                          <button
+                            className="btn btn-sm btn-danger"
+                            disabled={deleteMutation.isPending}
+                            onClick={() => {
+                              if (confirm(`Удалить команду "${t.name}"?`)) {
+                                deleteMutation.mutate(t.id);
+                              }
+                            }}
+                          >
+                            Удалить
+                          </button>
+                        </>
                       )}
                     </div>
                   )}
