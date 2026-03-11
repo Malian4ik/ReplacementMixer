@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatMoscow } from "@/lib/date";
 import type { ReplacementPoolEntry } from "@/types";
@@ -35,11 +35,18 @@ export default function PoolPage() {
 
   const cleanupMutation = useMutation({
     mutationFn: () => fetch("/api/replacement-pool/cleanup", { method: "POST" }).then(r => r.json()),
-    onSuccess: (data) => {
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["pool"] });
-      if (data.deactivated > 0) alert(`Деактивировано записей: ${data.deactivated}`);
     },
   });
+
+  // Auto-cleanup: deactivate in-team Active entries when detected
+  useEffect(() => {
+    if (canEdit && entries.some(e => e.inTeam && e.status === "Active")) {
+      cleanupMutation.mutate();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entries, canEdit]);
 
   const patchMutation = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
@@ -85,16 +92,6 @@ export default function PoolPage() {
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          {canEdit && entries.some(e => e.inTeam && e.status === "Active") && (
-            <button
-              className="btn btn-sm btn-danger"
-              onClick={() => cleanupMutation.mutate()}
-              disabled={cleanupMutation.isPending}
-              title="Деактивировать записи игроков, которые уже в командах"
-            >
-              {cleanupMutation.isPending ? "..." : "Очистить"}
-            </button>
-          )}
           <select
             className="form-select"
             style={{ width: 160 }}

@@ -273,7 +273,7 @@ export default function TeamsPage() {
   }
 
   function formAllFilled(f: typeof EMPTY_TEAM) {
-    return f.name.trim() !== "" && SLOTS.every(s => f[s] !== "");
+    return f.name.trim() !== "";
   }
 
   // Count filled slots for edit progress indicator
@@ -349,7 +349,14 @@ export default function TeamsPage() {
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <button
               className="btn btn-sm btn-success"
-              onClick={() => { setCreateError(null); createMutation.mutate(form); }}
+              onClick={() => {
+              setCreateError(null);
+              const payload = {
+                name: form.name,
+                ...Object.fromEntries(SLOTS.map(s => [s, form[s] || null])),
+              };
+              createMutation.mutate(payload);
+            }}
               disabled={!formAllFilled(form) || createMutation.isPending}
             >
               {createMutation.isPending ? "..." : "Создать"}
