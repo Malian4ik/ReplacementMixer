@@ -277,8 +277,21 @@ export default function JudgePage() {
             )}
 
             <div style={field}>
-              <div className="lbl">Судья</div>
-              <input className="form-input" value={judgeName} onChange={e => setJudgeName(e.target.value)} placeholder="Имя судьи" />
+              <div className="lbl">
+                Судья <span style={{ color: "#f87171" }}>*</span>
+              </div>
+              <input
+                className="form-input"
+                value={judgeName}
+                onChange={e => setJudgeName(e.target.value)}
+                placeholder="Обязательно"
+                style={!judgeName.trim() ? { borderColor: "rgba(239,68,68,0.5)" } : {}}
+              />
+              {!judgeName.trim() && (
+                <div style={{ fontSize: 10, color: "#f87171", marginTop: 3 }}>
+                  Укажите имя судьи для назначения замены
+                </div>
+              )}
             </div>
 
             <div style={field}>
@@ -314,7 +327,7 @@ export default function JudgePage() {
               <button
                 className="btn btn-accent"
                 style={{ width: "100%", justifyContent: "center", padding: "10px 0", fontSize: 13 }}
-                disabled={!selectedCandidateId || !replacedPlayerId || assignMutation.isPending}
+                disabled={!selectedCandidateId || !replacedPlayerId || !judgeName.trim() || assignMutation.isPending}
                 onClick={() => selectedCandidateId && assignMutation.mutate(selectedCandidateId)}
               >
                 {assignMutation.isPending ? "Назначаю..." : "✓ Назначить замену"}

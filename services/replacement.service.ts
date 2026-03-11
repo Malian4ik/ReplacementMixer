@@ -48,8 +48,21 @@ export async function assignReplacement(
       status: "Picked",
       assignedTeamId: ctx.teamId,
       pickedTime: new Date(),
+      replacedPlayerId: ctx.replacedPlayerId,
     },
   });
+
+  // If the replaced player had a pool entry (e.g. they were themselves a replacement),
+  // re-activate it so they go to the end of the queue.
+  const replacedEntry = await prisma.replacementPoolEntry.findFirst({
+    where: { playerId: ctx.replacedPlayerId, status: { in: ["Active", "Picked"] } },
+  });
+  if (replacedEntry) {
+    await prisma.replacementPoolEntry.update({
+      where: { id: replacedEntry.id },
+      data: { status: "Active", assignedTeamId: null, pickedTime: null, joinTime: new Date() },
+    });
+  }
 
   await createLog({
     actionType: "Assign",
@@ -82,15 +95,19 @@ export async function returnReplacementToQueue(
     include: { player: true },
   });
 
-  // If assigned to a team, revert the swap
-  if (entry.assignedTeamId && entry.status === "Picked") {
+  // If assigned to a team, revert the swap using stored replacedPlayerId
+  if (entry.assignedTeamId && entry.status === "Picked" && entry.replacedPlayerId) {
     const team = await prisma.team.findUnique({ where: { id: entry.assignedTeamId } });
     if (team) {
       const slotKey = (["player1Id", "player2Id", "player3Id", "player4Id", "player5Id"] as const).find(
         (k) => team[k] === entry.playerId
       );
-      // We don't have the original player stored here, just re-activate entry
-      // The judge will handle roster manually if needed
+      if (slotKey) {
+        await prisma.team.update({
+          where: { id: entry.assignedTeamId },
+          data: { [slotKey]: entry.replacedPlayerId },
+        });
+      }
     }
   }
 
@@ -100,6 +117,7 @@ export async function returnReplacementToQueue(
       status: "Active",
       assignedTeamId: null,
       pickedTime: null,
+      replacedPlayerId: null,
       joinTime: new Date(),
     },
   });
