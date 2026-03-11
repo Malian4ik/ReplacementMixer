@@ -6,7 +6,7 @@ import { sendTelegramMessage } from "@/lib/telegram";
 export async function GET() {
   try {
     const report = await buildDailyReport();
-    await sendTelegramMessage(report);
+    await sendTelegramMessage(report, "-1003817419649");
     return NextResponse.json({ ok: true, sentAt: new Date().toISOString() });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "Error";

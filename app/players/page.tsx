@@ -31,6 +31,13 @@ export default function PlayersPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [createError, setCreateError] = useState<string | null>(null);
+  const [sortKey, setSortKey] = useState<"nick" | "mmr" | "isActiveInDatabase">("nick");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  function toggleSort(key: typeof sortKey) {
+    if (sortKey === key) setSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSortKey(key); setSortDir("asc"); }
+  }
 
   const { data: players = [], isLoading } = useQuery<Player[]>({
     queryKey: ["players"],
@@ -93,9 +100,15 @@ export default function PlayersPage() {
     },
   });
 
-  const filtered = players.filter(p =>
-    !search || p.nick.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = players
+    .filter(p => !search || p.nick.toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => {
+      let cmp = 0;
+      if (sortKey === "nick") cmp = a.nick.localeCompare(b.nick);
+      else if (sortKey === "mmr") cmp = a.mmr - b.mmr;
+      else if (sortKey === "isActiveInDatabase") cmp = (b.isActiveInDatabase ? 1 : 0) - (a.isActiveInDatabase ? 1 : 0);
+      return sortDir === "asc" ? cmp : -cmp;
+    });
   const active = players.filter(p => p.isActiveInDatabase).length;
 
   function startEdit(p: Player) {
@@ -236,9 +249,19 @@ export default function PlayersPage() {
             <table className="tbl">
               <thead>
                 <tr>
-                  {[...["НИК", "MMR", "STAKE", "РОЛЬ", "FLEX", "TELEGRAM", "КОШЕЛЁК", "НОЧИ", "СТАТУС"], ...(canEdit ? ["ДЕЙСТВИЯ"] : [])].map(h => (
-                    <th key={h}>{h}</th>
-                  ))}
+                  {(["НИК", "MMR", "STAKE", "РОЛЬ", "FLEX", "TELEGRAM", "КОШЕЛЁК", "НОЧИ", "СТАТУС"] as const).map(h => {
+                    const key = h === "НИК" ? "nick" : h === "MMR" ? "mmr" : h === "СТАТУС" ? "isActiveInDatabase" : null;
+                    const active = key && sortKey === key;
+                    return (
+                      <th key={h}
+                        onClick={key ? () => toggleSort(key) : undefined}
+                        style={key ? { cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" } : undefined}
+                      >
+                        {h}{active ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
+                      </th>
+                    );
+                  })}
+                  {canEdit && <th>ДЕЙСТВИЯ</th>}
                 </tr>
               </thead>
               <tbody>
