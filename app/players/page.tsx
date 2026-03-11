@@ -82,6 +82,16 @@ export default function PlayersPage() {
     },
   });
 
+  const clearMutation = useMutation({
+    mutationFn: () => fetch("/api/players/clear", { method: "POST" }).then(r => r.json()),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["players"] });
+      qc.invalidateQueries({ queryKey: ["pool"] });
+      qc.invalidateQueries({ queryKey: ["stats"] });
+      alert(`Удалено игроков: ${data.deleted}`);
+    },
+  });
+
   const filtered = players.filter(p =>
     !search || p.nick.toLowerCase().includes(search.toLowerCase())
   );
@@ -137,6 +147,19 @@ export default function PlayersPage() {
               onClick={() => setShowAdd(v => !v)}
             >
               {showAdd ? "Отмена" : "+ Добавить"}
+            </button>
+          )}
+          {user?.role === "OWNER" && (
+            <button
+              className="btn btn-sm btn-danger"
+              disabled={clearMutation.isPending}
+              onClick={() => {
+                if (confirm("Удалить всех игроков, которых нет ни в одной команде? Это действие необратимо.")) {
+                  clearMutation.mutate();
+                }
+              }}
+            >
+              {clearMutation.isPending ? "..." : "Очистить список"}
             </button>
           )}
         </div>
