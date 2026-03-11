@@ -15,7 +15,7 @@ const CreatePlayerSchema = z.object({
 
 export async function GET() {
   const players = await prisma.player.findMany({
-    orderBy: { mmr: "desc" },
+    orderBy: { nick: "asc" },
   });
   return NextResponse.json(players);
 }
