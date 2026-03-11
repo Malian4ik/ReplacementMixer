@@ -19,7 +19,7 @@ function roleFitLabel(rf: number) {
 }
 
 export default function QueuePage() {
-  const [maxDeviation, setMaxDeviation] = useState(800);
+  const maxDeviation = 1000;
   const [neededRole, setNeededRole] = useState(1);
 
   const { data: stats } = useQuery<{ targetAvgMmr: number }>({
@@ -27,7 +27,7 @@ export default function QueuePage() {
     queryFn: () => fetch("/api/stats").then(r => r.json()),
   });
 
-  const targetAvgMmr = stats?.targetAvgMmr ?? 9000;
+  const targetAvgMmr = stats?.targetAvgMmr ?? 0;
 
   const { data: candidates = [], isLoading } = useQuery<CandidateScore[]>({
     queryKey: ["queue-page", { maxDeviation, neededRole, targetAvgMmr }],
@@ -70,13 +70,19 @@ export default function QueuePage() {
           </div>
           <div>
             <div className="lbl">Max Deviation</div>
-            <input
-              type="number"
-              className="form-input"
-              style={{ width: 110 }}
-              value={maxDeviation}
-              onChange={e => setMaxDeviation(Number(e.target.value))}
-            />
+            <div style={{
+              padding: "5px 12px",
+              background: "rgba(240,165,0,0.1)",
+              border: "1px solid rgba(240,165,0,0.3)",
+              borderRadius: 5,
+              color: "var(--accent)",
+              fontWeight: 700,
+              fontSize: 15,
+              minWidth: 90,
+              textAlign: "center",
+            }}>
+              ±{maxDeviation.toLocaleString()}
+            </div>
           </div>
           <div>
             <div className="lbl">Нужная роль</div>
