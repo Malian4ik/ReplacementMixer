@@ -11,7 +11,7 @@ model Player {
   id                 String   @id @default(cuid())
   nick               String   @unique
   mmr                Int
-  stake              Int
+  stake              Float
   mainRole           Int
   flexRole           Int?
   wallet             String?

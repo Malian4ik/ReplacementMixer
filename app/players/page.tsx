@@ -187,7 +187,7 @@ export default function PlayersPage() {
           </div>
           <div>
             <div className="lbl">Stake</div>
-            <input type="number" style={{ ...inputStyle, width: 60 }} value={form.stake} onChange={e => setForm(f => ({ ...f, stake: Number(e.target.value) }))} />
+            <input type="number" step="0.01" style={{ ...inputStyle, width: 70 }} value={form.stake} onChange={e => setForm(f => ({ ...f, stake: Number(e.target.value) }))} />
           </div>
           <div>
             <div className="lbl">Роль</div>
@@ -248,7 +248,7 @@ export default function PlayersPage() {
                       <>
                         <td><input style={{ ...inputStyle, width: 110 }} value={editData.nick ?? ""} onChange={e => set("nick", e.target.value)} /></td>
                         <td><input type="number" style={{ ...inputStyle, width: 80 }} value={editData.mmr ?? 0} onChange={e => set("mmr", Number(e.target.value))} /></td>
-                        <td><input type="number" style={{ ...inputStyle, width: 60 }} value={editData.stake ?? 0} onChange={e => set("stake", Number(e.target.value))} /></td>
+                        <td><input type="number" step="0.01" style={{ ...inputStyle, width: 70 }} value={editData.stake ?? 0} onChange={e => set("stake", Number(e.target.value))} /></td>
                         <td>
                           <select style={{ ...inputStyle, width: 60 }} value={editData.mainRole ?? 1} onChange={e => set("mainRole", Number(e.target.value) as 1|2|3|4|5)}>
                             {[1,2,3,4,5].map(r => <option key={r} value={r}>{r}</option>)}

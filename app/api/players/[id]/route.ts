@@ -5,7 +5,7 @@ import { z } from "zod";
 const UpdatePlayerSchema = z.object({
   nick: z.string().min(1).optional(),
   mmr: z.number().int().min(0).optional(),
-  stake: z.number().int().min(0).optional(),
+  stake: z.number().min(0).optional(),
   mainRole: z.number().int().min(1).max(5).optional(),
   flexRole: z.number().int().min(1).max(5).nullable().optional(),
   telegramId: z.string().nullable().optional(),

@@ -5,7 +5,7 @@ import { z } from "zod";
 const CreatePlayerSchema = z.object({
   nick: z.string().min(1),
   mmr: z.number().int().min(0),
-  stake: z.number().int().min(0),
+  stake: z.number().min(0),
   mainRole: z.number().int().min(1).max(5),
   flexRole: z.number().int().min(1).max(5).nullable().optional(),
   telegramId: z.string().nullable().optional(),
