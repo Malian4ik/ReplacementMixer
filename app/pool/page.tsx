@@ -33,6 +33,14 @@ export default function PoolPage() {
     },
   });
 
+  const cleanupMutation = useMutation({
+    mutationFn: () => fetch("/api/replacement-pool/cleanup", { method: "POST" }).then(r => r.json()),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["pool"] });
+      if (data.deactivated > 0) alert(`Деактивировано записей: ${data.deactivated}`);
+    },
+  });
+
   const patchMutation = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
       fetch(`/api/replacement-pool/${id}`, {
@@ -76,17 +84,29 @@ export default function PoolPage() {
             <span style={{ color: "#94a3b8" }}>● Inactive: {counts.Inactive ?? 0}</span>
           </div>
         </div>
-        <select
-          className="form-select"
-          style={{ width: 160 }}
-          value={statusFilter}
-          onChange={e => setStatusFilter(e.target.value)}
-        >
-          <option value="">Все статусы</option>
-          <option value="Active">Active</option>
-          <option value="Picked">Picked</option>
-          <option value="Inactive">Inactive</option>
-        </select>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {canEdit && entries.some(e => e.inTeam && e.status === "Active") && (
+            <button
+              className="btn btn-sm btn-danger"
+              onClick={() => cleanupMutation.mutate()}
+              disabled={cleanupMutation.isPending}
+              title="Деактивировать записи игроков, которые уже в командах"
+            >
+              {cleanupMutation.isPending ? "..." : "Очистить"}
+            </button>
+          )}
+          <select
+            className="form-select"
+            style={{ width: 160 }}
+            value={statusFilter}
+            onChange={e => setStatusFilter(e.target.value)}
+          >
+            <option value="">Все статусы</option>
+            <option value="Active">Active</option>
+            <option value="Picked">Picked</option>
+            <option value="Inactive">Inactive</option>
+          </select>
+        </div>
       </div>
 
       {/* Table */}

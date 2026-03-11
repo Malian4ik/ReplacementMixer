@@ -42,6 +42,17 @@ export async function PATCH(
     const body = await req.json();
     const data = UpdateTeamSchema.parse(body);
     const team = await prisma.team.update({ where: { id }, data });
+
+    // Deactivate Active pool entries for any players now added to this team
+    const newPlayerIds = [data.player1Id, data.player2Id, data.player3Id, data.player4Id, data.player5Id]
+      .filter((v): v is string => typeof v === "string");
+    if (newPlayerIds.length > 0) {
+      await prisma.replacementPoolEntry.updateMany({
+        where: { playerId: { in: newPlayerIds }, status: "Active" },
+        data: { status: "Inactive" },
+      });
+    }
+
     return NextResponse.json(team);
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "Bad request";
