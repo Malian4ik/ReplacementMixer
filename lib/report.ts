@@ -24,14 +24,14 @@ export async function buildDailyReport(): Promise<string> {
   ]);
 
   // Compute player map and team avg MMR
-  const playerIds = [...new Set(teams.flatMap(t => [
-    t.player1Id, t.player2Id, t.player3Id, t.player4Id, t.player5Id,
-  ]))];
+  const playerIds = [...new Set(teams.flatMap(t =>
+    [t.player1Id, t.player2Id, t.player3Id, t.player4Id, t.player5Id].filter(Boolean) as string[]
+  ))];
   const players = await prisma.player.findMany({ where: { id: { in: playerIds } } });
   const playerMap = new Map(players.map(p => [p.id, p]));
 
   const teamsWithAvg = teams.map(t => {
-    const mmrs = [t.player1Id, t.player2Id, t.player3Id, t.player4Id, t.player5Id]
+    const mmrs = ([t.player1Id, t.player2Id, t.player3Id, t.player4Id, t.player5Id].filter(Boolean) as string[])
       .map(id => playerMap.get(id)?.mmr ?? null)
       .filter((m): m is number => m !== null);
     const avgMmr = mmrs.length ? Math.round(mmrs.reduce((a, b) => a + b, 0) / mmrs.length) : 0;
@@ -64,6 +64,7 @@ export async function buildDailyReport(): Promise<string> {
     const slots = [t.player1Id, t.player2Id, t.player3Id, t.player4Id, t.player5Id];
     const rosterStr = slots
       .map(id => {
+        if (!id) return "—";
         const p = playerMap.get(id);
         return p ? `${esc(p.nick)} (${p.mmr.toLocaleString("ru-RU")} R${p.mainRole})` : "—";
       })

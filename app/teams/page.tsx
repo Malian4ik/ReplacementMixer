@@ -258,11 +258,11 @@ export default function TeamsPage() {
     setEditId(t.id);
     setEditData({
       name: t.name,
-      player1Id: t.player1Id,
-      player2Id: t.player2Id,
-      player3Id: t.player3Id,
-      player4Id: t.player4Id,
-      player5Id: t.player5Id,
+      player1Id: t.player1Id ?? "",
+      player2Id: t.player2Id ?? "",
+      player3Id: t.player3Id ?? "",
+      player4Id: t.player4Id ?? "",
+      player5Id: t.player5Id ?? "",
     });
   }
 
