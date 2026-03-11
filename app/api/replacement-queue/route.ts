@@ -48,6 +48,16 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Collect all player IDs currently assigned to any team
+  const allTeamsForFilter = await prisma.team.findMany({
+    select: { player1Id: true, player2Id: true, player3Id: true, player4Id: true, player5Id: true },
+  });
+  const inTeamIds = new Set(
+    allTeamsForFilter.flatMap(t =>
+      [t.player1Id, t.player2Id, t.player3Id, t.player4Id, t.player5Id].filter(Boolean) as string[]
+    )
+  );
+
   const rawEntries = await prisma.replacementPoolEntry.findMany({
     where: { status: "Active" },
     include: { player: true },
@@ -55,7 +65,7 @@ export async function GET(req: NextRequest) {
   });
 
   const entries = (rawEntries as unknown as ReplacementPoolEntry[])
-    .filter((e) => !replacedPlayerId || e.playerId !== replacedPlayerId);
+    .filter((e) => !inTeamIds.has(e.playerId));
   const baseQueue = buildBaseQueue(entries);
   const top10 = getTop10Candidates(baseQueue);
 
