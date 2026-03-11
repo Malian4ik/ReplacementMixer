@@ -34,17 +34,14 @@ export async function assignReplacement(
   // Check we won't exceed 5 players
   const team = await prisma.team.findUniqueOrThrow({ where: { id: ctx.teamId } });
 
-  const filledCount = SLOTS.filter((k) => team[k] !== null).length;
-  if (filledCount >= 5) throw new Error("TEAM_FULL");
-
   let slotKey: SlotKey | undefined;
 
   if (ctx.replacedPlayerId) {
-    // Replace an existing player
+    // Replace an existing player — find their slot
     slotKey = SLOTS.find((k) => team[k] === ctx.replacedPlayerId);
     if (!slotKey) throw new Error("PLAYER_NOT_IN_TEAM");
   } else {
-    // Fill an empty slot
+    // Fill an empty slot — check there is one
     slotKey = SLOTS.find((k) => team[k] === null);
     if (!slotKey) throw new Error("TEAM_FULL");
   }
