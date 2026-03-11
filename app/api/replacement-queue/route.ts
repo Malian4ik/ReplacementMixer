@@ -54,7 +54,8 @@ export async function GET(req: NextRequest) {
     orderBy: { joinTime: "asc" },
   });
 
-  const entries = rawEntries as unknown as ReplacementPoolEntry[];
+  const entries = (rawEntries as unknown as ReplacementPoolEntry[])
+    .filter((e) => !replacedPlayerId || e.playerId !== replacedPlayerId);
   const baseQueue = buildBaseQueue(entries);
   const top10 = getTop10Candidates(baseQueue);
 
