@@ -1,19 +1,22 @@
 import { prisma } from "@/lib/prisma";
-import { createLog, LogData } from "./log.service";
+import { createLog } from "./log.service";
 
 export interface AssignContext {
   matchId?: string;
   teamId: string;
   teamName: string;
   neededRole: number;
-  replacedPlayerId: string;
-  replacedPlayerNick: string;
-  replacedPlayerMmr: number;
+  replacedPlayerId?: string;   // empty / undefined = filling an empty slot
+  replacedPlayerNick?: string;
+  replacedPlayerMmr?: number;
   targetAvgMmr: number;
   maxDeviation: number;
   judgeName?: string;
   comment?: string;
 }
+
+const SLOTS = ["player1Id", "player2Id", "player3Id", "player4Id", "player5Id"] as const;
+type SlotKey = typeof SLOTS[number];
 
 export async function assignReplacement(
   poolEntryId: string,
@@ -28,14 +31,23 @@ export async function assignReplacement(
     throw new Error("ENTRY_NOT_ACTIVE");
   }
 
+  // Check we won't exceed 5 players
   const team = await prisma.team.findUniqueOrThrow({ where: { id: ctx.teamId } });
 
-  // Find which slot has the replaced player
-  const slotKey = (["player1Id", "player2Id", "player3Id", "player4Id", "player5Id"] as const).find(
-    (k) => team[k] === ctx.replacedPlayerId
-  );
+  const filledCount = SLOTS.filter((k) => team[k] !== null).length;
+  if (filledCount >= 5) throw new Error("TEAM_FULL");
 
-  if (!slotKey) throw new Error("PLAYER_NOT_IN_TEAM");
+  let slotKey: SlotKey | undefined;
+
+  if (ctx.replacedPlayerId) {
+    // Replace an existing player
+    slotKey = SLOTS.find((k) => team[k] === ctx.replacedPlayerId);
+    if (!slotKey) throw new Error("PLAYER_NOT_IN_TEAM");
+  } else {
+    // Fill an empty slot
+    slotKey = SLOTS.find((k) => team[k] === null);
+    if (!slotKey) throw new Error("TEAM_FULL");
+  }
 
   await prisma.team.update({
     where: { id: ctx.teamId },
@@ -48,20 +60,24 @@ export async function assignReplacement(
       status: "Picked",
       assignedTeamId: ctx.teamId,
       pickedTime: new Date(),
-      replacedPlayerId: ctx.replacedPlayerId,
+      replacedPlayerId: ctx.replacedPlayerId ?? null,
     },
   });
 
-  // If the replaced player had a pool entry (e.g. they were themselves a replacement),
-  // re-activate it so they go to the end of the queue.
-  const replacedEntry = await prisma.replacementPoolEntry.findFirst({
-    where: { playerId: ctx.replacedPlayerId, status: { in: ["Active", "Picked"] } },
-  });
-  if (replacedEntry) {
-    await prisma.replacementPoolEntry.update({
-      where: { id: replacedEntry.id },
-      data: { status: "Active", assignedTeamId: null, pickedTime: null, joinTime: new Date() },
+  // If the replaced player had an active/picked pool entry, re-activate it (end of queue)
+  if (ctx.replacedPlayerId) {
+    const replacedEntry = await prisma.replacementPoolEntry.findFirst({
+      where: {
+        playerId: ctx.replacedPlayerId,
+        OR: [{ status: "Active" }, { status: "Picked" }],
+      },
     });
+    if (replacedEntry) {
+      await prisma.replacementPoolEntry.update({
+        where: { id: replacedEntry.id },
+        data: { status: "Active", assignedTeamId: null, pickedTime: null, replacedPlayerId: null, joinTime: new Date() },
+      });
+    }
   }
 
   await createLog({
@@ -95,17 +111,15 @@ export async function returnReplacementToQueue(
     include: { player: true },
   });
 
-  // If assigned to a team, revert the swap using stored replacedPlayerId
-  if (entry.assignedTeamId && entry.status === "Picked" && entry.replacedPlayerId) {
+  // Remove replacement player from the team (set their slot to null)
+  if (entry.assignedTeamId && entry.status === "Picked") {
     const team = await prisma.team.findUnique({ where: { id: entry.assignedTeamId } });
     if (team) {
-      const slotKey = (["player1Id", "player2Id", "player3Id", "player4Id", "player5Id"] as const).find(
-        (k) => team[k] === entry.playerId
-      );
+      const slotKey = SLOTS.find((k) => team[k] === entry.playerId);
       if (slotKey) {
         await prisma.team.update({
           where: { id: entry.assignedTeamId },
-          data: { [slotKey]: entry.replacedPlayerId },
+          data: { [slotKey]: null },
         });
       }
     }

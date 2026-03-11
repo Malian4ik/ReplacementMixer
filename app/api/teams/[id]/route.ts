@@ -4,11 +4,11 @@ import { z } from "zod";
 
 const UpdateTeamSchema = z.object({
   name: z.string().min(1).optional(),
-  player1Id: z.string().optional(),
-  player2Id: z.string().optional(),
-  player3Id: z.string().optional(),
-  player4Id: z.string().optional(),
-  player5Id: z.string().optional(),
+  player1Id: z.string().nullable().optional(),
+  player2Id: z.string().nullable().optional(),
+  player3Id: z.string().nullable().optional(),
+  player4Id: z.string().nullable().optional(),
+  player5Id: z.string().nullable().optional(),
 });
 
 export async function GET(
@@ -19,11 +19,18 @@ export async function GET(
   const team = await prisma.team.findUnique({ where: { id } });
   if (!team) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const playerIds = [team.player1Id, team.player2Id, team.player3Id, team.player4Id, team.player5Id];
+  const playerIds = [team.player1Id, team.player2Id, team.player3Id, team.player4Id, team.player5Id]
+    .filter(Boolean) as string[];
   const players = await prisma.player.findMany({ where: { id: { in: playerIds } } });
-  const avgMmr = Math.round(players.reduce((s, p) => s + p.mmr, 0) / (players.length || 1));
+  const playerMap = new Map(players.map((p) => [p.id, p]));
+  const roster = [team.player1Id, team.player2Id, team.player3Id, team.player4Id, team.player5Id]
+    .map((id) => (id ? playerMap.get(id) ?? null : null));
+  const activePlayers = roster.filter(Boolean);
+  const avgMmr = activePlayers.length
+    ? Math.round(activePlayers.reduce((s, p) => s + p!.mmr, 0) / activePlayers.length)
+    : 0;
 
-  return NextResponse.json({ ...team, avgMmr, players });
+  return NextResponse.json({ ...team, avgMmr, players: roster });
 }
 
 export async function PATCH(

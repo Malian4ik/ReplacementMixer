@@ -18,13 +18,13 @@ export interface Player {
 export interface Team {
   id: string;
   name: string;
-  player1Id: string;
-  player2Id: string;
-  player3Id: string;
-  player4Id: string;
-  player5Id: string;
+  player1Id: string | null;
+  player2Id: string | null;
+  player3Id: string | null;
+  player4Id: string | null;
+  player5Id: string | null;
   avgMmr: number;
-  players?: Player[];
+  players?: (Player | null)[];
   createdAt: string;
   updatedAt: string;
 }
@@ -36,6 +36,7 @@ export interface ReplacementPoolEntry {
   status: "Active" | "Picked" | "Inactive";
   joinTime: string;
   assignedTeamId: string | null;
+  replacedPlayerId: string | null;
   pickedTime: string | null;
   source: "reduction" | "manual_add" | "returned" | "transferred_from_main_pool";
   createdAt: string;

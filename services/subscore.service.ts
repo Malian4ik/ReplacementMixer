@@ -20,12 +20,25 @@ export function calculateRoleFit(
   return 0.2;
 }
 
+/**
+ * currentPlayerCount: how many players are currently in the team (before this replacement/addition)
+ * replacedMmr: mmr of the player being removed. Pass 0 if filling an empty slot (addition).
+ * If replacedMmr === 0 and currentPlayerCount < 5: addition mode — count increases by 1.
+ * Otherwise: replacement mode — count stays same.
+ */
 export function calculateTeamMMRAfter(
   currentAvgMmr: number,
   replacedMmr: number,
-  candidateMmr: number
+  candidateMmr: number,
+  currentPlayerCount: number = 5,
 ): number {
-  return (currentAvgMmr * 5 - replacedMmr + candidateMmr) / 5;
+  const currentTotal = currentAvgMmr * currentPlayerCount;
+  if (replacedMmr === 0 && currentPlayerCount < 5) {
+    // Addition to empty slot: count increases
+    return (currentTotal + candidateMmr) / (currentPlayerCount + 1);
+  }
+  // Replacement: count stays the same
+  return (currentTotal - replacedMmr + candidateMmr) / currentPlayerCount;
 }
 
 export function calculateBalanceFactor(

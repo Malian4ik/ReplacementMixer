@@ -13,6 +13,7 @@ export interface QueueContext {
   neededRole: RoleNumber;
   currentTeamAvgMmr: number;
   replacedPlayerMmr: number;
+  currentPlayerCount: number;
   targetAvgMmr: number;
   maxDeviation: number;
 }
@@ -51,7 +52,8 @@ export function scoreCandidates(
       const teamMmrAfter = calculateTeamMMRAfter(
         context.currentTeamAvgMmr,
         context.replacedPlayerMmr,
-        p.mmr
+        p.mmr,
+        context.currentPlayerCount,
       );
       const balanceFactor = calculateBalanceFactor(
         teamMmrAfter,

@@ -16,8 +16,8 @@ export async function GET(req: NextRequest) {
     const allTeams = await prisma.team.findMany();
     if (allTeams.length > 0) {
       const pids = [...new Set(allTeams.flatMap(t =>
-        [t.player1Id, t.player2Id, t.player3Id, t.player4Id, t.player5Id]
-      ))];
+        [t.player1Id, t.player2Id, t.player3Id, t.player4Id, t.player5Id].filter(Boolean)
+      ))] as string[];
       const ps = await prisma.player.findMany({ where: { id: { in: pids } } });
       targetAvgMmr = ps.length ? Math.round(ps.reduce((s, p) => s + p.mmr, 0) / ps.length) : 9000;
     } else {
@@ -25,18 +25,26 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Default: assume replacing an average player → neutral balance effect
   let currentTeamAvgMmr = targetAvgMmr;
-  let replacedPlayerMmr = targetAvgMmr;
+  let replacedPlayerMmr = 0;
+  let currentPlayerCount = 5;
 
   if (teamId) {
     const team = await prisma.team.findUnique({ where: { id: teamId } });
     if (team) {
-      const ids = [team.player1Id, team.player2Id, team.player3Id, team.player4Id, team.player5Id];
+      const ids = [team.player1Id, team.player2Id, team.player3Id, team.player4Id, team.player5Id]
+        .filter(Boolean) as string[];
       const players = await prisma.player.findMany({ where: { id: { in: ids } } });
-      currentTeamAvgMmr = Math.round(players.reduce((s, p) => s + p.mmr, 0) / (players.length || 1));
-      const replaced = players.find((p) => p.id === replacedPlayerId);
-      replacedPlayerMmr = replaced ? replaced.mmr : currentTeamAvgMmr;
+      currentPlayerCount = players.length;
+      currentTeamAvgMmr = currentPlayerCount
+        ? Math.round(players.reduce((s, p) => s + p.mmr, 0) / currentPlayerCount)
+        : targetAvgMmr;
+
+      if (replacedPlayerId) {
+        const replaced = players.find((p) => p.id === replacedPlayerId);
+        replacedPlayerMmr = replaced ? replaced.mmr : 0;
+      }
+      // replacedPlayerMmr stays 0 for empty slot filling
     }
   }
 
@@ -58,6 +66,7 @@ export async function GET(req: NextRequest) {
     neededRole,
     currentTeamAvgMmr,
     replacedPlayerMmr,
+    currentPlayerCount,
     targetAvgMmr,
     maxDeviation,
   });

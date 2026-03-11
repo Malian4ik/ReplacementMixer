@@ -29,11 +29,11 @@ model Player {
 model Team {
   id        String   @id @default(cuid())
   name      String   @unique
-  player1Id String
-  player2Id String
-  player3Id String
-  player4Id String
-  player5Id String
+  player1Id String?
+  player2Id String?
+  player3Id String?
+  player4Id String?
+  player5Id String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
