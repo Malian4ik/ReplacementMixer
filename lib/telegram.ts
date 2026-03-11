@@ -1,5 +1,5 @@
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? "";
-const CHAT_ID = process.env.TELEGRAM_CHAT_ID ?? "";
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? "8213706792:AAHbzu5bM0mJyIMRacnyOInQSk_PntOQ1V4";
+const CHAT_ID = process.env.TELEGRAM_CHAT_ID || "-5265098869";
 const API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
 export async function sendTelegramMessage(text: string, chatId = CHAT_ID): Promise<void> {
