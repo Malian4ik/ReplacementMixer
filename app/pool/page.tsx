@@ -105,8 +105,15 @@ export default function PoolPage() {
               </thead>
               <tbody>
                 {entries.map(e => (
-                  <tr key={e.id}>
-                    <td style={{ fontWeight: 600 }}>{e.player.nick}</td>
+                  <tr key={e.id} style={e.inTeam && e.status === "Active" ? { background: "rgba(239,68,68,0.05)" } : {}}>
+                    <td style={{ fontWeight: 600 }}>
+                      {e.player.nick}
+                      {e.inTeam && (
+                        <span style={{ marginLeft: 6, fontSize: 10, color: "#f87171", background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 3, padding: "1px 5px", verticalAlign: "middle" }}>
+                          В команде
+                        </span>
+                      )}
+                    </td>
                     <td>{e.player.mmr.toLocaleString()}</td>
                     <td>{e.player.stake}</td>
                     <td>R{e.player.mainRole}{e.player.flexRole ? `/R${e.player.flexRole}` : ""}</td>

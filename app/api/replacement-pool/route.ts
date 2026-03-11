@@ -18,7 +18,17 @@ export async function GET(req: NextRequest) {
     include: { player: true },
     orderBy: [{ status: "asc" }, { joinTime: "asc" }],
   });
-  return NextResponse.json(entries);
+
+  const allTeams = await prisma.team.findMany({
+    select: { player1Id: true, player2Id: true, player3Id: true, player4Id: true, player5Id: true },
+  });
+  const inTeamIds = new Set(
+    allTeams.flatMap(t =>
+      [t.player1Id, t.player2Id, t.player3Id, t.player4Id, t.player5Id].filter(Boolean) as string[]
+    )
+  );
+
+  return NextResponse.json(entries.map(e => ({ ...e, inTeam: inTeamIds.has(e.playerId) })));
 }
 
 export async function POST(req: NextRequest) {
@@ -31,6 +41,9 @@ export async function POST(req: NextRequest) {
     const msg = e instanceof Error ? e.message : "Bad request";
     if (msg === "DUPLICATE") {
       return NextResponse.json({ error: "Player already active in pool" }, { status: 409 });
+    }
+    if (msg === "IN_TEAM") {
+      return NextResponse.json({ error: "Игрок уже находится в команде" }, { status: 409 });
     }
     return NextResponse.json({ error: msg }, { status: 400 });
   }

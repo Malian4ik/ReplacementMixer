@@ -39,6 +39,7 @@ export interface ReplacementPoolEntry {
   replacedPlayerId: string | null;
   pickedTime: string | null;
   source: "reduction" | "manual_add" | "returned" | "transferred_from_main_pool";
+  inTeam?: boolean;
   createdAt: string;
   updatedAt: string;
 }

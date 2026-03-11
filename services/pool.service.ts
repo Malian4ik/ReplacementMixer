@@ -10,12 +10,30 @@ export async function checkNoDuplicate(playerId: string): Promise<void> {
   }
 }
 
+export async function checkNotInTeam(playerId: string): Promise<void> {
+  const team = await prisma.team.findFirst({
+    where: {
+      OR: [
+        { player1Id: playerId },
+        { player2Id: playerId },
+        { player3Id: playerId },
+        { player4Id: playerId },
+        { player5Id: playerId },
+      ],
+    },
+  });
+  if (team) {
+    throw new Error("IN_TEAM");
+  }
+}
+
 export async function addPlayerToReplacementPool(
   playerId: string,
   source: string,
   judgeName?: string
 ) {
   await checkNoDuplicate(playerId);
+  await checkNotInTeam(playerId);
 
   const player = await prisma.player.findUniqueOrThrow({ where: { id: playerId } });
 

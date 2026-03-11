@@ -369,6 +369,9 @@ export default function JudgePage() {
               <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 12 }}>
                 {searchResults.map(p => {
                   const inPool = poolEntries.some(e => e.playerId === p.id);
+                  const inTeam = teams.some(t =>
+                    [t.player1Id, t.player2Id, t.player3Id, t.player4Id, t.player5Id].includes(p.id)
+                  );
                   return (
                     <div key={p.id} style={{ padding: "8px 10px", borderRadius: 5, background: "rgba(0,0,0,0.2)", border: "1px solid var(--border)", fontSize: 12 }}>
                       <div style={{ fontWeight: 600, marginBottom: 2 }}>{p.nick}</div>
@@ -376,10 +379,11 @@ export default function JudgePage() {
                         <span>{p.mmr.toLocaleString()} MMR</span>
                         <span>S{p.stake}</span>
                         <span>R{p.mainRole}{p.flexRole ? `/R${p.flexRole}` : ""}</span>
+                        {inTeam && <span style={{ color: "#f87171" }}>В команде</span>}
                       </div>
                       {canEdit && (
-                        <button className={`btn btn-sm ${inPool ? "btn-ghost" : "btn-blue"}`} disabled={inPool || addToPoolMutation.isPending} onClick={() => addToPoolMutation.mutate(p.id)}>
-                          {inPool ? "Уже в пуле" : "+ В пул"}
+                        <button className={`btn btn-sm ${(inPool || inTeam) ? "btn-ghost" : "btn-blue"}`} disabled={inPool || inTeam || addToPoolMutation.isPending} onClick={() => addToPoolMutation.mutate(p.id)}>
+                          {inTeam ? "В команде" : inPool ? "Уже в пуле" : "+ В пул"}
                         </button>
                       )}
                     </div>
