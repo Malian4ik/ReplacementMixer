@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { Team, CandidateScore, ReplacementPoolEntry } from "@/types";
 import { useUser } from "@/components/UserContext";
 
-const MAX_DEVIATION = 800;
+const MAX_DEVIATION = 1000;
 const EMPTY_SLOT = "__empty__";
 
 function rowClass(i: number, total: number): string {
