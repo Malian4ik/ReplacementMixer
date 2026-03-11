@@ -100,6 +100,7 @@ export async function returnReplacementToQueue(
       status: "Active",
       assignedTeamId: null,
       pickedTime: null,
+      joinTime: new Date(),
     },
   });
 

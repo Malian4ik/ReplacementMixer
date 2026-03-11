@@ -22,10 +22,7 @@ export function buildBaseQueue(
 ): ReplacementPoolEntry[] {
   return poolEntries
     .filter((e) => e.status === "Active")
-    .sort((a, b) => {
-      if (b.player.stake !== a.player.stake) return b.player.stake - a.player.stake;
-      return new Date(a.joinTime).getTime() - new Date(b.joinTime).getTime();
-    });
+    .sort((a, b) => new Date(a.joinTime).getTime() - new Date(b.joinTime).getTime());
 }
 
 export function getTop10Candidates(

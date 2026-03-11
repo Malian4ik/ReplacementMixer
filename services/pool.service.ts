@@ -20,7 +20,7 @@ export async function addPlayerToReplacementPool(
   const player = await prisma.player.findUniqueOrThrow({ where: { id: playerId } });
 
   const entry = await prisma.replacementPoolEntry.create({
-    data: { playerId, source, status: "Active" },
+    data: { playerId, source, status: "Active", joinTime: new Date() },
     include: { player: true },
   });
 
