@@ -86,9 +86,10 @@ export default function PlayersPage() {
     mutationFn: () => fetch("/api/players/clear", { method: "POST" }).then(r => r.json()),
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["players"] });
+      qc.invalidateQueries({ queryKey: ["teams"] });
       qc.invalidateQueries({ queryKey: ["pool"] });
       qc.invalidateQueries({ queryKey: ["stats"] });
-      alert(`Удалено игроков: ${data.deleted}`);
+      alert(`Сброс выполнен. Удалено игроков: ${data.deleted}`);
     },
   });
 
@@ -154,12 +155,12 @@ export default function PlayersPage() {
               className="btn btn-sm btn-danger"
               disabled={clearMutation.isPending}
               onClick={() => {
-                if (confirm("Удалить всех игроков, которых нет ни в одной команде? Это действие необратимо.")) {
+                if (confirm("Удалить ВСЕХ игроков, команды, пул замен и логи? Это действие необратимо.")) {
                   clearMutation.mutate();
                 }
               }}
             >
-              {clearMutation.isPending ? "..." : "Очистить список"}
+              {clearMutation.isPending ? "..." : "Сбросить всё"}
             </button>
           )}
         </div>
