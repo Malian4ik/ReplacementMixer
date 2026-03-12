@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Gavel, ListOrdered, Users2, ShieldCheck, Trophy, ScrollText, CalendarDays } from "lucide-react";
+import { Gavel, ListOrdered, Users2, ShieldCheck, Trophy, ScrollText, CalendarDays, UserCog } from "lucide-react";
 import { useUser } from "@/components/UserContext";
 
 const nav = [
@@ -78,36 +78,49 @@ export function Sidebar() {
       </aside>
 
       {/* Mobile bottom nav */}
-      <nav className="sidebar-mobile">
-        {nav.map(({ href, label, icon: Icon }) => {
-          const active = pathname === href || pathname.startsWith(href + "/");
-          return (
-            <Link
-              key={href}
-              href={href}
-              style={{
-                flex: 1,
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 3,
-                padding: "6px 2px",
-                textDecoration: "none",
-                color: active ? "var(--accent)" : "var(--text-muted)",
-                borderTop: active ? "2px solid var(--accent)" : "2px solid transparent",
-                transition: "color 0.12s",
-              }}
-            >
-              <Icon size={20} />
-              <span style={{ fontSize: 10, fontWeight: active ? 700 : 400, lineHeight: 1 }}>
-                {label}
-              </span>
-            </Link>
-          );
-        })}
-      </nav>
+      <MobileNav pathname={pathname} />
     </>
+  );
+}
+
+function MobileNav({ pathname }: { pathname: string }) {
+  const { user } = useUser();
+  const mobileItems = [
+    ...nav,
+    ...(user?.role === "OWNER"
+      ? [{ href: "/admin/users", label: "Юзеры", icon: UserCog, desc: "Управление" }]
+      : []),
+  ];
+  return (
+    <nav className="sidebar-mobile">
+      {mobileItems.map(({ href, label, icon: Icon }) => {
+        const active = pathname === href || pathname.startsWith(href + "/");
+        return (
+          <Link
+            key={href}
+            href={href}
+            style={{
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 3,
+              padding: "6px 8px",
+              textDecoration: "none",
+              color: active ? "var(--accent)" : "var(--text-muted)",
+              borderTop: active ? "2px solid var(--accent)" : "2px solid transparent",
+              transition: "color 0.12s",
+            }}
+          >
+            <Icon size={20} />
+            <span style={{ fontSize: 10, fontWeight: active ? 700 : 400, lineHeight: 1 }}>
+              {label}
+            </span>
+          </Link>
+        );
+      })}
+    </nav>
   );
 }
 

@@ -202,7 +202,7 @@ body {
     display: none;
   }
 
-  /* Show bottom nav */
+  /* Show bottom nav — horizontally scrollable */
   .sidebar-mobile {
     display: flex;
     flex-direction: row;
@@ -214,7 +214,13 @@ body {
     background: var(--bg-panel);
     border-top: 1px solid var(--border);
     z-index: 100;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
   }
+  .sidebar-mobile::-webkit-scrollbar { display: none; }
+  .sidebar-mobile > a { flex-shrink: 0; min-width: 60px; }
 
   /* Push page content above bottom nav */
   .layout-content {
@@ -227,6 +233,17 @@ body {
   }
   .page-title {
     font-size: 16px;
+  }
+
+  /* Page header stats — wrap on mobile */
+  .page-header > div:last-child {
+    flex-wrap: wrap;
+    gap: 8px !important;
+  }
+
+  /* Tables: allow horizontal scroll */
+  .card {
+    overflow-x: auto !important;
   }
 
   /* Reduce table padding on mobile */
