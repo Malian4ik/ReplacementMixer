@@ -5,13 +5,12 @@ export async function GET(req: NextRequest) {
   const q = req.nextUrl.searchParams.get("q") ?? "";
   if (!q.trim()) return NextResponse.json([]);
 
-  const players = await prisma.player.findMany({
-    where: {
-      nick: { contains: q },
-      isActiveInDatabase: true,
-    },
-    take: 20,
+  const all = await prisma.player.findMany({
+    where: { isActiveInDatabase: true },
     orderBy: { mmr: "desc" },
   });
+  const players = all.filter((p) =>
+    p.nick.toLowerCase().includes(q.toLowerCase())
+  ).slice(0, 20);
   return NextResponse.json(players);
 }
