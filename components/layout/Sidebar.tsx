@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Gavel, ListOrdered, Users2, ShieldCheck, Trophy, ScrollText } from "lucide-react";
+import { Gavel, ListOrdered, Users2, ShieldCheck, Trophy, ScrollText, CalendarDays } from "lucide-react";
 import { useUser } from "@/components/UserContext";
 
 const nav = [
@@ -11,7 +11,8 @@ const nav = [
   { href: "/pool",    label: "Пул",      icon: ShieldCheck, desc: "Активные кандидаты" },
   { href: "/players", label: "Игроки",   icon: Users2,      desc: "База игроков" },
   { href: "/teams",   label: "Команды",  icon: Trophy,      desc: "Составы команд" },
-  { href: "/logs",    label: "Журнал",   icon: ScrollText,  desc: "История действий" },
+  { href: "/logs",       label: "Журнал",      icon: ScrollText,   desc: "История действий" },
+  { href: "/schedule",   label: "Расписание",  icon: CalendarDays, desc: "Round-robin турнир" },
 ];
 
 export function Sidebar() {
