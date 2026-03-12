@@ -58,6 +58,23 @@ model ReplacementPoolEntry {
   logs         MatchReplacementLog[]
 }
 
+model TournamentMatch {
+  id           String    @id @default(cuid())
+  round        Int
+  slot         Int
+  homeTeam     String
+  awayTeam     String
+  scheduledAt  DateTime
+  endsAt       DateTime
+  status       String    @default("Scheduled")
+  techLossTeam String?
+  notifiedAt   DateTime?
+  judgeName    String?
+  comment      String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
 model MatchReplacementLog {
   id                    String   @id @default(cuid())
   timestamp             DateTime @default(now())
