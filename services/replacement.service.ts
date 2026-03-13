@@ -61,18 +61,29 @@ export async function assignReplacement(
     },
   });
 
-  // If the replaced player had an active/picked pool entry, re-activate it (end of queue)
+  // Add replaced player to the end of the pool queue
   if (ctx.replacedPlayerId) {
-    const replacedEntry = await prisma.replacementPoolEntry.findFirst({
+    const existingEntry = await prisma.replacementPoolEntry.findFirst({
       where: {
         playerId: ctx.replacedPlayerId,
         OR: [{ status: "Active" }, { status: "Picked" }],
       },
     });
-    if (replacedEntry) {
+    if (existingEntry) {
+      // Re-activate existing entry at end of queue
       await prisma.replacementPoolEntry.update({
-        where: { id: replacedEntry.id },
+        where: { id: existingEntry.id },
         data: { status: "Active", assignedTeamId: null, pickedTime: null, replacedPlayerId: null, joinTime: new Date() },
+      });
+    } else {
+      // Create a new pool entry for the replaced player
+      await prisma.replacementPoolEntry.create({
+        data: {
+          playerId: ctx.replacedPlayerId,
+          status: "Active",
+          source: "returned",
+          joinTime: new Date(),
+        },
       });
     }
   }

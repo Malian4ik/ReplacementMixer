@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   const entries = await prisma.replacementPoolEntry.findMany({
     where,
     include: { player: true },
-    orderBy: [{ status: "asc" }, { joinTime: "asc" }],
+    orderBy: [{ joinTime: "asc" }],
   });
 
   const allTeams = await prisma.team.findMany({

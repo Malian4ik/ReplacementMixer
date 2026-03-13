@@ -22,54 +22,6 @@ function rfColor(rf: number) {
   return "#f87171";
 }
 
-function playCullingBlade() {
-  try {
-    const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
-    const master = ctx.createGain();
-    master.gain.value = 0.15;
-    master.connect(ctx.destination);
-    const now = ctx.currentTime;
-
-    // Whoosh: sawtooth sweep down (вжух)
-    const whoosh = ctx.createOscillator();
-    const wg = ctx.createGain();
-    whoosh.type = "sawtooth";
-    whoosh.frequency.setValueAtTime(420, now);
-    whoosh.frequency.exponentialRampToValueAtTime(60, now + 0.28);
-    wg.gain.setValueAtTime(0.7, now);
-    wg.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
-    whoosh.connect(wg); wg.connect(master);
-    whoosh.start(now); whoosh.stop(now + 0.28);
-
-    // Metal ring (металлический звон)
-    const ring = ctx.createOscillator();
-    const rg = ctx.createGain();
-    ring.type = "sine";
-    ring.frequency.setValueAtTime(1200, now + 0.22);
-    ring.frequency.exponentialRampToValueAtTime(600, now + 0.6);
-    rg.gain.setValueAtTime(0, now + 0.22);
-    rg.gain.linearRampToValueAtTime(0.5, now + 0.24);
-    rg.gain.exponentialRampToValueAtTime(0.001, now + 0.7);
-    ring.connect(rg); rg.connect(master);
-    ring.start(now + 0.22); ring.stop(now + 0.7);
-
-    // Deep thud / удар (финальный бас)
-    const thud = ctx.createOscillator();
-    const tg = ctx.createGain();
-    thud.type = "sine";
-    thud.frequency.setValueAtTime(100, now + 0.25);
-    thud.frequency.exponentialRampToValueAtTime(35, now + 0.65);
-    tg.gain.setValueAtTime(0, now + 0.25);
-    tg.gain.linearRampToValueAtTime(1, now + 0.27);
-    tg.gain.exponentialRampToValueAtTime(0.001, now + 0.7);
-    thud.connect(tg); tg.connect(master);
-    thud.start(now + 0.25); thud.stop(now + 0.7);
-
-    setTimeout(() => ctx.close(), 900);
-  } catch {
-    // audio not supported — silently skip
-  }
-}
 
 export default function JudgePage() {
   const qc = useQueryClient();
@@ -153,7 +105,6 @@ export default function JudgePage() {
       return res.json();
     },
     onSuccess: () => {
-      playCullingBlade();
       qc.invalidateQueries({ queryKey: ["pool"] });
       qc.invalidateQueries({ queryKey: ["queue-judge"] });
       qc.invalidateQueries({ queryKey: ["teams"] });
