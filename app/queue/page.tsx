@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { CandidateScore } from "@/types";
 
@@ -20,7 +19,7 @@ function roleFitLabel(rf: number) {
 
 export default function QueuePage() {
   const maxDeviation = 1000;
-  const [neededRole, setNeededRole] = useState(1);
+  const neededRole = 1;
 
   const { data: stats } = useQuery<{ targetAvgMmr: number }>({
     queryKey: ["stats"],
@@ -83,17 +82,6 @@ export default function QueuePage() {
             }}>
               ±{maxDeviation.toLocaleString()}
             </div>
-          </div>
-          <div>
-            <div className="lbl">Нужная роль</div>
-            <select
-              className="form-select"
-              style={{ width: 120 }}
-              value={neededRole}
-              onChange={e => setNeededRole(Number(e.target.value))}
-            >
-              {[1, 2, 3, 4, 5].map(r => <option key={r} value={r}>Role {r}</option>)}
-            </select>
           </div>
         </div>
       </div>

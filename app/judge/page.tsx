@@ -149,7 +149,7 @@ export default function JudgePage() {
           <div className="page-title">Панель судьи</div>
           <div className="page-subtitle">Назначение замен для команд</div>
         </div>
-        <div style={{ display: "flex", gap: 16, alignItems: "center", padding: "6px 14px", background: "rgba(240,165,0,0.08)", border: "1px solid rgba(240,165,0,0.2)", borderRadius: 6 }}>
+        <div style={{ display: "flex", gap: 16, alignItems: "center", padding: "6px 14px", background: "rgba(240,165,0,0.08)", border: "1px solid rgba(240,165,0,0.2)", borderRadius: 6, flexWrap: "wrap" }}>
           <div>
             <div style={{ fontSize: 10, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Target MMR</div>
             <div style={{ fontSize: 17, fontWeight: 800, color: "var(--accent)" }}>{targetAvgMmr.toLocaleString()}</div>
@@ -163,6 +163,30 @@ export default function JudgePage() {
           <div>
             <div style={{ fontSize: 10, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>В пуле</div>
             <div style={{ fontSize: 17, fontWeight: 700, color: poolEntries.length > 0 ? "#34d399" : "#f87171" }}>{poolEntries.length}</div>
+          </div>
+          <div style={{ width: 1, height: 30, background: "var(--border)" }} />
+          <div>
+            <div style={{ fontSize: 10, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Нужная роль</div>
+            <div style={{ display: "flex", gap: 3 }}>
+              {[1, 2, 3, 4, 5].map(r => {
+                const active = replacedPlayer ? replacedPlayer.mainRole === r : emptySlotRole === r;
+                const isCurrent = neededRole === r;
+                return (
+                  <button key={r}
+                    onClick={() => { if (!replacedPlayer) setEmptySlotRole(r); }}
+                    style={{
+                      padding: "3px 8px", borderRadius: 4, fontSize: 11, cursor: replacedPlayer ? "default" : "pointer",
+                      background: isCurrent ? "var(--accent)" : "rgba(255,255,255,0.06)",
+                      border: `1px solid ${isCurrent ? "var(--accent)" : "var(--border)"}`,
+                      color: isCurrent ? "#000" : "var(--text-secondary)",
+                      fontWeight: isCurrent ? 700 : 400,
+                      opacity: replacedPlayer && !active ? 0.4 : 1,
+                    }}>
+                    R{r}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
       </div>
@@ -234,17 +258,8 @@ export default function JudgePage() {
 
             {isEmptySlot && (
               <div style={{ padding: "8px 10px", background: "rgba(16,185,129,0.07)", border: "1px solid rgba(16,185,129,0.25)", borderRadius: 6, marginBottom: 10, fontSize: 12 }}>
-                <div style={{ fontWeight: 600, color: "#34d399", marginBottom: 6 }}>Заполнение пустого слота</div>
-                <div className="lbl" style={{ marginBottom: 4 }}>Нужная роль</div>
-                <div style={{ display: "flex", gap: 4 }}>
-                  {[1, 2, 3, 4, 5].map(r => (
-                    <button key={r} onClick={() => setEmptySlotRole(r)}
-                      style={{ padding: "4px 8px", borderRadius: 4, fontSize: 11, cursor: "pointer", background: emptySlotRole === r ? "var(--accent)" : "rgba(255,255,255,0.08)", border: `1px solid ${emptySlotRole === r ? "var(--accent)" : "var(--border)"}`, color: emptySlotRole === r ? "#000" : "var(--text-primary)", fontWeight: emptySlotRole === r ? 700 : 400 }}>
-                      R{r}
-                    </button>
-                  ))}
-                </div>
-                <div style={{ color: "var(--text-secondary)", marginTop: 6 }}>Игроков в команде: {activePlayerCount}/5</div>
+                <div style={{ fontWeight: 600, color: "#34d399", marginBottom: 4 }}>Заполнение пустого слота · R{emptySlotRole}</div>
+                <div style={{ color: "var(--text-secondary)" }}>Игроков в команде: {activePlayerCount}/5</div>
               </div>
             )}
 
