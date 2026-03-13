@@ -17,7 +17,7 @@ export function calculateRoleFit(
 ): number {
   if (candidateMain === neededRole) return 1.0;
   if (candidateFlex === neededRole) return 0.8;
-  return 0.2;
+  return 0.5;
 }
 
 /**
