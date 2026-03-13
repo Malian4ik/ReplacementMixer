@@ -186,8 +186,18 @@ function GenerateModal({ onClose }: { onClose: () => void }) {
 
 export default function SchedulePage() {
   const { user } = useUser();
-  const isJudge = user?.role === "OWNER" || user?.role === "JUDGE";
   const isOwner = user?.role === "OWNER";
+  const isJudge = isOwner;
+
+  if (user && !isOwner) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", flexDirection: "column", gap: 12 }}>
+        <div style={{ fontSize: 48 }}>🔒</div>
+        <div style={{ color: "var(--text-primary)", fontWeight: 600, fontSize: 16 }}>Доступ запрещён</div>
+        <div style={{ color: "var(--text-secondary)", fontSize: 13 }}>Раздел доступен только для Owner</div>
+      </div>
+    );
+  }
   const qc = useQueryClient();
 
   const [activeMatch, setActiveMatch] = useState<TournamentMatch | null>(null);

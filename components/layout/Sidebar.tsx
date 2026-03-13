@@ -11,12 +11,17 @@ const nav = [
   { href: "/pool",    label: "Пул",      icon: ShieldCheck, desc: "Активные кандидаты" },
   { href: "/players", label: "Игроки",   icon: Users2,      desc: "База игроков" },
   { href: "/teams",   label: "Команды",  icon: Trophy,      desc: "Составы команд" },
-  { href: "/logs",       label: "Журнал",      icon: ScrollText,   desc: "История действий" },
-  { href: "/schedule",   label: "Расписание",  icon: CalendarDays, desc: "Round-robin турнир" },
+  { href: "/logs",    label: "Журнал",   icon: ScrollText,  desc: "История действий" },
+];
+
+const ownerNav = [
+  { href: "/schedule", label: "Расписание", icon: CalendarDays, desc: "Round-robin турнир" },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { user } = useUser();
+  const visibleNav = [...nav, ...(user?.role === "OWNER" ? ownerNav : [])];
 
   return (
     <>
@@ -40,7 +45,7 @@ export function Sidebar() {
           </p>
         </div>
         <nav style={{ flex: 1, padding: "10px 8px", overflowY: "auto" }}>
-          {nav.map(({ href, label, icon: Icon, desc }) => {
+          {visibleNav.map(({ href, label, icon: Icon, desc }) => {
             const active = pathname === href || pathname.startsWith(href + "/");
             return (
               <Link key={href} href={href} style={{ textDecoration: "none", display: "block", marginBottom: 2 }}>
@@ -87,6 +92,7 @@ function MobileNav({ pathname }: { pathname: string }) {
   const { user } = useUser();
   const mobileItems = [
     ...nav,
+    ...(user?.role === "OWNER" ? ownerNav : []),
     ...(user?.role === "OWNER"
       ? [{ href: "/admin/users", label: "Юзеры", icon: UserCog, desc: "Управление" }]
       : []),
