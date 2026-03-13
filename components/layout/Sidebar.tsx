@@ -6,12 +6,15 @@ import { Gavel, ListOrdered, Users2, ShieldCheck, Trophy, ScrollText, CalendarDa
 import { useUser } from "@/components/UserContext";
 
 const nav = [
-  { href: "/judge",   label: "Судья",    icon: Gavel,       desc: "Назначение замен" },
   { href: "/queue",   label: "Очередь",  icon: ListOrdered, desc: "TOP-10 кандидатов" },
   { href: "/pool",    label: "Пул",      icon: ShieldCheck, desc: "Активные кандидаты" },
   { href: "/players", label: "Игроки",   icon: Users2,      desc: "База игроков" },
   { href: "/teams",   label: "Команды",  icon: Trophy,      desc: "Составы команд" },
   { href: "/logs",    label: "Журнал",   icon: ScrollText,  desc: "История действий" },
+];
+
+const judgeNav = [
+  { href: "/judge", label: "Судья", icon: Gavel, desc: "Назначение замен" },
 ];
 
 const ownerNav = [
@@ -21,7 +24,12 @@ const ownerNav = [
 export function Sidebar() {
   const pathname = usePathname();
   const { user } = useUser();
-  const visibleNav = [...nav, ...(user?.role === "OWNER" ? ownerNav : [])];
+  const isJudgeOrOwner = user?.role === "OWNER" || user?.role === "JUDGE";
+  const visibleNav = [
+    ...(isJudgeOrOwner ? judgeNav : []),
+    ...nav,
+    ...(user?.role === "OWNER" ? ownerNav : []),
+  ];
 
   return (
     <>
@@ -90,7 +98,9 @@ export function Sidebar() {
 
 function MobileNav({ pathname }: { pathname: string }) {
   const { user } = useUser();
+  const isJudgeOrOwner = user?.role === "OWNER" || user?.role === "JUDGE";
   const mobileItems = [
+    ...(isJudgeOrOwner ? judgeNav : []),
     ...nav,
     ...(user?.role === "OWNER" ? ownerNav : []),
     ...(user?.role === "OWNER"
