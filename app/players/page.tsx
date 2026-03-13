@@ -31,7 +31,7 @@ export default function PlayersPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [createError, setCreateError] = useState<string | null>(null);
-  const [sortKey, setSortKey] = useState<"nick" | "mmr" | "stake" | "isActiveInDatabase">("nick");
+  const [sortKey, setSortKey] = useState<"nick" | "mmr" | "stake" | "isActiveInDatabase" | "createdAt">("nick");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
   function toggleSort(key: typeof sortKey) {
@@ -108,6 +108,7 @@ export default function PlayersPage() {
       else if (sortKey === "mmr") cmp = a.mmr - b.mmr;
       else if (sortKey === "stake") cmp = a.stake - b.stake;
       else if (sortKey === "isActiveInDatabase") cmp = (b.isActiveInDatabase ? 1 : 0) - (a.isActiveInDatabase ? 1 : 0);
+      else if (sortKey === "createdAt") cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
       return sortDir === "asc" ? cmp : -cmp;
     });
   const active = players.filter(p => p.isActiveInDatabase).length;
@@ -272,7 +273,7 @@ export default function PlayersPage() {
               <thead>
                 <tr>
                   {(["НИК", "MMR", "STAKE", "РОЛЬ", "FLEX", "TELEGRAM", "КОШЕЛЁК", "НОЧИ", "СТАТУС", "ДОБАВЛЕН"] as const).map(h => {
-                    const key = h === "НИК" ? "nick" : h === "MMR" ? "mmr" : h === "STAKE" ? "stake" : h === "СТАТУС" ? "isActiveInDatabase" : null;
+                    const key = h === "НИК" ? "nick" : h === "MMR" ? "mmr" : h === "STAKE" ? "stake" : h === "СТАТУС" ? "isActiveInDatabase" : h === "ДОБАВЛЕН" ? "createdAt" : null;
                     const active = key && sortKey === key;
                     return (
                       <th key={h}
