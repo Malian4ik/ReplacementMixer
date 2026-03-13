@@ -271,7 +271,7 @@ export default function PlayersPage() {
             <table className="tbl">
               <thead>
                 <tr>
-                  {(["НИК", "MMR", "STAKE", "РОЛЬ", "FLEX", "TELEGRAM", "КОШЕЛЁК", "НОЧИ", "СТАТУС"] as const).map(h => {
+                  {(["НИК", "MMR", "STAKE", "РОЛЬ", "FLEX", "TELEGRAM", "КОШЕЛЁК", "НОЧИ", "СТАТУС", "ДОБАВЛЕН"] as const).map(h => {
                     const key = h === "НИК" ? "nick" : h === "MMR" ? "mmr" : h === "STAKE" ? "stake" : h === "СТАТУС" ? "isActiveInDatabase" : null;
                     const active = key && sortKey === key;
                     return (
@@ -314,6 +314,9 @@ export default function PlayersPage() {
                             <option value="0">Неактивен</option>
                           </select>
                         </td>
+                        <td style={{ color: "var(--text-muted)", fontSize: 11 }}>
+                          {p.createdAt ? new Date(p.createdAt).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Moscow" }) : "—"}
+                        </td>
                         <td>
                           <div style={{ display: "flex", gap: 4 }}>
                             <button className="btn btn-sm btn-success" onClick={() => updateMutation.mutate({ id: p.id, data: editData })}>
@@ -339,6 +342,9 @@ export default function PlayersPage() {
                           <span className={p.isActiveInDatabase ? "badge badge-green" : "badge badge-gray"}>
                             {p.isActiveInDatabase ? "Активен" : "Неактивен"}
                           </span>
+                        </td>
+                        <td style={{ color: "var(--text-secondary)", fontSize: 11, whiteSpace: "nowrap" }}>
+                          {p.createdAt ? new Date(p.createdAt).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Moscow" }) : "—"}
                         </td>
                         <td>
                           {canEdit && (
