@@ -11,11 +11,11 @@ const nav = [
   { href: "/players", label: "Игроки",   icon: Users2,      desc: "База игроков" },
   { href: "/teams",   label: "Команды",  icon: Trophy,      desc: "Составы команд" },
   { href: "/logs",    label: "Журнал",   icon: ScrollText,  desc: "История действий" },
-  { href: "/guide",   label: "FAQ",      icon: BookOpen,    desc: "Инструкция для судьи" },
 ];
 
 const judgeNav = [
-  { href: "/judge", label: "Судья", icon: Gavel, desc: "Назначение замен" },
+  { href: "/judge", label: "Судья",       icon: Gavel,    desc: "Назначение замен" },
+  { href: "/guide", label: "FAQ",         icon: BookOpen, desc: "Инструкция для судьи" },
 ];
 
 const ownerNav = [

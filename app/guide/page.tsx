@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
+import { useUser } from "@/components/UserContext";
 
 interface FaqItem {
   q: string;
@@ -152,8 +153,19 @@ const FAQ: FaqItem[] = [
 const TAGS = Array.from(new Set(FAQ.map(f => f.tag).filter(Boolean))) as string[];
 
 export default function GuidePage() {
+  const { user } = useUser();
   const [open, setOpen] = useState<number | null>(0);
   const [activeTag, setActiveTag] = useState<string | null>(null);
+
+  if (user && user.role === "VIEWER") {
+    return (
+      <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
+          Доступ запрещён
+        </div>
+      </div>
+    );
+  }
 
   const filtered = activeTag ? FAQ.filter(f => f.tag === activeTag) : FAQ;
 
