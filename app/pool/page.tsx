@@ -63,6 +63,15 @@ export default function PoolPage() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) =>
+      fetch(`/api/replacement-pool/${id}`, { method: "DELETE" }).then(r => r.json()),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pool"] });
+      qc.invalidateQueries({ queryKey: ["queue"] });
+    },
+  });
+
   const returnMutation = useMutation({
     mutationFn: (id: string) =>
       fetch(`/api/replacement-pool/${id}/return`, {
@@ -240,6 +249,13 @@ export default function PoolPage() {
                               Активировать
                             </button>
                           )}
+                          <button
+                            className="btn btn-sm"
+                            style={{ background: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.2)", color: "#f87171" }}
+                            onClick={() => { if (confirm(`Удалить ${e.player.nick} из пула?`)) deleteMutation.mutate(e.id); }}
+                          >
+                            Удалить
+                          </button>
                         </div>
                       </td>
                     )}
