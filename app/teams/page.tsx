@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { Team, Player } from "@/types";
 import { useUser } from "@/components/UserContext";
+import { ConfirmModal } from "@/components/ConfirmModal";
 
 const inputStyle: React.CSSProperties = {
   background: "rgba(0,0,0,0.5)",
@@ -176,6 +177,7 @@ export default function TeamsPage() {
   const [editData, setEditData] = useState<typeof EMPTY_TEAM | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ ...EMPTY_TEAM });
+  const [confirmState, setConfirmState] = useState<{ message: string; onConfirm: () => void } | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
 
   const { data: teams = [], isLoading } = useQuery<Team[]>({
@@ -290,6 +292,7 @@ export default function TeamsPage() {
   const editFilledCount = editData ? SLOTS.filter(s => editData[s] !== "").length : 0;
 
   return (
+    <>
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
       <div className="page-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
@@ -507,9 +510,7 @@ export default function TeamsPage() {
                             className="btn btn-sm btn-danger"
                             disabled={deleteMutation.isPending}
                             onClick={() => {
-                              if (confirm(`Удалить команду "${t.name}"?`)) {
-                                deleteMutation.mutate(t.id);
-                              }
+                              setConfirmState({ message: `Удалить команду "${t.name}"?`, onConfirm: () => { deleteMutation.mutate(t.id); setConfirmState(null); } });
                             }}
                           >
                             Удалить
@@ -536,5 +537,13 @@ export default function TeamsPage() {
         )}
       </div>
     </div>
+    {confirmState && (
+      <ConfirmModal
+        message={confirmState.message}
+        onConfirm={confirmState.onConfirm}
+        onCancel={() => setConfirmState(null)}
+      />
+    )}
+    </>
   );
 }

@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatMoscow } from "@/lib/date";
 import type { Player, ReplacementPoolEntry } from "@/types";
 import { useUser } from "@/components/UserContext";
+import { ConfirmModal } from "@/components/ConfirmModal";
 
 const STATUS_BADGE: Record<string, string> = {
   Active:   "badge badge-green",
@@ -26,6 +27,7 @@ export default function PoolPage() {
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [searchQ, setSearchQ] = useState("");
   const [searchResults, setSearchResults] = useState<Player[]>([]);
+  const [confirmState, setConfirmState] = useState<{ message: string; onConfirm: () => void } | null>(null);
 
   const { data: entries = [], isLoading } = useQuery<ReplacementPoolEntry[]>({
     queryKey: ["pool", statusFilter],
@@ -120,6 +122,7 @@ export default function PoolPage() {
   const inPoolIds = new Set(entries.filter(e => e.status === "Active").map(e => e.playerId));
 
   return (
+    <>
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
       {/* Header */}
       <div className="page-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -253,7 +256,7 @@ export default function PoolPage() {
                           <button
                             className="btn btn-sm"
                             style={{ background: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.2)", color: "#f87171" }}
-                            onClick={() => { if (confirm(`Удалить ${e.player.nick} из пула?`)) deleteMutation.mutate(e.id); }}
+                            onClick={() => setConfirmState({ message: `Удалить ${e.player.nick} из пула?`, onConfirm: () => { deleteMutation.mutate(e.id); setConfirmState(null); } })}
                           >
                             Удалить
                           </button>
@@ -275,5 +278,13 @@ export default function PoolPage() {
         )}
       </div>
     </div>
+    {confirmState && (
+      <ConfirmModal
+        message={confirmState.message}
+        onConfirm={confirmState.onConfirm}
+        onCancel={() => setConfirmState(null)}
+      />
+    )}
+    </>
   );
 }

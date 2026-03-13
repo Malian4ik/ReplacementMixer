@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatMoscow } from "@/lib/date";
 import type { MatchReplacementLog } from "@/types";
 import { useUser } from "@/components/UserContext";
+import { ConfirmModal } from "@/components/ConfirmModal";
 
 const ACTION_BADGE: Record<string, string> = {
   Assign:    "badge badge-green",
@@ -25,6 +26,7 @@ export default function LogsPage() {
   const { user } = useUser();
   const isOwner = user?.role === "OWNER";
   const [showTgSetup, setShowTgSetup] = useState(false);
+  const [confirmState, setConfirmState] = useState<{ message: string; onConfirm: () => void } | null>(null);
   const [tgUpdates, setTgUpdates] = useState<TgUpdate[]>([]);
   const [tgSetupLoading, setTgSetupLoading] = useState(false);
   const [tgSetupError, setTgSetupError] = useState<string | null>(null);
@@ -72,6 +74,7 @@ export default function LogsPage() {
   }
 
   return (
+    <>
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
       {/* Header */}
       <div className="page-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
@@ -107,8 +110,7 @@ export default function LogsPage() {
             <button
               className="btn btn-sm btn-danger"
               onClick={() => {
-                if (confirm(`Удалить все ${logs.length} записей журнала? Это действие нельзя отменить.`))
-                  clearMutation.mutate();
+                setConfirmState({ message: `Удалить все ${logs.length} записей журнала? Это действие нельзя отменить.`, onConfirm: () => { clearMutation.mutate(); setConfirmState(null); } });
               }}
               disabled={clearMutation.isPending || logs.length === 0}
             >
@@ -257,5 +259,13 @@ export default function LogsPage() {
         )}
       </div>
     </div>
+    {confirmState && (
+      <ConfirmModal
+        message={confirmState.message}
+        onConfirm={confirmState.onConfirm}
+        onCancel={() => setConfirmState(null)}
+      />
+    )}
+    </>
   );
 }

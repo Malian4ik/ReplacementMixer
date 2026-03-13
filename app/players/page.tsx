@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { Player } from "@/types";
 import { useUser } from "@/components/UserContext";
+import { ConfirmModal } from "@/components/ConfirmModal";
 
 const inputStyle: React.CSSProperties = {
   background: "rgba(0,0,0,0.5)",
@@ -33,6 +34,7 @@ export default function PlayersPage() {
   const [createError, setCreateError] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<"nick" | "mmr" | "stake" | "isActiveInDatabase" | "createdAt">("nick");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [confirmState, setConfirmState] = useState<{ message: string; onConfirm: () => void } | null>(null);
 
   function toggleSort(key: typeof sortKey) {
     if (sortKey === key) setSortDir(d => d === "asc" ? "desc" : "asc");
@@ -146,6 +148,7 @@ export default function PlayersPage() {
   }
 
   return (
+    <>
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
       {/* Header */}
       <div className="page-header" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
@@ -190,9 +193,7 @@ export default function PlayersPage() {
               className="btn btn-sm btn-danger"
               disabled={clearMutation.isPending}
               onClick={() => {
-                if (confirm("Удалить ВСЕХ игроков, команды, пул замен и логи? Это действие необратимо.")) {
-                  clearMutation.mutate();
-                }
+                setConfirmState({ message: "Удалить ВСЕХ игроков, команды, пул замен и логи? Это действие необратимо.", onConfirm: () => { clearMutation.mutate(); setConfirmState(null); } });
               }}
             >
               {clearMutation.isPending ? "..." : "Сбросить всё"}
@@ -355,7 +356,7 @@ export default function PlayersPage() {
                               </button>
                               <button
                                 className="btn btn-sm btn-danger"
-                                onClick={() => { if (confirm(`Удалить ${p.nick}?`)) deleteMutation.mutate(p.id); }}
+                                onClick={() => setConfirmState({ message: `Удалить ${p.nick}?`, onConfirm: () => { deleteMutation.mutate(p.id); setConfirmState(null); } })}
                               >
                                 Удал.
                               </button>
@@ -379,5 +380,13 @@ export default function PlayersPage() {
         )}
       </div>
     </div>
+    {confirmState && (
+      <ConfirmModal
+        message={confirmState.message}
+        onConfirm={confirmState.onConfirm}
+        onCancel={() => setConfirmState(null)}
+      />
+    )}
+  </>
   );
 }
