@@ -27,51 +27,35 @@ export default function LoginPage() {
     <div style={pageStyle}>
       {/* Background decorations */}
       <div style={{ position: "fixed", inset: 0, overflow: "hidden", pointerEvents: "none", zIndex: 0 }}>
-        {/* Big glow orbs */}
-        <div style={{ position: "absolute", top: "-10%", left: "15%", width: 500, height: 500, borderRadius: "50%", background: "radial-gradient(circle, rgba(0,212,232,0.06) 0%, transparent 70%)" }} />
-        <div style={{ position: "absolute", bottom: "-5%", right: "10%", width: 400, height: 400, borderRadius: "50%", background: "radial-gradient(circle, rgba(0,212,232,0.04) 0%, transparent 70%)" }} />
+        {/* Glow orbs */}
+        <div style={{ position: "absolute", top: "-15%", left: "5%", width: 600, height: 600, borderRadius: "50%", background: "radial-gradient(circle, rgba(0,212,232,0.07) 0%, transparent 65%)" }} />
+        <div style={{ position: "absolute", bottom: "-10%", right: "0%", width: 500, height: 500, borderRadius: "50%", background: "radial-gradient(circle, rgba(0,212,232,0.05) 0%, transparent 65%)" }} />
 
-        {/* Role labels — scattered */}
-        {[
-          { label: "CARRY", sub: "Position 1", x: "8%", y: "18%" },
-          { label: "MID", sub: "Position 2", x: "82%", y: "12%" },
-          { label: "OFFLANE", sub: "Position 3", x: "6%", y: "72%" },
-          { label: "SOFT SUP", sub: "Position 4", x: "78%", y: "68%" },
-          { label: "HARD SUP", sub: "Position 5", x: "44%", y: "88%" },
-        ].map(({ label, sub, x, y }) => (
-          <div key={label} style={{ position: "absolute", left: x, top: y, opacity: 0.18 }}>
-            <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: "0.15em", color: "var(--accent)", textTransform: "uppercase" }}>{label}</div>
-            <div style={{ fontSize: 9, color: "var(--text-secondary)", letterSpacing: "0.08em" }}>{sub}</div>
-          </div>
-        ))}
-
-        {/* Stat lines */}
-        {[
-          { label: "SubScore", val: "0.8741", x: "3%", y: "42%" },
-          { label: "RoleFit", val: "1.000", x: "80%", y: "38%" },
-          { label: "BalanceFactor", val: "0.923", x: "3%", y: "55%" },
-          { label: "Target MMR", val: "9 000", x: "79%", y: "50%" },
-        ].map(({ label, val, x, y }) => (
-          <div key={label} style={{ position: "absolute", left: x, top: y, opacity: 0.13, fontFamily: "monospace" }}>
-            <span style={{ fontSize: 9, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{label} </span>
-            <span style={{ fontSize: 10, fontWeight: 700, color: "var(--accent)" }}>{val}</span>
-          </div>
-        ))}
-
-        {/* Corner brand watermark */}
-        <div style={{ position: "absolute", bottom: 24, left: 32, opacity: 0.12 }}>
-          <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: "0.1em", color: "var(--accent)", fontStyle: "italic", textTransform: "uppercase", lineHeight: 1 }}>MIXERCUP</div>
-          <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.3em", color: "var(--text-secondary)", textTransform: "uppercase", marginTop: 2 }}>SERIES · DOTA 2 TOURNAMENT</div>
+        {/* Giant ghost watermark behind card */}
+        <div style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)", textAlign: "center", opacity: 0.04 }}>
+          <div style={{ fontSize: 140, fontWeight: 900, letterSpacing: "0.06em", color: "var(--accent)", fontStyle: "italic", textTransform: "uppercase", lineHeight: 0.9, whiteSpace: "nowrap" }}>MIXER</div>
+          <div style={{ fontSize: 140, fontWeight: 900, letterSpacing: "0.06em", color: "var(--accent)", fontStyle: "italic", textTransform: "uppercase", lineHeight: 0.9, whiteSpace: "nowrap" }}>CUP</div>
         </div>
-        <div style={{ position: "absolute", top: 24, right: 32, opacity: 0.1, textAlign: "right" }}>
+
+        {/* Accent lines — top-left */}
+        <div style={{ position: "absolute", top: 0, left: 0, width: 180, height: 1, background: "linear-gradient(to right, rgba(0,212,232,0.18), transparent)" }} />
+        <div style={{ position: "absolute", top: 0, left: 0, width: 1, height: 180, background: "linear-gradient(to bottom, rgba(0,212,232,0.18), transparent)" }} />
+
+        {/* Accent lines — bottom-right */}
+        <div style={{ position: "absolute", bottom: 0, right: 0, width: 180, height: 1, background: "linear-gradient(to left, rgba(0,212,232,0.18), transparent)" }} />
+        <div style={{ position: "absolute", bottom: 0, right: 0, width: 1, height: 180, background: "linear-gradient(to top, rgba(0,212,232,0.18), transparent)" }} />
+
+        {/* Corner brand watermark — bottom left */}
+        <div style={{ position: "absolute", bottom: 28, left: 36, opacity: 0.14 }}>
+          <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: "0.1em", color: "var(--accent)", fontStyle: "italic", textTransform: "uppercase", lineHeight: 1 }}>MIXERCUP</div>
+          <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.3em", color: "var(--text-secondary)", textTransform: "uppercase", marginTop: 3 }}>SERIES · DOTA 2 TOURNAMENT</div>
+        </div>
+
+        {/* Corner brand watermark — top right */}
+        <div style={{ position: "absolute", top: 28, right: 36, opacity: 0.12, textAlign: "right" }}>
           <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: "0.1em", color: "var(--accent)", fontStyle: "italic", textTransform: "uppercase", lineHeight: 1 }}>MIXER</div>
           <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: "0.1em", color: "var(--accent)", fontStyle: "italic", textTransform: "uppercase", lineHeight: 1 }}>CUP</div>
         </div>
-
-        {/* Thin horizontal grid lines */}
-        {[20, 40, 60, 80].map(pct => (
-          <div key={pct} style={{ position: "absolute", left: 0, right: 0, top: `${pct}%`, height: 1, background: "rgba(0,212,232,0.04)" }} />
-        ))}
       </div>
 
       <div style={{ ...cardStyle, position: "relative", zIndex: 1 }}>
