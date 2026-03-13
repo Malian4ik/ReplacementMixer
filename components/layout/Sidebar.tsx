@@ -21,10 +21,14 @@ const ownerNav = [
   { href: "/schedule", label: "Расписание", icon: CalendarDays, desc: "Round-robin турнир" },
 ];
 
+const PUBLIC_PATHS = ["/login", "/register", "/setup"];
+
 export function Sidebar() {
   const pathname = usePathname();
   const { user } = useUser();
   const isJudgeOrOwner = user?.role === "OWNER" || user?.role === "JUDGE";
+
+  if (PUBLIC_PATHS.some(p => pathname.startsWith(p))) return null;
   const visibleNav = [
     ...(isJudgeOrOwner ? judgeNav : []),
     ...nav,
