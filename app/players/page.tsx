@@ -147,33 +147,35 @@ export default function PlayersPage() {
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
       {/* Header */}
-      <div className="page-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div className="page-header" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
         <div>
           <div className="page-title">База игроков</div>
           <div className="page-subtitle">{players.length} всего · {active} активных</div>
-          <div style={{ marginTop: 4, display: "flex", alignItems: "center", gap: 6 }}>
+          <div style={{ marginTop: 6 }}>
             <span style={{
-              background: "rgba(99,102,241,0.15)",
-              border: "1px solid rgba(99,102,241,0.35)",
-              color: "#a5b4fc",
+              background: "rgba(0,212,232,0.1)",
+              border: "1px solid rgba(0,212,232,0.25)",
+              color: "var(--accent)",
               borderRadius: 6,
-              padding: "2px 10px",
-              fontSize: 13,
-              fontWeight: 600,
+              padding: "3px 10px",
+              fontSize: 12,
+              fontWeight: 700,
               letterSpacing: 0.3,
+              display: "inline-block",
             }}>
               Средний ММР: {avgMmr.toLocaleString()}
             </span>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
           <input
             className="form-input"
-            style={{ width: 200 }}
+            style={{ width: 220 }}
             placeholder="Поиск по нику..."
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
+          <div style={{ display: "flex", gap: 8 }}>
           {canEdit && (
             <button
               className="btn btn-sm btn-success"
@@ -195,6 +197,7 @@ export default function PlayersPage() {
               {clearMutation.isPending ? "..." : "Сбросить всё"}
             </button>
           )}
+          </div>
         </div>
       </div>
 
