@@ -31,11 +31,13 @@ function PlayerPicker({
   allPlayers,
   onChange,
   onClear,
+  excludeIds = [],
 }: {
   value: string;
   allPlayers: Player[];
   onChange: (id: string) => void;
   onClear: () => void;
+  excludeIds?: string[];
 }) {
   const current = allPlayers.find(p => p.id === value);
   const [search, setSearch] = useState(current?.nick ?? "");
@@ -70,11 +72,12 @@ function PlayerPicker({
     return () => document.removeEventListener("mousedown", onClickOutside);
   }, [value, allPlayers]);
 
+  const available = allPlayers.filter(p => !excludeIds.includes(p.id));
   const filtered = search.trim()
-    ? allPlayers.filter(p =>
+    ? available.filter(p =>
         p.nick.toLowerCase().includes(search.toLowerCase())
       ).slice(0, 10)
-    : allPlayers.slice(0, 10);
+    : available.slice(0, 10);
 
   function select(p: Player) {
     onChange(p.id);
@@ -353,6 +356,7 @@ export default function TeamsPage() {
                 <PlayerPicker
                   value={form[slot]}
                   allPlayers={sortedPlayers}
+                  excludeIds={SLOTS.filter(s => s !== slot).map(s => form[s]).filter(Boolean)}
                   onChange={id => setForm(f => ({ ...f, [slot]: id }))}
                   onClear={() => setForm(f => ({ ...f, [slot]: "" }))}
                 />
@@ -428,6 +432,7 @@ export default function TeamsPage() {
                             <PlayerPicker
                               value={editData[slot]}
                               allPlayers={sortedPlayers}
+                              excludeIds={SLOTS.filter(s => s !== slot).map(s => editData[s]).filter(Boolean)}
                               onChange={id => setEditData(d => d ? { ...d, [slot]: id } : d)}
                               onClear={() => setEditData(d => d ? { ...d, [slot]: "" } : d)}
                             />
