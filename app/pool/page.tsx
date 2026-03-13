@@ -249,6 +249,7 @@ export default function PoolPage() {
                               Активировать
                             </button>
                           )}
+                          <div style={{ width: 1, height: 20, background: "var(--border)", alignSelf: "center", margin: "0 4px" }} />
                           <button
                             className="btn btn-sm"
                             style={{ background: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.2)", color: "#f87171" }}

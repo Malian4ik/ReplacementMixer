@@ -32,6 +32,11 @@ export async function DELETE(
 ) {
   const { id } = await params;
   try {
+    // Nullify FK references in logs first (SQLite has no cascade delete here)
+    await prisma.matchReplacementLog.updateMany({
+      where: { poolEntryId: id },
+      data: { poolEntryId: null },
+    });
     await prisma.replacementPoolEntry.delete({ where: { id } });
     return NextResponse.json({ ok: true });
   } catch (e: unknown) {
