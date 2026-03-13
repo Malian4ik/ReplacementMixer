@@ -111,6 +111,10 @@ export default function PlayersPage() {
       return sortDir === "asc" ? cmp : -cmp;
     });
   const active = players.filter(p => p.isActiveInDatabase).length;
+  const activePlayers = players.filter(p => p.isActiveInDatabase);
+  const avgMmr = activePlayers.length
+    ? Math.round(activePlayers.reduce((sum, p) => sum + p.mmr, 0) / activePlayers.length)
+    : 0;
 
   function startEdit(p: Player) {
     setEditId(p.id);
@@ -147,6 +151,20 @@ export default function PlayersPage() {
         <div>
           <div className="page-title">База игроков</div>
           <div className="page-subtitle">{players.length} всего · {active} активных</div>
+          <div style={{ marginTop: 4, display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{
+              background: "rgba(99,102,241,0.15)",
+              border: "1px solid rgba(99,102,241,0.35)",
+              color: "#a5b4fc",
+              borderRadius: 6,
+              padding: "2px 10px",
+              fontSize: 13,
+              fontWeight: 600,
+              letterSpacing: 0.3,
+            }}>
+              Средний ММР: {avgMmr.toLocaleString()}
+            </span>
+          </div>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <input
