@@ -1,18 +1,20 @@
 @import "tailwindcss";
 
 :root {
-  --bg-base: #080c14;
-  --bg-panel: #0d1220;
-  --bg-card: #111927;
-  --bg-row: #0d1322;
-  --bg-row-hover: #162035;
-  --border: #1e2d45;
-  --border-light: #253650;
-  --accent: #f0a500;
-  --accent-hover: #ffc62d;
-  --text-primary: #e2e8f0;
-  --text-secondary: #8899b0;
-  --text-muted: #3a5070;
+  --bg-base: #060a0f;
+  --bg-panel: #0a0f18;
+  --bg-card: #0e1520;
+  --bg-row: #0b1019;
+  --bg-row-hover: #111a28;
+  --border: #162030;
+  --border-light: #1e2e45;
+  --accent: #00d4e8;
+  --accent-hover: #33dfef;
+  --accent-dim: rgba(0,212,232,0.12);
+  --accent-glow: rgba(0,212,232,0.25);
+  --text-primary: #dce8f0;
+  --text-secondary: #7a90a8;
+  --text-muted: #2e4460;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -21,6 +23,9 @@ html, body { height: 100%; overflow: hidden; }
 
 body {
   background: var(--bg-base);
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(0,212,232,0.06) 0%, transparent 70%),
+    linear-gradient(180deg, rgba(0,212,232,0.02) 0%, transparent 30%);
   color: var(--text-primary);
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
   font-size: 14px;
@@ -81,8 +86,8 @@ body {
 /* Buttons */
 .btn { display: inline-flex; align-items: center; gap: 4px; padding: 5px 12px; border-radius: 5px; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.13s; border: none; white-space: nowrap; }
 .btn:disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
-.btn-accent  { background: var(--accent); color: #000; font-weight: 700; }
-.btn-accent:hover  { background: var(--accent-hover); }
+.btn-accent  { background: var(--accent); color: #060a0f; font-weight: 700; box-shadow: 0 0 12px var(--accent-glow); }
+.btn-accent:hover  { background: var(--accent-hover); box-shadow: 0 0 18px var(--accent-glow); }
 .btn-ghost   { background: rgba(255,255,255,0.05); color: var(--text-primary); border: 1px solid var(--border-light); }
 .btn-ghost:hover   { background: rgba(255,255,255,0.09); }
 .btn-danger  { background: rgba(239,68,68,0.12);   color: #f87171; border: 1px solid rgba(239,68,68,0.25); }
@@ -212,7 +217,7 @@ body {
     right: 0;
     height: 58px;
     background: var(--bg-panel);
-    border-top: 1px solid var(--border);
+    border-top: 1px solid rgba(0,212,232,0.12);
     z-index: 100;
     overflow-x: auto;
     overflow-y: hidden;

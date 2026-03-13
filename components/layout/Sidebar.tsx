@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Gavel, ListOrdered, Users2, ShieldCheck, Trophy, ScrollText, CalendarDays, UserCog } from "lucide-react";
+import { Gavel, ListOrdered, Users2, ShieldCheck, Trophy, ScrollText, CalendarDays, UserCog, Swords } from "lucide-react";
 import { useUser } from "@/components/UserContext";
 
 const nav = [
@@ -35,23 +35,58 @@ export function Sidebar() {
     <>
       {/* Desktop sidebar */}
       <aside className="sidebar-desktop">
-        <div style={{ padding: "20px 18px 16px", borderBottom: "1px solid var(--border)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
+        {/* Logo */}
+        <div style={{
+          padding: "18px 16px 14px",
+          borderBottom: "1px solid var(--border)",
+          background: "linear-gradient(180deg, rgba(0,212,232,0.05) 0%, transparent 100%)",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
             <div style={{
-              width: 28, height: 28, borderRadius: 6,
-              background: "var(--accent)", display: "flex",
-              alignItems: "center", justifyContent: "center",
+              width: 32, height: 32, borderRadius: 7,
+              background: "linear-gradient(135deg, rgba(0,212,232,0.2) 0%, rgba(0,212,232,0.05) 100%)",
+              border: "1px solid rgba(0,212,232,0.35)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              boxShadow: "0 0 10px rgba(0,212,232,0.15)",
             }}>
-              <Trophy size={15} color="#000" />
+              <Swords size={16} color="var(--accent)" />
             </div>
-            <span style={{ fontSize: 16, fontWeight: 800, color: "var(--accent)", letterSpacing: "-0.02em" }}>
-              MixerCup
+            <div>
+              <div style={{
+                fontSize: 14, fontWeight: 900, letterSpacing: "0.06em",
+                color: "var(--accent)", lineHeight: 1, textTransform: "uppercase",
+                textShadow: "0 0 12px rgba(0,212,232,0.4)",
+              }}>
+                MixerCup
+              </div>
+              <div style={{
+                fontSize: 9, fontWeight: 700, letterSpacing: "0.2em",
+                color: "var(--text-secondary)", lineHeight: 1, textTransform: "uppercase",
+                marginTop: 2,
+              }}>
+                Series
+              </div>
+            </div>
+          </div>
+          {/* Dota 2 badge */}
+          <div style={{
+            display: "inline-flex", alignItems: "center", gap: 5,
+            background: "rgba(0,0,0,0.3)",
+            border: "1px solid rgba(0,212,232,0.15)",
+            borderRadius: 4, padding: "3px 8px",
+          }}>
+            <div style={{
+              width: 6, height: 6, borderRadius: "50%",
+              background: "var(--accent)",
+              boxShadow: "0 0 6px var(--accent)",
+            }} />
+            <span style={{ fontSize: 10, color: "var(--text-secondary)", letterSpacing: "0.08em", fontWeight: 600 }}>
+              DOTA 2 TOURNAMENT
             </span>
           </div>
-          <p style={{ fontSize: 11, color: "var(--text-secondary)", paddingLeft: 36, letterSpacing: "0.03em" }}>
-            Replacement Manager
-          </p>
         </div>
+
+        {/* Nav items */}
         <nav style={{ flex: 1, padding: "10px 8px", overflowY: "auto" }}>
           {visibleNav.map(({ href, label, icon: Icon, desc }) => {
             const active = pathname === href || pathname.startsWith(href + "/");
@@ -60,32 +95,37 @@ export function Sidebar() {
                 <div
                   style={{
                     display: "flex", alignItems: "center", gap: 10,
-                    padding: "9px 10px", borderRadius: 6, transition: "all 0.12s",
-                    background: active ? "var(--accent)" : "transparent",
-                    color: active ? "#000" : "var(--text-secondary)",
+                    padding: "9px 10px", borderRadius: 6, transition: "all 0.15s",
+                    background: active ? "rgba(0,212,232,0.12)" : "transparent",
+                    color: active ? "var(--accent)" : "var(--text-secondary)",
+                    borderLeft: active ? "2px solid var(--accent)" : "2px solid transparent",
+                    boxShadow: active ? "inset 0 0 20px rgba(0,212,232,0.05)" : "none",
                   }}
                   onMouseEnter={e => {
-                    if (!active) (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.05)";
-                    (e.currentTarget as HTMLElement).style.color = active ? "#000" : "var(--text-primary)";
+                    if (!active) {
+                      (e.currentTarget as HTMLElement).style.background = "rgba(0,212,232,0.06)";
+                      (e.currentTarget as HTMLElement).style.color = "var(--text-primary)";
+                    }
                   }}
                   onMouseLeave={e => {
-                    if (!active) (e.currentTarget as HTMLElement).style.background = "transparent";
-                    (e.currentTarget as HTMLElement).style.color = active ? "#000" : "var(--text-secondary)";
+                    if (!active) {
+                      (e.currentTarget as HTMLElement).style.background = "transparent";
+                      (e.currentTarget as HTMLElement).style.color = "var(--text-secondary)";
+                    }
                   }}
                 >
                   <Icon size={16} style={{ flexShrink: 0 }} />
                   <div>
                     <div style={{ fontSize: 13, fontWeight: active ? 700 : 500, lineHeight: 1.2 }}>{label}</div>
-                    <div style={{ fontSize: 10, opacity: 0.7, lineHeight: 1 }}>{desc}</div>
+                    <div style={{ fontSize: 10, opacity: 0.6, lineHeight: 1 }}>{desc}</div>
                   </div>
                 </div>
               </Link>
             );
           })}
         </nav>
-        <div style={{
-          padding: "12px 16px", borderTop: "1px solid var(--border)",
-        }}>
+
+        <div style={{ padding: "12px 16px", borderTop: "1px solid var(--border)" }}>
           <UserInfo />
         </div>
       </aside>
@@ -127,6 +167,7 @@ function MobileNav({ pathname }: { pathname: string }) {
               color: active ? "var(--accent)" : "var(--text-muted)",
               borderTop: active ? "2px solid var(--accent)" : "2px solid transparent",
               transition: "color 0.12s",
+              background: active ? "rgba(0,212,232,0.06)" : "transparent",
             }}
           >
             <Icon size={20} />
@@ -153,13 +194,24 @@ function UserInfo() {
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
         <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 130 }}>{user.name}</span>
-        <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 4, background: user.role === "OWNER" ? "rgba(240,165,0,0.2)" : "rgba(96,165,250,0.15)", color: user.role === "OWNER" ? "var(--accent)" : "#60a5fa" }}>{user.role}</span>
+        <span style={{
+          fontSize: 10, padding: "1px 6px", borderRadius: 4,
+          background: user.role === "OWNER" ? "rgba(0,212,232,0.15)" : "rgba(96,165,250,0.12)",
+          color: user.role === "OWNER" ? "var(--accent)" : "#60a5fa",
+          border: user.role === "OWNER" ? "1px solid rgba(0,212,232,0.3)" : "1px solid rgba(96,165,250,0.2)",
+          fontWeight: 700,
+        }}>{user.role}</span>
       </div>
       <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 8, overflow: "hidden", textOverflow: "ellipsis" }}>{user.email}</div>
       <div style={{ display: "flex", gap: 4 }}>
         {user.role === "OWNER" && (
           <Link href="/admin/users" style={{ flex: 1, textDecoration: "none" }}>
-            <button style={{ width: "100%", background: "rgba(240,165,0,0.08)", border: "1px solid rgba(240,165,0,0.2)", color: "var(--accent)", borderRadius: 4, padding: "4px 0", fontSize: 10, cursor: "pointer" }}>
+            <button style={{
+              width: "100%",
+              background: "rgba(0,212,232,0.07)",
+              border: "1px solid rgba(0,212,232,0.2)",
+              color: "var(--accent)", borderRadius: 4, padding: "4px 0", fontSize: 10, cursor: "pointer",
+            }}>
               👥 Пользователи
             </button>
           </Link>

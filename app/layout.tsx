@@ -5,8 +5,8 @@ import { QueryProvider } from "@/components/QueryProvider";
 import { UserProvider } from "@/components/UserContext";
 
 export const metadata: Metadata = {
-  title: "MixerCup — Replacement Manager",
-  description: "Tournament replacement management tool",
+  title: "MixerCup Series — Dota 2 Tournament",
+  description: "MixerCup Series — Dota 2 tournament management",
 };
 
 export const viewport: Viewport = {

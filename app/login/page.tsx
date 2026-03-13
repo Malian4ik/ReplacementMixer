@@ -27,8 +27,12 @@ export default function LoginPage() {
     <div style={pageStyle}>
       <div style={cardStyle}>
         <div style={{ textAlign: "center", marginBottom: 28 }}>
-          <div style={{ fontSize: 28, fontWeight: 800, color: "var(--accent)", marginBottom: 4 }}>MixerCup</div>
-          <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>Replacement Manager</div>
+          <div style={{ fontSize: 26, fontWeight: 900, color: "var(--accent)", letterSpacing: "0.08em", textTransform: "uppercase", textShadow: "0 0 20px rgba(0,212,232,0.4)", lineHeight: 1 }}>MixerCup</div>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.25em", color: "var(--text-secondary)", textTransform: "uppercase", marginTop: 3, marginBottom: 10 }}>Series</div>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "rgba(0,212,232,0.07)", border: "1px solid rgba(0,212,232,0.15)", borderRadius: 4, padding: "3px 10px" }}>
+            <div style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--accent)", boxShadow: "0 0 6px var(--accent)" }} />
+            <span style={{ fontSize: 10, color: "var(--text-secondary)", letterSpacing: "0.08em", fontWeight: 600 }}>DOTA 2 TOURNAMENT</span>
+          </div>
         </div>
         <form onSubmit={handleSubmit}>
           <Field label="Email"><input className="form-input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="your@email.com" required autoFocus /></Field>
@@ -51,4 +55,4 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 const pageStyle: React.CSSProperties = { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg-base)", padding: 16 };
-const cardStyle: React.CSSProperties = { width: "100%", maxWidth: 380, background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 12, padding: "32px 28px" };
+const cardStyle: React.CSSProperties = { width: "100%", maxWidth: 380, background: "var(--bg-card)", border: "1px solid rgba(0,212,232,0.15)", borderRadius: 12, padding: "32px 28px", boxShadow: "0 0 40px rgba(0,212,232,0.06)" };
