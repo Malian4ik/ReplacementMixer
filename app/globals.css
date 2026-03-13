@@ -251,9 +251,14 @@ body {
     padding-bottom: 58px;
   }
 
-  /* Make page headers more compact */
+  /* Make page headers more compact and wrappable on mobile */
   .page-header {
     padding: 12px 16px 10px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .page-header::after {
+    display: none;
   }
   .page-title {
     font-size: 16px;
