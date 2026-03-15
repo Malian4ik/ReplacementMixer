@@ -199,7 +199,7 @@ export default function PoolPage() {
             <table className="tbl">
               <thead>
                 <tr>
-                  {[...["НИК", "MMR", "STAKE", "РОЛЬ", "СТАТУС", "ИСТОЧНИК", "ДОБАВЛЕН В ПУЛ"], ...(canEdit ? ["ДЕЙСТВИЯ"] : [])].map(h => (
+                  {[...["НИК", "MMR", "STAKE", "РОЛЬ", "КОШЕЛЁК", "СТАТУС", "ИСТОЧНИК", "ДОБАВЛЕН В ПУЛ"], ...(canEdit ? ["ДЕЙСТВИЯ"] : [])].map(h => (
                     <th key={h}>{h}</th>
                   ))}
                 </tr>
@@ -218,6 +218,9 @@ export default function PoolPage() {
                     <td>{e.player.mmr.toLocaleString()}</td>
                     <td>{e.player.stake}</td>
                     <td>R{e.player.mainRole}{e.player.flexRole ? `/R${e.player.flexRole}` : ""}</td>
+                    <td style={{ fontSize: 12, color: e.player.wallet ? "var(--text-primary)" : "var(--text-secondary)", fontFamily: "monospace" }}>
+                      {e.player.wallet ?? "—"}
+                    </td>
                     <td><span className={STATUS_BADGE[e.status] ?? "badge badge-gray"}>{e.status}</span></td>
                     <td style={{ color: "var(--text-secondary)", fontSize: 12 }}>
                       {SOURCE_LABELS[e.source] ?? e.source}
