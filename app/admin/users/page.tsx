@@ -1,8 +1,9 @@
 "use client";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useUser } from "@/components/UserContext";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { ConfirmModal } from "@/components/ConfirmModal";
 
 interface AdminUser { id: string; email: string; name: string; role: string; isApproved: number; createdAt: string; }
 
@@ -30,6 +31,8 @@ export default function AdminUsersPage() {
     enabled: user?.role === "OWNER",
   });
 
+  const [confirmState, setConfirmState] = useState<{ message: string; onConfirm: () => void } | null>(null);
+
   const patchMutation = useMutation({
     mutationFn: ({ id, role, isApproved }: { id: string; role?: string; isApproved?: boolean }) =>
       fetch(`/api/admin/users/${id}`, {
@@ -40,7 +43,14 @@ export default function AdminUsersPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-users"] }),
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => fetch(`/api/admin/users/${id}`, { method: "DELETE" }).then(r => r.json()),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-users"] }),
+  });
+
   return (
+    <>
+    {confirmState && <ConfirmModal message={confirmState.message} onConfirm={confirmState.onConfirm} onCancel={() => setConfirmState(null)} />}
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
       <div className="page-header">
         <div className="page-title">Управление пользователями</div>
@@ -76,15 +86,25 @@ export default function AdminUsersPage() {
                     </td>
                     <td style={{ fontSize: 11, color: "var(--text-secondary)" }}>{u.createdAt?.slice(0, 10)}</td>
                     <td>
-                      {!u.isApproved ? (
-                        <button className="btn btn-sm btn-success" onClick={() => patchMutation.mutate({ id: u.id, isApproved: true, role: "JUDGE" })}>
-                          ✓ Одобрить
+                      <div style={{ display: "flex", gap: 6 }}>
+                        {!u.isApproved ? (
+                          <button className="btn btn-sm btn-success" onClick={() => patchMutation.mutate({ id: u.id, isApproved: true, role: "JUDGE" })}>
+                            ✓ Одобрить
+                          </button>
+                        ) : (
+                          <button className="btn btn-sm btn-danger" onClick={() => patchMutation.mutate({ id: u.id, isApproved: false })}>
+                            Заблокировать
+                          </button>
+                        )}
+                        <div style={{ width: 1, height: 20, background: "var(--border)", alignSelf: "center", margin: "0 2px" }} />
+                        <button
+                          className="btn btn-sm"
+                          style={{ background: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.2)", color: "#f87171" }}
+                          onClick={() => setConfirmState({ message: `Удалить пользователя ${u.name} (${u.email})?`, onConfirm: () => { deleteMutation.mutate(u.id); setConfirmState(null); } })}
+                        >
+                          Удалить
                         </button>
-                      ) : (
-                        <button className="btn btn-sm btn-danger" onClick={() => patchMutation.mutate({ id: u.id, isApproved: false })}>
-                          Заблокировать
-                        </button>
-                      )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -97,5 +117,6 @@ export default function AdminUsersPage() {
         )}
       </div>
     </div>
+    </>
   );
 }

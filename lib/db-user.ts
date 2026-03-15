@@ -71,6 +71,11 @@ export async function getAllUsers(): Promise<DbUser[]> {
   return res.rows as unknown as DbUser[];
 }
 
+export async function deleteUser(id: string): Promise<void> {
+  const client = getClient();
+  await client.execute({ sql: `DELETE FROM "User" WHERE id = ?`, args: [id] });
+}
+
 export async function updateUser(id: string, updates: { role?: string; isApproved?: number; name?: string }): Promise<void> {
   const client = getClient();
   const sets: string[] = [];

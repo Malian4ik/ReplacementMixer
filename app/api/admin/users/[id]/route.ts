@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { updateUser } from "@/lib/db-user";
+import { updateUser, deleteUser } from "@/lib/db-user";
 import { getSessionFromCookies } from "@/lib/auth";
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -11,5 +11,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (body.role) updates.role = body.role;
   if (body.isApproved !== undefined) updates.isApproved = body.isApproved ? 1 : 0;
   await updateUser(id, updates);
+  return NextResponse.json({ ok: true });
+}
+
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await getSessionFromCookies();
+  if (!session || session.role !== "OWNER") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const { id } = await params;
+  if (id === session.userId) return NextResponse.json({ error: "Нельзя удалить себя" }, { status: 400 });
+  await deleteUser(id);
   return NextResponse.json({ ok: true });
 }
