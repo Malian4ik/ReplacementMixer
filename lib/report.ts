@@ -53,23 +53,6 @@ export async function buildDailyReport(): Promise<string> {
   }
   lines.push("");
 
-  // ── Full team list ──
-  lines.push("<b>📋 СОСТАВЫ КОМАНД</b>");
-  for (let i = 0; i < sortedByMmr.length; i++) {
-    const t = sortedByMmr[i];
-    const slots = [t.player1Id, t.player2Id, t.player3Id, t.player4Id, t.player5Id];
-    lines.push("");
-    lines.push(`<b>Команда №${i + 1} — ${esc(t.name)}</b> [${t.avgMmr.toLocaleString("ru-RU")} MMR]`);
-    slots.forEach((id, idx) => {
-      if (!id) {
-        lines.push(`${idx + 1}. —`);
-      } else {
-        const p = playerMap.get(id);
-        lines.push(p ? `${idx + 1}. ${esc(p.nick)} — ${p.mmr.toLocaleString("ru-RU")} MMR · R${p.mainRole}` : `${idx + 1}. —`);
-      }
-    });
-  }
-  lines.push("");
 
   // ── Today's logs (last 24h) ──
   const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
