@@ -421,7 +421,14 @@ export default function TeamsPage() {
                         onChange={e => setEditData(d => d ? { ...d, name: e.target.value } : d)}
                       />
                     ) : (
-                      <span style={{ fontWeight: 700, fontSize: 14 }}>{t.name}</span>
+                      <a
+                        href={`/teams/${t.id}`}
+                        style={{ fontWeight: 700, fontSize: 14, color: "inherit", textDecoration: "none" }}
+                        onMouseEnter={e => (e.currentTarget.style.color = "var(--accent)")}
+                        onMouseLeave={e => (e.currentTarget.style.color = "inherit")}
+                      >
+                        {t.name}
+                      </a>
                     )}
                     <span style={{
                       fontSize: 12,
