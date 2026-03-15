@@ -303,6 +303,18 @@ export default function TeamsPage() {
           <div className="page-subtitle">{teams.length} команд · Avg MMR всех: {avgOfTeams.toLocaleString()}</div>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {teams.length > 0 && (
+            <>
+              <div style={{ padding: "6px 14px", background: "rgba(52,211,153,0.08)", border: "1px solid rgba(52,211,153,0.25)", borderRadius: 6, display: "flex", flexDirection: "column", alignItems: "center" }}>
+                <span style={{ fontSize: 10, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Min MMR</span>
+                <span style={{ fontSize: 16, fontWeight: 800, color: "#34d399" }}>{Math.round(minMmr).toLocaleString()}</span>
+              </div>
+              <div style={{ padding: "6px 14px", background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.25)", borderRadius: 6, display: "flex", flexDirection: "column", alignItems: "center" }}>
+                <span style={{ fontSize: 10, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Max MMR</span>
+                <span style={{ fontSize: 16, fontWeight: 800, color: "#f87171" }}>{Math.round(maxMmr).toLocaleString()}</span>
+              </div>
+            </>
+          )}
           {targetAvgMmr > 0 && (
             <div style={{
               padding: "6px 16px",
