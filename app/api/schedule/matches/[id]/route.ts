@@ -30,14 +30,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       );
 
     } else if (action === "postpone") {
-      // Find first available slot after all current matches for both teams
+      // Find the match with the latest endsAt (excluding Postponed and the current match being postponed)
       const lastMatch = await prisma.tournamentMatch.findFirst({
-        where: { status: { not: "Postponed" } },
-        orderBy: { scheduledAt: "desc" },
+        where: { status: { not: "Postponed" }, id: { not: id } },
+        orderBy: { endsAt: "desc" },
       });
 
-      const baseTime = lastMatch ? new Date(lastMatch.endsAt.getTime() + MATCH_MS) : new Date();
-      const newStart = new Date(baseTime);
+      const newStart = lastMatch ? new Date(lastMatch.endsAt.getTime()) : new Date();
       const newEnd = new Date(newStart.getTime() + MATCH_MS);
 
       await prisma.tournamentMatch.update({
