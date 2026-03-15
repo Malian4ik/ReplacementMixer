@@ -4,13 +4,11 @@ import { prisma } from "@/lib/prisma";
 const MATCH_MS = 1.5 * 60 * 60 * 1000;
 const ROUND_MS = 19.5 * 60 * 60 * 1000;
 
-function generateRoundRobin(teams: string[]) {
+function generateRoundRobin(teams: string[], baseMs: number) {
   const n = teams.length;
   const arr = [...teams.slice(1)];
   const fixed = teams[0];
   const matches: { round: number; slot: number; homeTeam: string; awayTeam: string; scheduledAt: Date; endsAt: Date }[] = [];
-
-  const baseMs = Date.UTC(2026, 2, 13, 21, 0, 0); // 2026-03-14 00:00 MSK
 
   for (let r = 0; r < n - 1; r++) {
     const roundStart = baseMs + r * ROUND_MS;
@@ -34,7 +32,12 @@ function generateRoundRobin(teams: string[]) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { teams, clearExisting } = await req.json() as { teams?: string[]; clearExisting?: boolean };
+    const { teams, clearExisting, firstMatchTime } = await req.json() as { teams?: string[]; clearExisting?: boolean; firstMatchTime?: string };
+
+    // firstMatchTime is "YYYY-MM-DDTHH:mm" in MSK (UTC+3); convert to UTC ms
+    const baseMs = firstMatchTime
+      ? new Date(firstMatchTime + ":00+03:00").getTime()
+      : Date.UTC(2026, 2, 13, 21, 0, 0); // fallback: 2026-03-14 00:00 MSK
 
     let teamNames = teams;
     if (!teamNames || teamNames.length === 0) {
@@ -52,7 +55,7 @@ export async function POST(req: NextRequest) {
       if (existing > 0) return NextResponse.json({ error: "Расписание уже существует. Передайте clearExisting: true для пересоздания." }, { status: 409 });
     }
 
-    const matches = generateRoundRobin(teamNames);
+    const matches = generateRoundRobin(teamNames, baseMs);
     await prisma.tournamentMatch.createMany({ data: matches });
 
     return NextResponse.json({ ok: true, created: matches.length, teams: teamNames.length, rounds: teamNames.length - 1 });

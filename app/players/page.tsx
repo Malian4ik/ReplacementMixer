@@ -102,6 +102,14 @@ export default function PlayersPage() {
     },
   });
 
+  const addUnassignedMutation = useMutation({
+    mutationFn: () => fetch("/api/replacement-pool/add-unassigned", { method: "POST" }).then(r => r.json()),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["pool"] });
+      alert(data.message ?? `Добавлено в пул замен: ${data.added}`);
+    },
+  });
+
   const filtered = players
     .filter(p => !search || p.nick.toLowerCase().includes(search.toLowerCase()))
     .sort((a, b) => {
@@ -186,6 +194,17 @@ export default function PlayersPage() {
               onClick={() => setShowAdd(v => !v)}
             >
               {showAdd ? "Отмена" : "+ Добавить"}
+            </button>
+          )}
+          {user?.role === "OWNER" && (
+            <button
+              className="btn btn-sm btn-accent"
+              disabled={addUnassignedMutation.isPending}
+              onClick={() => {
+                setConfirmState({ message: "Добавить всех игроков без команды в пул замен?", onConfirm: () => { addUnassignedMutation.mutate(); setConfirmState(null); } });
+              }}
+            >
+              {addUnassignedMutation.isPending ? "..." : "В пул замен"}
             </button>
           )}
           {user?.role === "OWNER" && (

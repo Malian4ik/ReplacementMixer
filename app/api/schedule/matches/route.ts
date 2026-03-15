@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+export async function DELETE() {
+  try {
+    const result = await prisma.tournamentMatch.deleteMany({});
+    return NextResponse.json({ ok: true, deleted: result.count });
+  } catch (e: unknown) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Error" }, { status: 500 });
+  }
+}
+
 export async function GET(req: NextRequest) {
   try {
     const view = req.nextUrl.searchParams.get("view") ?? "all"; // all | upcoming | live | today

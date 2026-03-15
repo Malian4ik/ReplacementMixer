@@ -141,15 +141,16 @@ function ActionModal({ match, onClose }: { match: TournamentMatch; onClose: () =
   );
 }
 
-function GenerateModal({ onClose }: { onClose: () => void }) {
+function GenerateModal({ onClose, clearMode }: { onClose: () => void; clearMode?: boolean }) {
   const qc = useQueryClient();
-  const [clearExisting, setClearExisting] = useState(false);
+  const [firstMatchTime, setFirstMatchTime] = useState("");
+
   const mutation = useMutation({
     mutationFn: async () => {
       const res = await fetch("/api/schedule/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clearExisting }),
+        body: JSON.stringify({ clearExisting: clearMode, firstMatchTime: firstMatchTime || undefined }),
       });
       if (!res.ok) throw new Error((await res.json()).error);
       return res.json();
@@ -164,18 +165,28 @@ function GenerateModal({ onClose }: { onClose: () => void }) {
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div style={{ background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 10, padding: 20, width: "100%", maxWidth: 380 }}>
-        <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 8 }}>Создать расписание</div>
-        <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 16 }}>
-          Система возьмёт все команды из базы и сгенерирует round-robin расписание. Матчи идут непрерывно 24/7, отдых ~18ч.
+        <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 8 }}>
+          {clearMode ? "Пересоздать расписание" : "Создать расписание"}
         </div>
-        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, marginBottom: 16, cursor: "pointer" }}>
-          <input type="checkbox" checked={clearExisting} onChange={e => setClearExisting(e.target.checked)} />
-          Пересоздать (удалить существующее)
-        </label>
+        <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 16 }}>
+          Система возьмёт все команды из базы и сгенерирует round-robin расписание. Матчи идут непрерывно 24/7, отдых ~18ч между турами.
+        </div>
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 4 }}>Время первого матча (МСК)</div>
+          <input
+            type="datetime-local"
+            value={firstMatchTime}
+            onChange={e => setFirstMatchTime(e.target.value)}
+            style={{
+              width: "100%", background: "rgba(0,0,0,0.4)", border: "1px solid var(--border-light)",
+              color: "var(--text-primary)", borderRadius: 6, padding: "6px 10px", fontSize: 13, outline: "none",
+            }}
+          />
+        </div>
         {mutation.isError && <div style={{ fontSize: 12, color: "#f87171", marginBottom: 8 }}>Ошибка: {(mutation.error as Error).message}</div>}
         <div style={{ display: "flex", gap: 8 }}>
           <button className="btn btn-ghost" style={{ flex: 1, justifyContent: "center" }} onClick={onClose}>Отмена</button>
-          <button className="btn btn-accent" style={{ flex: 2, justifyContent: "center" }} onClick={() => mutation.mutate()} disabled={mutation.isPending}>
+          <button className="btn btn-accent" style={{ flex: 2, justifyContent: "center" }} onClick={() => mutation.mutate()} disabled={mutation.isPending || !firstMatchTime}>
             {mutation.isPending ? "Генерация..." : "Создать"}
           </button>
         </div>
@@ -202,7 +213,12 @@ export default function SchedulePage() {
 
   const [activeMatch, setActiveMatch] = useState<TournamentMatch | null>(null);
   const [showGenerate, setShowGenerate] = useState(false);
+  const [showClear, setShowClear] = useState(false);
   const [filterTeam, setFilterTeam] = useState("");
+  const clearScheduleMutation = useMutation({
+    mutationFn: () => fetch("/api/schedule/matches", { method: "DELETE" }).then(r => r.json()),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["schedule-matches"] }),
+  });
   const [expandedRound, setExpandedRound] = useState<number | null>(null);
 
   const { data: matches = [], isLoading } = useQuery<TournamentMatch[]>({
@@ -246,6 +262,7 @@ export default function SchedulePage() {
     <div style={{ padding: "20px 16px", maxWidth: 900, margin: "0 auto" }}>
       {activeMatch && <ActionModal match={activeMatch} onClose={() => setActiveMatch(null)} />}
       {showGenerate && <GenerateModal onClose={() => setShowGenerate(false)} />}
+      {showClear && <GenerateModal clearMode onClose={() => setShowClear(false)} />}
 
       {/* Header */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 20, gap: 12, flexWrap: "wrap" }}>
@@ -264,10 +281,20 @@ export default function SchedulePage() {
           <button className="btn btn-ghost btn-sm" onClick={() => qc.invalidateQueries({ queryKey: ["schedule-matches"] })}>
             <RefreshCw size={12} /> Обновить
           </button>
-          {isOwner && (
+          {isOwner && totalMatches === 0 && (
             <button className="btn btn-accent btn-sm" onClick={() => setShowGenerate(true)}>
               + Создать расписание
             </button>
+          )}
+          {isOwner && totalMatches > 0 && (
+            <>
+              <button className="btn btn-sm btn-danger" disabled={clearScheduleMutation.isPending} onClick={() => clearScheduleMutation.mutate()}>
+                Очистить
+              </button>
+              <button className="btn btn-sm btn-accent" onClick={() => setShowClear(true)}>
+                Пересоздать
+              </button>
+            </>
           )}
         </div>
       </div>
