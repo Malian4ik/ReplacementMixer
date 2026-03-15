@@ -113,10 +113,16 @@ export default function PoolPage() {
     setSearchResults(await r.json());
   }
 
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 10;
+
   const counts = entries.reduce((acc, e) => {
     acc[e.status] = (acc[e.status] ?? 0) + 1;
     return acc;
   }, {} as Record<string, number>);
+
+  const totalPages = Math.max(1, Math.ceil(entries.length / PAGE_SIZE));
+  const pageEntries = entries.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   // Active player IDs already in pool (for search results)
   const inPoolIds = new Set(entries.filter(e => e.status === "Active").map(e => e.playerId));
@@ -139,7 +145,7 @@ export default function PoolPage() {
             className="form-select"
             style={{ width: 160 }}
             value={statusFilter}
-            onChange={e => setStatusFilter(e.target.value)}
+            onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
           >
             <option value="">Все статусы</option>
             <option value="Active">Active</option>
@@ -205,7 +211,7 @@ export default function PoolPage() {
                 </tr>
               </thead>
               <tbody>
-                {entries.map(e => (
+                {pageEntries.map(e => (
                   <tr key={e.id} style={e.inTeam && e.status === "Active" ? { background: "rgba(239,68,68,0.05)" } : {}}>
                     <td style={{ fontWeight: 600 }}>
                       {e.player.nick}
@@ -270,13 +276,47 @@ export default function PoolPage() {
                 ))}
                 {entries.length === 0 && (
                   <tr>
-                    <td colSpan={8} style={{ textAlign: "center", color: "var(--text-muted)", padding: 32 }}>
+                    <td colSpan={9} style={{ textAlign: "center", color: "var(--text-muted)", padding: 32 }}>
                       Нет записей
                     </td>
                   </tr>
                 )}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "12px 0" }}>
+            <button
+              className="btn btn-ghost btn-sm"
+              disabled={page === 1}
+              onClick={() => setPage(1)}
+            >«</button>
+            <button
+              className="btn btn-ghost btn-sm"
+              disabled={page === 1}
+              onClick={() => setPage(p => p - 1)}
+            >‹</button>
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
+              <button
+                key={p}
+                className={`btn btn-sm ${p === page ? "btn-accent" : "btn-ghost"}`}
+                style={{ minWidth: 32 }}
+                onClick={() => setPage(p)}
+              >{p}</button>
+            ))}
+            <button
+              className="btn btn-ghost btn-sm"
+              disabled={page === totalPages}
+              onClick={() => setPage(p => p + 1)}
+            >›</button>
+            <button
+              className="btn btn-ghost btn-sm"
+              disabled={page === totalPages}
+              onClick={() => setPage(totalPages)}
+            >»</button>
           </div>
         )}
       </div>
