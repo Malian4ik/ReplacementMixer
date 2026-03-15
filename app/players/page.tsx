@@ -29,6 +29,7 @@ export default function PlayersPage() {
   const [editId, setEditId] = useState<string | null>(null);
   const [editData, setEditData] = useState<Partial<Player>>({});
   const [search, setSearch] = useState("");
+  const [walletSearch, setWalletSearch] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [createError, setCreateError] = useState<string | null>(null);
@@ -112,6 +113,7 @@ export default function PlayersPage() {
 
   const filtered = players
     .filter(p => !search || p.nick.toLowerCase().includes(search.toLowerCase()))
+    .filter(p => !walletSearch || (p.wallet ?? "").toLowerCase().includes(walletSearch.toLowerCase()))
     .sort((a, b) => {
       let cmp = 0;
       if (sortKey === "nick") cmp = a.nick.localeCompare(b.nick);
@@ -186,6 +188,13 @@ export default function PlayersPage() {
             placeholder="Поиск по нику..."
             value={search}
             onChange={e => setSearch(e.target.value)}
+          />
+          <input
+            className="form-input"
+            style={{ width: 220 }}
+            placeholder="Поиск по кошельку..."
+            value={walletSearch}
+            onChange={e => setWalletSearch(e.target.value)}
           />
           <div style={{ display: "flex", gap: 8 }}>
           {canEdit && (
