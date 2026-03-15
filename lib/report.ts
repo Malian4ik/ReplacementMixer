@@ -10,13 +10,8 @@ export async function buildDailyReport(): Promise<string> {
   const dateStr = formatMoscow(now).slice(0, 10); // DD.MM.YYYY
 
   // Load data in parallel
-  const [teams, poolEntries, logs] = await Promise.all([
+  const [teams, logs] = await Promise.all([
     prisma.team.findMany({ orderBy: { name: "asc" } }),
-    prisma.replacementPoolEntry.findMany({
-      where: { status: "Active" },
-      include: { player: true },
-      orderBy: { joinTime: "asc" },
-    }),
     prisma.matchReplacementLog.findMany({
       orderBy: { timestamp: "desc" },
       take: 100,
@@ -60,31 +55,18 @@ export async function buildDailyReport(): Promise<string> {
 
   // ── Full team list ──
   lines.push("<b>📋 СОСТАВЫ КОМАНД</b>");
-  for (const t of sortedByMmr) {
+  for (let i = 0; i < sortedByMmr.length; i++) {
+    const t = sortedByMmr[i];
     const slots = [t.player1Id, t.player2Id, t.player3Id, t.player4Id, t.player5Id];
-    const rosterStr = slots
-      .map(id => {
-        if (!id) return "—";
+    lines.push("");
+    lines.push(`<b>Команда №${i + 1} — ${esc(t.name)}</b> [${t.avgMmr.toLocaleString("ru-RU")} MMR]`);
+    slots.forEach((id, idx) => {
+      if (!id) {
+        lines.push(`${idx + 1}. —`);
+      } else {
         const p = playerMap.get(id);
-        return p ? `${esc(p.nick)} (${p.mmr.toLocaleString("ru-RU")} R${p.mainRole})` : "—";
-      })
-      .join(", ");
-    lines.push(`<b>${esc(t.name)}</b> [${t.avgMmr.toLocaleString("ru-RU")} MMR]`);
-    lines.push(`  ${rosterStr}`);
-  }
-  lines.push("");
-
-  // ── Active pool ──
-  lines.push(`<b>🔄 АКТИВНЫЙ ПУЛ ЗАМЕН (${poolEntries.length})</b>`);
-  if (poolEntries.length === 0) {
-    lines.push("Пул пуст");
-  } else {
-    poolEntries.forEach((e, i) => {
-      const p = e.player;
-      const since = formatMoscow(e.joinTime).slice(0, 16);
-      lines.push(
-        `${i + 1}. <b>${esc(p.nick)}</b> — ${p.mmr.toLocaleString("ru-RU")} MMR · R${p.mainRole}${p.flexRole ? `/R${p.flexRole}` : ""} · ставка ${p.stake} · с ${since}`
-      );
+        lines.push(p ? `${idx + 1}. ${esc(p.nick)} — ${p.mmr.toLocaleString("ru-RU")} MMR · R${p.mainRole}` : `${idx + 1}. —`);
+      }
     });
   }
   lines.push("");
