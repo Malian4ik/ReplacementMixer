@@ -30,42 +30,57 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       );
 
     } else if (action === "postpone") {
-      // Find the match with the latest endsAt (excluding Postponed and the current match being postponed)
-      const lastMatch = await prisma.tournamentMatch.findFirst({
-        where: { status: { not: "Postponed" }, id: { not: id } },
-        orderBy: { endsAt: "desc" },
-      });
-
-      const newStart = lastMatch ? new Date(lastMatch.endsAt.getTime()) : new Date();
-      const newEnd = new Date(newStart.getTime() + MATCH_MS);
-
+      // Mark current match as Postponed
       await prisma.tournamentMatch.update({
         where: { id },
-        data: {
-          status: "Postponed",
-          comment: comment ?? "Перенесён",
-          judgeName,
-          updatedAt: new Date(),
-        },
+        data: { status: "Postponed", comment: comment ?? "Перенесён", judgeName, updatedAt: new Date() },
       });
 
-      // Create a new match at the new time
+      // Find all remaining (not yet done) matches in the same round scheduled AFTER this match
+      const subsequent = await prisma.tournamentMatch.findMany({
+        where: {
+          round: match.round,
+          scheduledAt: { gt: match.scheduledAt },
+          status: { notIn: ["Postponed", "Completed", "TechLoss"] },
+        },
+        orderBy: { scheduledAt: "asc" },
+      });
+
+      // Shift each subsequent match earlier by MATCH_MS to fill the gap
+      for (const m of subsequent) {
+        await prisma.tournamentMatch.update({
+          where: { id: m.id },
+          data: {
+            scheduledAt: new Date(m.scheduledAt.getTime() - MATCH_MS),
+            endsAt: new Date(m.endsAt.getTime() - MATCH_MS),
+          },
+        });
+      }
+
+      // Rescheduled match goes to the end of the round:
+      // the last subsequent match shifts by -MATCH_MS, so it ends at original.endsAt - MATCH_MS
+      // the rescheduled match starts right there
+      const rescheduledStart = subsequent.length > 0
+        ? new Date(subsequent[subsequent.length - 1].endsAt.getTime() - MATCH_MS)
+        : new Date(match.scheduledAt.getTime()); // already last in round — keep same slot
+      const rescheduledEnd = new Date(rescheduledStart.getTime() + MATCH_MS);
+
       await prisma.tournamentMatch.create({
         data: {
           round: match.round,
           slot: 999,
           homeTeam: match.homeTeam,
           awayTeam: match.awayTeam,
-          scheduledAt: newStart,
-          endsAt: newEnd,
+          scheduledAt: rescheduledStart,
+          endsAt: rescheduledEnd,
           status: "Scheduled",
-          comment: `Перенесён с тура ${match.round}`,
+          comment: `Перенесён`,
         },
       });
 
       const fmt = (d: Date) => new Intl.DateTimeFormat("ru-RU", { timeZone: "Europe/Moscow", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(d);
       await sendTelegramMessage(
-        `🔄 Перенос матча | Тур ${match.round}\n${match.homeTeam} vs ${match.awayTeam}\nНовое время: ${fmt(newStart)} МСК${judgeName ? `\nСудья: ${judgeName}` : ""}${comment ? `\nПричина: ${comment}` : ""}`
+        `🔄 Перенос матча | Тур ${match.round}\n${match.homeTeam} vs ${match.awayTeam}\nНовое время: ${fmt(rescheduledStart)} МСК${judgeName ? `\nСудья: ${judgeName}` : ""}${comment ? `\nПричина: ${comment}` : ""}`
       );
 
     } else if (action === "complete") {
