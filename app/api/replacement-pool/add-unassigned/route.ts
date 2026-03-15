@@ -8,7 +8,7 @@ export async function POST() {
       select: { player1Id: true, player2Id: true, player3Id: true, player4Id: true, player5Id: true },
     });
     const assignedIds = new Set(
-      teams.flatMap(t => [t.player1Id, t.player2Id, t.player3Id, t.player4Id, t.player5Id].filter(Boolean))
+      teams.flatMap(t => [t.player1Id, t.player2Id, t.player3Id, t.player4Id, t.player5Id].filter((id): id is string => id !== null))
     );
 
     // Get active players not in any team
