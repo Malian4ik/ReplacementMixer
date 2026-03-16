@@ -73,7 +73,7 @@ export default function JudgePage() {
         targetAvgMmr: String(targetAvgMmr),
         maxDeviation: String(MAX_DEVIATION),
       });
-      return fetch(`/api/replacement-queue?${sp}`).then(r => r.json());
+      return fetch(`/api/replacement-queue?${sp}`).then(r => r.json()).then(d => d?.candidates ?? d ?? []);
     },
     enabled: !!teamId && !!replacedPlayerId && !!stats,
   });
