@@ -53,6 +53,7 @@ export default function JudgePage() {
   const [judgeName, setJudgeName] = useState("");
   const [comment, setComment] = useState("");
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
+  const [candidatePage, setCandidatePage] = useState(1);
 
   const selectedTeam = teams.find(t => t.id === teamId);
   const teamPlayers = selectedTeam?.players ?? [];
@@ -62,21 +63,25 @@ export default function JudgePage() {
   const neededRole = isEmptySlot ? emptySlotRole : (replacedPlayer?.mainRole ?? 1);
   const currentTeamAvgMmr = selectedTeam?.avgMmr ?? targetAvgMmr;
 
-  const { data: candidates = [], isLoading: loadingCandidates } = useQuery<CandidateScore[]>({
-    queryKey: ["queue-judge", { teamId, replacedPlayerId, neededRole, targetAvgMmr }],
+  const { data: queueData, isLoading: loadingCandidates } = useQuery({
+    queryKey: ["queue-judge", { teamId, replacedPlayerId, neededRole, targetAvgMmr, candidatePage }],
     queryFn: () => {
-      if (!teamId || !replacedPlayerId) return Promise.resolve([]);
+      if (!teamId || !replacedPlayerId) return Promise.resolve({ candidates: [], totalPages: 1, total: 0, page: 1 });
       const sp = new URLSearchParams({
         teamId,
         replacedPlayerId: isEmptySlot ? "" : replacedPlayerId,
         neededRole: String(neededRole),
         targetAvgMmr: String(targetAvgMmr),
         maxDeviation: String(MAX_DEVIATION),
+        page: String(candidatePage),
       });
-      return fetch(`/api/replacement-queue?${sp}`).then(r => r.json()).then(d => d?.candidates ?? d ?? []);
+      return fetch(`/api/replacement-queue?${sp}`).then(r => r.json());
     },
     enabled: !!teamId && !!replacedPlayerId && !!stats,
   });
+
+  const candidates: CandidateScore[] = queueData?.candidates ?? [];
+  const candidateTotalPages: number = queueData?.totalPages ?? 1;
 
   const selectedCandidate = candidates.find(c => c.poolEntryId === selectedCandidateId);
 
@@ -204,7 +209,7 @@ export default function JudgePage() {
             </div>
             <div style={field}>
               <div className="lbl">Команда</div>
-              <select className="form-select" value={teamId} onChange={e => { setTeamId(e.target.value); setReplacedPlayerId(""); setSelectedCandidateId(null); }}>
+              <select className="form-select" value={teamId} onChange={e => { setTeamId(e.target.value); setReplacedPlayerId(""); setSelectedCandidateId(null); setCandidatePage(1); }}>
                 <option value="">— выбрать —</option>
                 {teams.map(t => <option key={t.id} value={t.id}>{t.name} · {t.avgMmr} MMR</option>)}
               </select>
@@ -219,7 +224,7 @@ export default function JudgePage() {
                       const isSel = replacedPlayerId === p.id;
                       return (
                         <button key={p.id}
-                          onClick={() => { setReplacedPlayerId(isSel ? "" : p.id); setSelectedCandidateId(null); }}
+                          onClick={() => { setReplacedPlayerId(isSel ? "" : p.id); setSelectedCandidateId(null); setCandidatePage(1); }}
                           style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "7px 10px", borderRadius: 5, cursor: "pointer", background: isSel ? "rgba(239,68,68,0.12)" : "rgba(0,0,0,0.2)", border: `1px solid ${isSel ? "#ef4444" : "var(--border)"}`, color: "var(--text-primary)", fontSize: 12, transition: "all 0.1s", textAlign: "left" }}>
                           <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
                             <span style={{ color: "var(--text-muted)", fontSize: 10, minWidth: 10 }}>{i + 1}</span>
@@ -232,7 +237,7 @@ export default function JudgePage() {
                       const isSel = replacedPlayerId === EMPTY_SLOT;
                       return (
                         <button key={`empty-${i}`}
-                          onClick={() => { setReplacedPlayerId(isSel ? "" : EMPTY_SLOT); setSelectedCandidateId(null); }}
+                          onClick={() => { setReplacedPlayerId(isSel ? "" : EMPTY_SLOT); setSelectedCandidateId(null); setCandidatePage(1); }}
                           style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "7px 10px", borderRadius: 5, cursor: "pointer", background: isSel ? "rgba(16,185,129,0.12)" : "rgba(0,0,0,0.1)", border: `1px dashed ${isSel ? "#34d399" : "rgba(255,255,255,0.15)"}`, color: isSel ? "#34d399" : "var(--text-muted)", fontSize: 12, transition: "all 0.1s", textAlign: "left" }}>
                           <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
                             <span style={{ fontSize: 10, minWidth: 10 }}>{i + 1}</span>
@@ -300,7 +305,7 @@ export default function JudgePage() {
         {/* Col 2 */}
         <div style={col}>
           <div style={{ ...colHeader, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span>ТОП-10 кандидатов</span>
+            <span>Кандидаты · стр. {candidatePage}/{candidateTotalPages}</span>
             {replacedPlayerId && <span style={{ color: "var(--text-muted)", fontSize: 10, fontWeight: 400, textTransform: "none" }}>Нужная роль: R{neededRole}</span>}
           </div>
           <div style={colBody}>
@@ -315,6 +320,15 @@ export default function JudgePage() {
               <div style={{ color: "var(--text-secondary)", textAlign: "center", paddingTop: 40 }}>Нет активных кандидатов в пуле</div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                {candidateTotalPages > 1 && (
+                  <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
+                    <button className="btn btn-ghost btn-sm" style={{ flex: 1 }} disabled={candidatePage === 1} onClick={() => setCandidatePage(p => p - 1)}>← Назад</button>
+                    {Array.from({ length: candidateTotalPages }, (_, i) => i + 1).map(p => (
+                      <button key={p} onClick={() => setCandidatePage(p)} style={{ minWidth: 30, padding: "2px 6px", borderRadius: 4, border: p === candidatePage ? "1px solid var(--accent)" : "1px solid rgba(0,212,232,0.2)", background: p === candidatePage ? "rgba(0,212,232,0.15)" : "transparent", color: p === candidatePage ? "var(--accent)" : "var(--text-muted)", fontSize: 11, cursor: "pointer", fontWeight: 700 }}>{p}</button>
+                    ))}
+                    <button className="btn btn-ghost btn-sm" style={{ flex: 1 }} disabled={candidatePage === candidateTotalPages} onClick={() => setCandidatePage(p => p + 1)}>Вперёд →</button>
+                  </div>
+                )}
                 {candidates.map((c, i) => {
                   const isSelected = selectedCandidateId === c.poolEntryId;
                   return (
