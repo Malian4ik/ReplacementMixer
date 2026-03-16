@@ -205,7 +205,7 @@ export default function PoolPage() {
             <table className="tbl">
               <thead>
                 <tr>
-                  {[...["НИК", "MMR", "STAKE", "РОЛЬ", "КОШЕЛЁК", "СТАТУС", "ИСТОЧНИК", "ДОБАВЛЕН В ПУЛ"], ...(canEdit ? ["ДЕЙСТВИЯ"] : [])].map(h => (
+                  {[...["#", "НИК", "MMR", "STAKE", "РОЛЬ", "КОШЕЛЁК", "СТАТУС", "ИСТОЧНИК"], ...(canEdit ? ["ДЕЙСТВИЯ"] : [])].map(h => (
                     <th key={h}>{h}</th>
                   ))}
                 </tr>
@@ -213,6 +213,9 @@ export default function PoolPage() {
               <tbody>
                 {pageEntries.map(e => (
                   <tr key={e.id} style={e.inTeam && e.status === "Active" ? { background: "rgba(239,68,68,0.05)" } : {}}>
+                    <td style={{ color: "var(--text-muted)", fontSize: 12, fontWeight: 700, minWidth: 28 }}>
+                      {entries.indexOf(e) + 1}
+                    </td>
                     <td style={{ fontWeight: 600 }}>
                       {e.player.nick}
                       {e.inTeam && (
@@ -230,9 +233,6 @@ export default function PoolPage() {
                     <td><span className={STATUS_BADGE[e.status] ?? "badge badge-gray"}>{e.status}</span></td>
                     <td style={{ color: "var(--text-secondary)", fontSize: 12 }}>
                       {SOURCE_LABELS[e.source] ?? e.source}
-                    </td>
-                    <td style={{ color: "var(--text-secondary)", fontSize: 12, fontFamily: "monospace" }}>
-                      {formatMoscow(e.joinTime)}
                     </td>
                     {canEdit && (
                       <td>
