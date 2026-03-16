@@ -350,6 +350,7 @@ export default function JudgePage() {
                         <span style={{ color: rfColor(c.roleFit) }}>RF: {c.roleFit >= 1 ? "Осн" : c.roleFit >= 0.8 ? "Флекс" : "Нет"}</span>
                         <span>BF: {c.balanceFactor.toFixed(2)}</span>
                         <span>→ {Math.round(c.teamMmrAfter).toLocaleString()}</span>
+                        {c.wallet && <span style={{ color: "var(--accent)", fontFamily: "monospace" }}>{c.wallet}</span>}
                       </div>
                     </button>
                   );
