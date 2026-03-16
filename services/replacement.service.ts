@@ -61,7 +61,7 @@ export async function assignReplacement(
     },
   });
 
-  // Add replaced player to the end of the pool queue
+  // Add replaced player to the end of the pool queue and reset their night matches
   if (ctx.replacedPlayerId) {
     const existingEntry = await prisma.replacementPoolEntry.findFirst({
       where: {
@@ -70,13 +70,11 @@ export async function assignReplacement(
       },
     });
     if (existingEntry) {
-      // Re-activate existing entry at end of queue
       await prisma.replacementPoolEntry.update({
         where: { id: existingEntry.id },
         data: { status: "Active", assignedTeamId: null, pickedTime: null, replacedPlayerId: null, joinTime: new Date() },
       });
     } else {
-      // Create a new pool entry for the replaced player
       await prisma.replacementPoolEntry.create({
         data: {
           playerId: ctx.replacedPlayerId,
@@ -86,6 +84,11 @@ export async function assignReplacement(
         },
       });
     }
+    // Reset night matches counter when player leaves to replacement pool
+    await prisma.player.update({
+      where: { id: ctx.replacedPlayerId },
+      data: { nightMatches: 0 },
+    });
   }
 
   await createLog({
