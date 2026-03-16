@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { buildBaseQueue, getTop10Candidates, scoreCandidates } from "@/services/queue.service";
+import { buildBaseQueue, scoreCandidates } from "@/services/queue.service";
 import type { ReplacementPoolEntry, RoleNumber } from "@/types";
 
 export async function GET(req: NextRequest) {
@@ -64,16 +64,21 @@ export async function GET(req: NextRequest) {
     orderBy: { joinTime: "asc" },
   });
 
+  const page = Math.max(1, Number(sp.get("page") ?? 1));
+  const PAGE_SIZE = 10;
+
   const entries = (rawEntries as unknown as ReplacementPoolEntry[])
     .filter((e) => !inTeamIds.has(e.playerId));
   const baseQueue = buildBaseQueue(entries);
-  const top10 = getTop10Candidates(baseQueue);
+  const total = baseQueue.length;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const pageCandidates = baseQueue.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  if (top10.length === 0) {
-    return NextResponse.json([]);
+  if (pageCandidates.length === 0) {
+    return NextResponse.json({ candidates: [], total, totalPages, page });
   }
 
-  const scored = scoreCandidates(top10, {
+  const scored = scoreCandidates(pageCandidates, {
     neededRole,
     currentTeamAvgMmr,
     replacedPlayerMmr,
@@ -82,5 +87,5 @@ export async function GET(req: NextRequest) {
     maxDeviation,
   });
 
-  return NextResponse.json(scored);
+  return NextResponse.json({ candidates: scored, total, totalPages, page });
 }

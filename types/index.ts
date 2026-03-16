@@ -50,6 +50,7 @@ export interface CandidateScore {
   nick: string;
   mmr: number;
   stake: number;
+  wallet: string | null;
   mainRole: RoleNumber;
   flexRole: RoleNumber | null;
   stakeNorm: number;

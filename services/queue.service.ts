@@ -67,6 +67,7 @@ export function scoreCandidates(
         poolEntryId: entry.id,
         playerId: p.id,
         nick: p.nick,
+        wallet: p.wallet ?? null,
         mmr: p.mmr,
         stake: p.stake,
         mainRole: p.mainRole as RoleNumber,
