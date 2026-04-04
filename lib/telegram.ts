@@ -3,6 +3,8 @@ const CHAT_ID = process.env.TELEGRAM_CHAT_ID || "-1003817419649";
 const API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
 export async function sendTelegramMessage(text: string, chatId = CHAT_ID): Promise<void> {
+  // Notifications disabled
+  return;
   if (!BOT_TOKEN) throw new Error("TELEGRAM_BOT_TOKEN не настроен");
   if (!chatId) throw new Error("TELEGRAM_CHAT_ID не настроен");
 
