@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import type { Player } from "@/types";
+import type { AdminTournamentSummary, Player } from "@/types";
 import { useUser } from "@/components/UserContext";
 import { ConfirmModal } from "@/components/ConfirmModal";
 
@@ -19,7 +19,7 @@ const inputStyle: React.CSSProperties = {
 
 const EMPTY_FORM = {
   nick: "", mmr: 8000, stake: 20, mainRole: 1 as 1|2|3|4|5,
-  flexRole: "" as "" | 1|2|3|4|5, wallet: "", telegramId: "", nightMatches: 0,
+  flexRole: "" as "" | 1|2|3|4|5, wallet: "", telegramId: "", discordUserId: "", nightMatches: 0,
 };
 
 export default function PlayersPage() {
@@ -33,6 +33,7 @@ export default function PlayersPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [createError, setCreateError] = useState<string | null>(null);
+  const [selectedAdminTournamentId, setSelectedAdminTournamentId] = useState("");
   const [sortKey, setSortKey] = useState<"nick" | "mmr" | "stake" | "isActiveInDatabase" | "createdAt">("nick");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [confirmState, setConfirmState] = useState<{ message: string; onConfirm: () => void } | null>(null);
@@ -45,6 +46,17 @@ export default function PlayersPage() {
   const { data: players = [], isLoading } = useQuery<Player[]>({
     queryKey: ["players"],
     queryFn: () => fetch("/api/players").then(r => r.json()),
+  });
+
+  const { data: adminTournaments = [] } = useQuery<AdminTournamentSummary[]>({
+    queryKey: ["admin-sync-tournaments"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin-sync/tournaments");
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "ADMIN_TOURNAMENTS_LOAD_FAILED");
+      return json;
+    },
+    enabled: user?.role === "OWNER",
   });
 
   const updateMutation = useMutation({
@@ -111,6 +123,23 @@ export default function PlayersPage() {
     },
   });
 
+  const importTournamentMutation = useMutation({
+    mutationFn: async (adminTournamentId: string) => {
+      const res = await fetch("/api/admin-sync/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adminTournamentId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "IMPORT_FAILED");
+      return json;
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["players"] });
+      alert(`Импорт завершен. Создано: ${data.createdPlayers}, обновлено: ${data.updatedPlayers}, ошибок: ${data.failedCount}`);
+    },
+  });
+
   const filtered = players
     .filter(p => !search || p.nick.toLowerCase().includes(search.toLowerCase()))
     .filter(p => !walletSearch || (p.wallet ?? "").toLowerCase().includes(walletSearch.toLowerCase()))
@@ -134,7 +163,7 @@ export default function PlayersPage() {
     setEditData({
       nick: p.nick, mmr: p.mmr, stake: p.stake,
       mainRole: p.mainRole, flexRole: p.flexRole ?? undefined,
-      wallet: p.wallet ?? undefined, telegramId: p.telegramId ?? undefined,
+      wallet: p.wallet ?? undefined, telegramId: p.telegramId ?? undefined, discordUserId: p.discordUserId ?? undefined,
       nightMatches: p.nightMatches, isActiveInDatabase: p.isActiveInDatabase,
     });
   }
@@ -153,6 +182,7 @@ export default function PlayersPage() {
       flexRole: form.flexRole !== "" ? Number(form.flexRole) : null,
       wallet: form.wallet || null,
       telegramId: form.telegramId || null,
+      discordUserId: form.discordUserId || null,
       nightMatches: Number(form.nightMatches),
     });
   }
@@ -217,6 +247,30 @@ export default function PlayersPage() {
             </button>
           )}
           {user?.role === "OWNER" && (
+            <>
+              <select
+                className="form-select"
+                style={{ width: 220 }}
+                value={selectedAdminTournamentId}
+                onChange={e => setSelectedAdminTournamentId(e.target.value)}
+              >
+                <option value="">Выбрать турнир</option>
+                {adminTournaments.map(tournament => (
+                  <option key={tournament.adminTournamentId} value={tournament.adminTournamentId}>
+                    {tournament.name} · {tournament.status ?? "Unknown"}
+                  </option>
+                ))}
+              </select>
+              <button
+                className="btn btn-sm btn-blue"
+                disabled={!selectedAdminTournamentId || importTournamentMutation.isPending}
+                onClick={() => importTournamentMutation.mutate(selectedAdminTournamentId)}
+              >
+                {importTournamentMutation.isPending ? "Импорт..." : "Импортировать турнир"}
+              </button>
+            </>
+          )}
+          {user?.role === "OWNER" && (
             <button
               className="btn btn-sm btn-danger"
               disabled={clearMutation.isPending}
@@ -276,6 +330,10 @@ export default function PlayersPage() {
             <input style={{ ...inputStyle, width: 100 }} value={form.wallet} onChange={e => setForm(f => ({ ...f, wallet: e.target.value }))} />
           </div>
           <div>
+            <div className="lbl">Discord ID</div>
+            <input style={{ ...inputStyle, width: 120 }} value={form.discordUserId} placeholder="1234567890" onChange={e => setForm(f => ({ ...f, discordUserId: e.target.value }))} />
+          </div>
+          <div>
             <div className="lbl">Ночей</div>
             <input type="number" style={{ ...inputStyle, width: 55 }} value={form.nightMatches} onChange={e => setForm(f => ({ ...f, nightMatches: Number(e.target.value) }))} />
           </div>
@@ -301,7 +359,7 @@ export default function PlayersPage() {
             <table className="tbl">
               <thead>
                 <tr>
-                  {(["НИК", "MMR", "STAKE", "РОЛЬ", "FLEX", "TELEGRAM", "КОШЕЛЁК", "НОЧИ", "СТАТУС", "ДОБАВЛЕН"] as const).map(h => {
+                  {(["НИК", "MMR", "STAKE", "РОЛЬ", "FLEX", "TELEGRAM", "DISCORD", "КОШЕЛЁК", "НОЧИ", "СТАТУС", "ДОБАВЛЕН"] as const).map(h => {
                     const key = h === "НИК" ? "nick" : h === "MMR" ? "mmr" : h === "STAKE" ? "stake" : h === "СТАТУС" ? "isActiveInDatabase" : h === "ДОБАВЛЕН" ? "createdAt" : null;
                     const active = key && sortKey === key;
                     return (
@@ -313,6 +371,7 @@ export default function PlayersPage() {
                       </th>
                     );
                   })}
+                  <th>ИСТОРИЯ</th>
                   {canEdit && <th>ДЕЙСТВИЯ</th>}
                 </tr>
               </thead>
@@ -336,6 +395,7 @@ export default function PlayersPage() {
                           </select>
                         </td>
                         <td><input style={{ ...inputStyle, width: 100 }} value={editData.telegramId ?? ""} onChange={e => set("telegramId", e.target.value || null as unknown as string)} /></td>
+                        <td><input style={{ ...inputStyle, width: 110 }} value={editData.discordUserId ?? ""} onChange={e => set("discordUserId", e.target.value || null as unknown as string)} /></td>
                         <td><input style={{ ...inputStyle, width: 100 }} value={editData.wallet ?? ""} onChange={e => set("wallet", e.target.value || null as unknown as string)} /></td>
                         <td><input type="number" style={{ ...inputStyle, width: 60 }} value={editData.nightMatches ?? 0} onChange={e => set("nightMatches", Number(e.target.value))} /></td>
                         <td>
@@ -346,6 +406,15 @@ export default function PlayersPage() {
                         </td>
                         <td style={{ color: "var(--text-muted)", fontSize: 11 }}>
                           {p.createdAt ? new Date(p.createdAt).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Moscow" }) : "—"}
+                        </td>
+                        <td>
+                          {p.adminParticipationCount > 0 ? (
+                            <span className={p.hasPlayedBefore ? "badge badge-green" : "badge badge-blue"}>
+                              {p.hasPlayedBefore ? "Играл ранее" : "New"}
+                            </span>
+                          ) : (
+                            <span style={{ color: "var(--text-muted)", fontSize: 11 }}>—</span>
+                          )}
                         </td>
                         <td>
                           <div style={{ display: "flex", gap: 4 }}>
@@ -366,6 +435,7 @@ export default function PlayersPage() {
                         <td><span style={{ color: "var(--accent)" }}>R{p.mainRole}</span></td>
                         <td style={{ color: "var(--text-secondary)" }}>{p.flexRole ? `R${p.flexRole}` : "—"}</td>
                         <td style={{ color: "var(--text-secondary)", fontSize: 12 }}>{p.telegramId ?? "—"}</td>
+                        <td style={{ color: "var(--text-secondary)", fontSize: 12, fontFamily: "monospace" }}>{p.discordUserId ?? "—"}</td>
                         <td style={{ color: "var(--text-secondary)", fontSize: 12, fontFamily: "monospace" }}>{p.wallet ?? "—"}</td>
                         <td>{p.nightMatches}</td>
                         <td>
@@ -375,6 +445,20 @@ export default function PlayersPage() {
                         </td>
                         <td style={{ color: "var(--text-secondary)", fontSize: 11, whiteSpace: "nowrap" }}>
                           {p.createdAt ? new Date(p.createdAt).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Moscow" }) : "—"}
+                        </td>
+                        <td>
+                          {p.adminParticipationCount > 0 ? (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                              <span className={p.hasPlayedBefore ? "badge badge-green" : "badge badge-blue"}>
+                                {p.hasPlayedBefore ? "Играл ранее" : "New"}
+                              </span>
+                              <span style={{ color: "var(--text-secondary)", fontSize: 11 }}>
+                                Турниров: {p.adminParticipationCount}
+                              </span>
+                            </div>
+                          ) : (
+                            <span style={{ color: "var(--text-muted)", fontSize: 11 }}>—</span>
+                          )}
                         </td>
                         <td>
                           {canEdit && (
@@ -397,7 +481,7 @@ export default function PlayersPage() {
                 ))}
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={10} style={{ textAlign: "center", color: "var(--text-muted)", padding: 32 }}>
+                    <td colSpan={canEdit ? 13 : 12} style={{ textAlign: "center", color: "var(--text-muted)", padding: 32 }}>
                       {search ? "Игроки не найдены" : "Нет игроков"}
                     </td>
                   </tr>

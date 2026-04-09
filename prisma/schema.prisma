@@ -17,13 +17,25 @@ model Player {
   wallet             String?
   nightMatches       Int      @default(0)
   telegramId         String?
+  discordUserId      String?  @unique
+  adminUserId        String?  @unique
+  adminParticipationCount Int @default(0)
+  hasPlayedBefore    Boolean  @default(false)
+  lastImportedTournamentName String?
+  lastSyncedAt       DateTime?
   isActiveInDatabase Boolean  @default(true)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
-  poolEntries         ReplacementPoolEntry[]
-  replacedInLogs      MatchReplacementLog[]  @relation("ReplacedPlayer")
-  replacementInLogs   MatchReplacementLog[]  @relation("ReplacementPlayer")
+  poolEntries               ReplacementPoolEntry[]
+  replacedInLogs            MatchReplacementLog[]     @relation("ReplacedPlayer")
+  replacementInLogs         MatchReplacementLog[]     @relation("ReplacementPlayer")
+  replacementSearchRecommendations ReplacementSearchSession[] @relation("SearchRecommendedPlayer")
+  replacementSearchChoices         ReplacementSearchSession[] @relation("SearchSelectedPlayer")
+  replacementSearchTargets  ReplacementSearchSession[] @relation("SearchReplacedPlayer")
+  replacementWaveCandidates ReplacementWaveCandidate[]
+  replacementWaveResponses  ReplacementWaveResponse[]
+  tournamentParticipations  PlayerTournamentParticipation[]
 }
 
 model Team {
@@ -37,8 +49,9 @@ model Team {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  poolEntries ReplacementPoolEntry[]
-  logs        MatchReplacementLog[]
+  poolEntries         ReplacementPoolEntry[]
+  logs                MatchReplacementLog[]
+  replacementSearches ReplacementSearchSession[]
 }
 
 model ReplacementPoolEntry {
@@ -53,9 +66,11 @@ model ReplacementPoolEntry {
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
 
-  player       Player  @relation(fields: [playerId], references: [id])
-  assignedTeam Team?   @relation(fields: [assignedTeamId], references: [id])
-  logs         MatchReplacementLog[]
+  player                    Player                     @relation(fields: [playerId], references: [id])
+  assignedTeam              Team?                      @relation(fields: [assignedTeamId], references: [id])
+  logs                      MatchReplacementLog[]
+  replacementWaveCandidates ReplacementWaveCandidate[]
+  selectedInSearchSessions  ReplacementSearchSession[]
 }
 
 model TournamentMatch {
@@ -95,8 +110,199 @@ model MatchReplacementLog {
   poolEntryId           String?
   createdAt             DateTime @default(now())
 
-  team              Team?                @relation(fields: [teamId], references: [id])
-  replacedPlayer    Player?              @relation("ReplacedPlayer", fields: [replacedPlayerId], references: [id])
-  replacementPlayer Player?              @relation("ReplacementPlayer", fields: [replacementPlayerId], references: [id])
+  team              Team?                 @relation(fields: [teamId], references: [id])
+  replacedPlayer    Player?               @relation("ReplacedPlayer", fields: [replacedPlayerId], references: [id])
+  replacementPlayer Player?               @relation("ReplacementPlayer", fields: [replacementPlayerId], references: [id])
   poolEntry         ReplacementPoolEntry? @relation(fields: [poolEntryId], references: [id])
+}
+
+model ReplacementSearchSession {
+  id                      String    @id @default(cuid())
+  teamId                  String
+  teamName                String
+  matchId                 String?
+  neededRole              Int
+  replacedPlayerId        String?
+  replacedPlayerNick      String?
+  replacedPlayerMmr       Int?
+  currentTeamAvgMmr       Int
+  currentPlayerCount      Int
+  targetAvgMmr            Int
+  maxDeviation            Int
+  status                  String    @default("IN_PROGRESS")
+  currentWaveNumber       Int       @default(0)
+  failureReason           String?
+  triggeredByDiscordUserId String?
+  triggeredByName         String?
+  discordChannelId        String
+  recommendationWaveId    String?
+  recommendedPlayerId     String?
+  recommendedPoolEntryId  String?
+  recommendationRank      Int?
+  recommendationScore     Float?
+  recommendationReadyAt   DateTime?
+  selectedPlayerId        String?
+  selectedPoolEntryId     String?
+  selectedAt              DateTime?
+  startedAt               DateTime  @default(now())
+  finishedAt              DateTime?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  team              Team                 @relation(fields: [teamId], references: [id])
+  replacedPlayer    Player?              @relation("SearchReplacedPlayer", fields: [replacedPlayerId], references: [id])
+  recommendedPlayer Player?              @relation("SearchRecommendedPlayer", fields: [recommendedPlayerId], references: [id])
+  selectedPlayer    Player?              @relation("SearchSelectedPlayer", fields: [selectedPlayerId], references: [id])
+  selectedPoolEntry ReplacementPoolEntry? @relation(fields: [selectedPoolEntryId], references: [id])
+  waves             ReplacementSearchWave[]
+  candidates        ReplacementWaveCandidate[]
+  responses         ReplacementWaveResponse[]
+
+  @@index([teamId, status])
+  @@index([status, updatedAt])
+}
+
+model ReplacementSearchWave {
+  id                String    @id @default(cuid())
+  sessionId         String
+  waveNumber        Int
+  discordChannelId  String
+  discordMessageId  String?
+  status            String    @default("ACTIVE")
+  completionReason  String?
+  startedAt         DateTime  @default(now())
+  expiresAt         DateTime
+  processingStartedAt DateTime?
+  completedAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  session    ReplacementSearchSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  candidates ReplacementWaveCandidate[]
+  responses  ReplacementWaveResponse[]
+
+  @@unique([sessionId, waveNumber])
+  @@index([status, expiresAt])
+}
+
+model ReplacementWaveCandidate {
+  id             String    @id @default(cuid())
+  sessionId      String
+  waveId         String
+  playerId       String
+  poolEntryId    String
+  discordUserId  String
+  queuePosition  Int
+  wasPinged      Boolean   @default(true)
+  respondedReady Boolean   @default(false)
+  readyAt        DateTime?
+  wasOffered     Boolean   @default(false)
+  offeredAt      DateTime?
+  rejectedAt     DateTime?
+  wasSelected    Boolean   @default(false)
+  selectionRank  Int?
+  score          Float?
+  baseScore      Float?
+  stakeNorm      Float?
+  mmrNorm        Float?
+  roleFit        Float?
+  balanceFactor  Float?
+  teamMmrAfter   Float?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  session   ReplacementSearchSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  wave      ReplacementSearchWave    @relation(fields: [waveId], references: [id], onDelete: Cascade)
+  player    Player                   @relation(fields: [playerId], references: [id])
+  poolEntry ReplacementPoolEntry     @relation(fields: [poolEntryId], references: [id])
+  responses ReplacementWaveResponse[]
+
+  @@unique([sessionId, playerId])
+  @@unique([waveId, playerId])
+  @@index([waveId, queuePosition])
+}
+
+model ReplacementWaveResponse {
+  id             String    @id @default(cuid())
+  sessionId      String
+  waveId         String
+  candidateId    String
+  playerId       String
+  discordUserId  String
+  interactionId  String?
+  readyAt        DateTime  @default(now())
+  createdAt      DateTime  @default(now())
+
+  session   ReplacementSearchSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  wave      ReplacementSearchWave    @relation(fields: [waveId], references: [id], onDelete: Cascade)
+  candidate ReplacementWaveCandidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  player    Player                   @relation(fields: [playerId], references: [id])
+
+  @@unique([waveId, discordUserId])
+  @@index([sessionId, readyAt])
+}
+
+model AdminTournament {
+  id                String   @id @default(cuid())
+  adminTournamentId String   @unique
+  name              String
+  type              String?
+  status            String?
+  applicationTime   DateTime?
+  startTime         DateTime?
+  endTime           DateTime?
+  importedAt        DateTime @default(now())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  participations PlayerTournamentParticipation[]
+  syncRuns       AdminTournamentSyncRun[]
+}
+
+model PlayerTournamentParticipation {
+  id                String   @id @default(cuid())
+  playerId          String
+  tournamentId      String
+  adminParticipantId String  @unique
+  adminUserId       String?
+  nicknameSnapshot  String
+  status            String?
+  queuePosition     Int?
+  qualifyRating     Int?
+  bidSize           Float?
+  balance           Float?
+  participationCount Int?
+  playedBefore      Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  player      Player          @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  tournament  AdminTournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+
+  @@unique([playerId, tournamentId])
+  @@index([tournamentId, status])
+}
+
+model AdminTournamentSyncRun {
+  id                  String   @id @default(cuid())
+  tournamentId        String?
+  adminTournamentId   String
+  tournamentName      String
+  status              String
+  createdPlayers      Int      @default(0)
+  updatedPlayers      Int      @default(0)
+  matchedByAdminUserId Int     @default(0)
+  matchedByWallet     Int      @default(0)
+  matchedByDiscordId  Int      @default(0)
+  matchedByFallback   Int      @default(0)
+  failedCount         Int      @default(0)
+  errorSummary        String?
+  startedAt           DateTime @default(now())
+  finishedAt          DateTime?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tournament AdminTournament? @relation(fields: [tournamentId], references: [id], onDelete: SetNull)
+
+  @@index([adminTournamentId, startedAt])
 }

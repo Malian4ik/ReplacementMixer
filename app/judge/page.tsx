@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { Team, CandidateScore, ReplacementPoolEntry } from "@/types";
 import { useUser } from "@/components/UserContext";
@@ -22,11 +22,37 @@ function rfColor(rf: number) {
   return "#f87171";
 }
 
+interface ActiveSearchSession {
+  id: string;
+  status: string;
+  currentWaveNumber: number;
+  recommendedPlayerId: string | null;
+  recommendedPoolEntryId: string | null;
+  recommendationRank: number | null;
+  recommendationScore: number | null;
+  recommendedPlayer?: {
+    id: string;
+    nick: string;
+    mmr: number;
+    mainRole: number;
+    flexRole: number | null;
+  } | null;
+}
+
 
 export default function JudgePage() {
   const qc = useQueryClient();
   const { user } = useUser();
   const canEdit = user?.role === "OWNER" || user?.role === "JUDGE";
+  const [matchId, setMatchId] = useState("");
+  const [teamId, setTeamId] = useState("");
+  // "" = nothing selected, EMPTY_SLOT = empty slot selected, else = player id
+  const [replacedPlayerId, setReplacedPlayerId] = useState("");
+  const [emptySlotRole, setEmptySlotRole] = useState<number>(1);
+  const [judgeName, setJudgeName] = useState("");
+  const [comment, setComment] = useState("");
+  const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
+  const [candidatePage, setCandidatePage] = useState(1);
 
   const { data: teams = [] } = useQuery<Team[]>({
     queryKey: ["teams"],
@@ -43,17 +69,19 @@ export default function JudgePage() {
     queryFn: () => fetch("/api/stats").then(r => r.json()),
   });
 
-  const targetAvgMmr = stats?.targetAvgMmr ?? 9000;
+  const { data: activeSearchSession } = useQuery<ActiveSearchSession | null>({
+    queryKey: ["discord-replacement-search", teamId],
+    queryFn: async () => {
+      if (!teamId) return null;
+      const res = await fetch(`/api/discord/replacement-search?teamId=${encodeURIComponent(teamId)}`);
+      if (!res.ok) throw new Error((await res.json()).error ?? "SEARCH_LOAD_FAILED");
+      return res.json();
+    },
+    enabled: !!teamId,
+    refetchInterval: 5000,
+  });
 
-  const [matchId, setMatchId] = useState("");
-  const [teamId, setTeamId] = useState("");
-  // "" = nothing selected, EMPTY_SLOT = empty slot selected, else = player id
-  const [replacedPlayerId, setReplacedPlayerId] = useState("");
-  const [emptySlotRole, setEmptySlotRole] = useState<number>(1);
-  const [judgeName, setJudgeName] = useState("");
-  const [comment, setComment] = useState("");
-  const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
-  const [candidatePage, setCandidatePage] = useState(1);
+  const targetAvgMmr = stats?.targetAvgMmr ?? 9000;
 
   const selectedTeam = teams.find(t => t.id === teamId);
   const teamPlayers = selectedTeam?.players ?? [];
@@ -120,7 +148,71 @@ export default function JudgePage() {
     },
   });
 
-  const col: React.CSSProperties = {
+  const searchMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedTeam) throw new Error("РќРµ РІС‹Р±СЂР°РЅР° РєРѕРјР°РЅРґР°");
+      if (!judgeName.trim()) throw new Error("РЈРєР°Р¶РёС‚Рµ РёРјСЏ СЃСѓРґСЊРё");
+      if (!replacedPlayerId) throw new Error("Р’С‹Р±РµСЂРёС‚Рµ РёРіСЂРѕРєР° РёР»Рё РїСѓСЃС‚РѕР№ СЃР»РѕС‚");
+      const res = await fetch("/api/discord/replacement-search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          teamId,
+          replacedPlayerId: isEmptySlot ? undefined : replacedPlayerId,
+          neededRole,
+          matchId: matchId || undefined,
+          comment: comment || undefined,
+          judgeName: judgeName.trim(),
+        }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error);
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["discord-replacement-search", teamId] });
+    },
+  });
+
+  const confirmSearchMutation = useMutation({
+    mutationFn: async (sessionId: string) => {
+      const res = await fetch(`/api/discord/replacement-search/${sessionId}/confirm`, { method: "POST" });
+      if (!res.ok) throw new Error((await res.json()).error);
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["discord-replacement-search", teamId] });
+      qc.invalidateQueries({ queryKey: ["pool"] });
+      qc.invalidateQueries({ queryKey: ["teams"] });
+      qc.invalidateQueries({ queryKey: ["logs"] });
+      qc.invalidateQueries({ queryKey: ["stats"] });
+      setSelectedCandidateId(null);
+      setReplacedPlayerId("");
+    },
+  });
+
+  const nextCandidateMutation = useMutation({
+    mutationFn: async (sessionId: string) => {
+      const res = await fetch(`/api/discord/replacement-search/${sessionId}/next`, { method: "POST" });
+      if (!res.ok) throw new Error((await res.json()).error);
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["discord-replacement-search", teamId] });
+    },
+  });
+
+  const cancelSearchMutation = useMutation({
+    mutationFn: async (sessionId: string) => {
+      const res = await fetch(`/api/discord/replacement-search/${sessionId}/cancel`, { method: "POST" });
+      if (!res.ok) throw new Error((await res.json()).error);
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["discord-replacement-search", teamId] });
+    },
+  });
+
+  const col: CSSProperties = {
     display: "flex", flexDirection: "column",
     background: "var(--bg-card)",
     border: "1px solid var(--border)",
@@ -128,15 +220,15 @@ export default function JudgePage() {
     overflow: "hidden",
     minWidth: 0,
   };
-  const colHeader: React.CSSProperties = {
+  const colHeader: CSSProperties = {
     padding: "10px 14px",
     borderBottom: "1px solid var(--border)",
     fontSize: 11, fontWeight: 700,
     textTransform: "uppercase", letterSpacing: "0.07em",
     color: "var(--text-secondary)", flexShrink: 0,
   };
-  const colBody: React.CSSProperties = { flex: 1, overflow: "auto", padding: "12px 14px" };
-  const field: React.CSSProperties = { marginBottom: 10 };
+  const colBody: CSSProperties = { flex: 1, overflow: "auto", padding: "12px 14px" };
+  const field: CSSProperties = { marginBottom: 10 };
 
   if (!canEdit) {
     return (
@@ -278,6 +370,59 @@ export default function JudgePage() {
             <div style={field}>
               <div className="lbl">Комментарий</div>
               <textarea className="form-input" value={comment} onChange={e => setComment(e.target.value)} rows={2} placeholder="Опционально" style={{ resize: "none" }} />
+            </div>
+
+            <div style={{ padding: "10px", borderRadius: 6, border: "1px solid var(--border)", background: "rgba(255,255,255,0.03)", marginBottom: 10 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-secondary)", marginBottom: 8 }}>
+                Discord-поиск замены
+              </div>
+              {!activeSearchSession ? (
+                <>
+                  <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 10 }}>
+                    Судья запускает поиск с сайта, игроки отвечают в Discord, а финальное подтверждение замены остаётся здесь.
+                  </div>
+                  <button className="btn btn-blue" style={{ width: "100%", justifyContent: "center" }} disabled={!teamId || !replacedPlayerId || !judgeName.trim() || searchMutation.isPending} onClick={() => searchMutation.mutate()}>
+                    {searchMutation.isPending ? "Запускаю поиск..." : "Запустить поиск в Discord"}
+                  </button>
+                  {searchMutation.isError && <div style={{ color: "#f87171", fontSize: 12, marginTop: 6 }}>Ошибка: {(searchMutation.error as Error).message}</div>}
+                </>
+              ) : (
+                <>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: "var(--text-secondary)", marginBottom: 10 }}>
+                    <span>Статус: <span style={{ color: activeSearchSession.status === "WAITING_CONFIRMATION" ? "#34d399" : "var(--accent)", fontWeight: 700 }}>{activeSearchSession.status}</span></span>
+                    <span>Текущая волна: #{activeSearchSession.currentWaveNumber}</span>
+                  </div>
+                  {activeSearchSession.status === "WAITING_CONFIRMATION" && activeSearchSession.recommendedPlayer && (
+                    <div style={{ padding: "8px 10px", background: "rgba(16,185,129,0.07)", border: "1px solid rgba(16,185,129,0.25)", borderRadius: 6, marginBottom: 10, fontSize: 12 }}>
+                      <div style={{ fontWeight: 700, color: "#34d399", marginBottom: 4 }}>Рекомендован кандидат: {activeSearchSession.recommendedPlayer.nick}</div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 2, color: "var(--text-secondary)" }}>
+                        <span>MMR: {activeSearchSession.recommendedPlayer.mmr.toLocaleString()} · R{activeSearchSession.recommendedPlayer.mainRole}{activeSearchSession.recommendedPlayer.flexRole ? `/R${activeSearchSession.recommendedPlayer.flexRole}` : ""}</span>
+                        <span>Rank: #{activeSearchSession.recommendationRank ?? "—"} · SubScore: <span style={{ color: "#34d399", fontFamily: "monospace" }}>{(activeSearchSession.recommendationScore ?? 0).toFixed(4)}</span></span>
+                      </div>
+                    </div>
+                  )}
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {activeSearchSession.status === "WAITING_CONFIRMATION" && (
+                      <>
+                        <button className="btn btn-success" style={{ flex: 1, justifyContent: "center" }} disabled={confirmSearchMutation.isPending} onClick={() => confirmSearchMutation.mutate(activeSearchSession.id)}>
+                          {confirmSearchMutation.isPending ? "Подтверждаю..." : "Подтвердить замену"}
+                        </button>
+                        <button className="btn btn-ghost" style={{ flex: 1, justifyContent: "center" }} disabled={nextCandidateMutation.isPending} onClick={() => nextCandidateMutation.mutate(activeSearchSession.id)}>
+                          {nextCandidateMutation.isPending ? "Ищу дальше..." : "Следующий кандидат"}
+                        </button>
+                      </>
+                    )}
+                    <button className="btn btn-danger" style={{ width: "100%", justifyContent: "center" }} disabled={cancelSearchMutation.isPending} onClick={() => cancelSearchMutation.mutate(activeSearchSession.id)}>
+                      {cancelSearchMutation.isPending ? "Отменяю..." : "Отменить поиск"}
+                    </button>
+                  </div>
+                  {(confirmSearchMutation.isError || nextCandidateMutation.isError || cancelSearchMutation.isError) && (
+                    <div style={{ color: "#f87171", fontSize: 12, marginTop: 6 }}>
+                      Ошибка: {((confirmSearchMutation.error || nextCandidateMutation.error || cancelSearchMutation.error) as Error)?.message}
+                    </div>
+                  )}
+                </>
+              )}
             </div>
 
             {selectedCandidate && (

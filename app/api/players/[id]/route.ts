@@ -9,6 +9,8 @@ const UpdatePlayerSchema = z.object({
   mainRole: z.number().int().min(1).max(5).optional(),
   flexRole: z.number().int().min(1).max(5).nullable().optional(),
   telegramId: z.string().nullable().optional(),
+  discordUserId: z.string().nullable().optional(),
+  adminUserId: z.string().nullable().optional(),
   wallet: z.string().nullable().optional(),
   nightMatches: z.number().int().min(0).optional(),
   isActiveInDatabase: z.boolean().optional(),

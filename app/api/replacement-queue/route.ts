@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { buildBaseQueue, scoreCandidates } from "@/services/queue.service";
+import { getTargetAverageMmr } from "@/services/team-balance.service";
 import type { ReplacementPoolEntry, RoleNumber } from "@/types";
 
 export async function GET(req: NextRequest) {
@@ -13,16 +14,7 @@ export async function GET(req: NextRequest) {
   // Auto-calculate targetAvgMmr from all teams if not provided
   let targetAvgMmr = sp.get("targetAvgMmr") ? Number(sp.get("targetAvgMmr")) : 0;
   if (!targetAvgMmr) {
-    const allTeams = await prisma.team.findMany();
-    if (allTeams.length > 0) {
-      const pids = [...new Set(allTeams.flatMap(t =>
-        [t.player1Id, t.player2Id, t.player3Id, t.player4Id, t.player5Id].filter(Boolean)
-      ))] as string[];
-      const ps = await prisma.player.findMany({ where: { id: { in: pids } } });
-      targetAvgMmr = ps.length ? Math.round(ps.reduce((s, p) => s + p.mmr, 0) / ps.length) : 9000;
-    } else {
-      targetAvgMmr = 9000;
-    }
+    targetAvgMmr = (await getTargetAverageMmr()) || 9000;
   }
 
   let currentTeamAvgMmr = targetAvgMmr;

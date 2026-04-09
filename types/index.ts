@@ -8,11 +8,27 @@ export interface Player {
   mainRole: RoleNumber;
   flexRole: RoleNumber | null;
   telegramId: string | null;
+  discordUserId: string | null;
+  adminUserId: string | null;
+  adminParticipationCount: number;
+  hasPlayedBefore: boolean;
+  lastImportedTournamentName: string | null;
+  lastSyncedAt: string | null;
   wallet: string | null;
   nightMatches: number;
   isActiveInDatabase: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface AdminTournamentSummary {
+  adminTournamentId: string;
+  name: string;
+  type: string | null;
+  status: string | null;
+  applicationTime: string | null;
+  startTime: string | null;
+  endTime: string | null;
 }
 
 export interface Team {
@@ -81,4 +97,26 @@ export interface MatchReplacementLog {
   resultStatus: string;
   poolEntryId: string | null;
   createdAt: string;
+}
+
+export interface ReplacementSearchSessionSummary {
+  id: string;
+  teamId: string;
+  teamName: string;
+  neededRole: RoleNumber;
+  replacedPlayerId: string | null;
+  replacedPlayerNick: string | null;
+  status: string;
+  currentWaveNumber: number;
+  failureReason: string | null;
+  triggeredByDiscordUserId: string | null;
+  triggeredByName: string | null;
+  discordChannelId: string;
+  selectedPlayerId: string | null;
+  selectedPoolEntryId: string | null;
+  selectedAt: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 }

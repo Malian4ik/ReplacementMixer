@@ -1,4 +1,4 @@
-import type { ReplacementPoolEntry, CandidateScore, RoleNumber } from "@/types";
+import type { CandidateScore, RoleNumber } from "@/types";
 import {
   calculateStakeNorm,
   calculateMMRNorm,
@@ -18,22 +18,39 @@ export interface QueueContext {
   maxDeviation: number;
 }
 
+type ScorablePlayer = {
+  id: string;
+  nick: string;
+  mmr: number;
+  stake: number;
+  mainRole: number;
+  flexRole: number | null;
+  wallet: string | null;
+};
+
+type ScorableReplacementPoolEntry = {
+  id: string;
+  status: string;
+  joinTime: string | Date;
+  player: ScorablePlayer;
+};
+
 export function buildBaseQueue(
-  poolEntries: ReplacementPoolEntry[]
-): ReplacementPoolEntry[] {
+  poolEntries: ScorableReplacementPoolEntry[]
+): ScorableReplacementPoolEntry[] {
   return poolEntries
     .filter((e) => e.status === "Active")
     .sort((a, b) => new Date(a.joinTime).getTime() - new Date(b.joinTime).getTime());
 }
 
 export function getTop10Candidates(
-  baseQueue: ReplacementPoolEntry[]
-): ReplacementPoolEntry[] {
+  baseQueue: ScorableReplacementPoolEntry[]
+): ScorableReplacementPoolEntry[] {
   return baseQueue.slice(0, 10);
 }
 
 export function scoreCandidates(
-  candidates: ReplacementPoolEntry[],
+  candidates: ScorableReplacementPoolEntry[],
   context: QueueContext
 ): CandidateScore[] {
   const maxStake = Math.max(...candidates.map((c) => c.player.stake), 1);
