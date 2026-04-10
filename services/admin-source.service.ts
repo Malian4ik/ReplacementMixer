@@ -221,7 +221,10 @@ export class AdminSourceClient {
     const html = await response.text();
     const $ = load(html);
 
-    const userHref = $('a[href*="/admin/users/user/"]').attr("href") ?? "";
+    const userHref = $('a[href*="/admin/users/user/"]')
+      .map((_, element) => $(element).attr("href") ?? "")
+      .get()
+      .find((href) => href.includes("/change/")) ?? "";
     const match = userHref.match(/\/admin\/users\/user\/([^/]+)\/change\//);
     if (!match) {
       throw new Error(`ADMIN_PARTICIPANT_USER_NOT_FOUND:${base.adminParticipantId}`);
