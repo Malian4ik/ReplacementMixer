@@ -52,6 +52,14 @@ interface ActiveSearchSession {
     mainRole: number;
     flexRole: number | null;
   } | null;
+  waves?: {
+    id: string;
+    waveNumber: number;
+    status: string;
+    expiresAt: string;
+    responses?: { id: string }[];
+    candidates?: { id: string; respondedReady: boolean }[];
+  }[];
 }
 
 export default function JudgePage() {
@@ -128,6 +136,10 @@ export default function JudgePage() {
   const candidateTotalPages = queueData?.totalPages ?? 1;
   const selectedCandidate = candidates.find((candidate) => candidate.poolEntryId === selectedCandidateId) ?? null;
   const focusCandidate = selectedCandidate ?? candidates[0] ?? null;
+  const currentWave = activeSearchSession?.waves?.find((wave) => wave.waveNumber === activeSearchSession.currentWaveNumber) ?? null;
+  const readyCount = currentWave?.candidates?.filter((candidate) => candidate.respondedReady).length ?? currentWave?.responses?.length ?? 0;
+  const waveEndsAt = currentWave?.expiresAt ? new Date(currentWave.expiresAt) : null;
+  const waitingForWaveClosure = activeSearchSession?.status === "IN_PROGRESS" && Boolean(currentWave);
 
   const assignMutation = useMutation({
     mutationFn: async (poolEntryId: string) => {
@@ -478,6 +490,18 @@ export default function JudgePage() {
                     <span>Текущая волна</span>
                     <strong>#{activeSearchSession.currentWaveNumber}</strong>
                   </div>
+                  {waitingForWaveClosure && (
+                    <>
+                      <div className="judge-analysis-row">
+                        <span>Откликов получено</span>
+                        <strong>{readyCount}</strong>
+                      </div>
+                      <div className="judge-focus-tip" style={{ marginBottom: 10 }}>
+                        Отклики уже собираются. Рекомендация появится после завершения окна волны
+                        {waveEndsAt ? ` в ${waveEndsAt.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}` : ""}.
+                      </div>
+                    </>
+                  )}
 
                   {activeSearchSession.status === "WAITING_CONFIRMATION" && activeSearchSession.recommendedPlayer && (
                     <div className="judge-alert judge-alert-success">
