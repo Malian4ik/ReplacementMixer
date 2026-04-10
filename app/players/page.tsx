@@ -48,7 +48,12 @@ export default function PlayersPage() {
     queryFn: () => fetch("/api/players").then(r => r.json()),
   });
 
-  const { data: adminTournaments = [] } = useQuery<AdminTournamentSummary[]>({
+  const {
+    data: adminTournaments = [],
+    isLoading: isAdminTournamentsLoading,
+    error: adminTournamentsError,
+    refetch: refetchAdminTournaments,
+  } = useQuery<AdminTournamentSummary[]>({
     queryKey: ["admin-sync-tournaments"],
     queryFn: async () => {
       const res = await fetch("/api/admin-sync/tournaments");
@@ -253,17 +258,43 @@ export default function PlayersPage() {
                 style={{ width: 220 }}
                 value={selectedAdminTournamentId}
                 onChange={e => setSelectedAdminTournamentId(e.target.value)}
+                disabled={isAdminTournamentsLoading || Boolean(adminTournamentsError)}
               >
                 <option value="">Выбрать турнир</option>
+                <option value="">
+                  {isAdminTournamentsLoading
+                    ? "Загрузка турниров..."
+                    : adminTournamentsError
+                      ? "Не удалось загрузить турниры"
+                      : adminTournaments.length === 0
+                        ? "Турниры не найдены"
+                        : "Выбрать турнир"}
+                </option>
                 {adminTournaments.map(tournament => (
                   <option key={tournament.adminTournamentId} value={tournament.adminTournamentId}>
                     {tournament.name} · {tournament.status ?? "Unknown"}
                   </option>
                 ))}
               </select>
+              {adminTournamentsError && (
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ color: "#f87171", fontSize: 11, maxWidth: 260 }}>
+                    {adminTournamentsError instanceof Error
+                      ? adminTournamentsError.message
+                      : "Неизвестная ошибка загрузки турниров"}
+                  </span>
+                  <button
+                    className="btn btn-sm btn-ghost"
+                    onClick={() => refetchAdminTournaments()}
+                    disabled={isAdminTournamentsLoading}
+                  >
+                    Повторить
+                  </button>
+                </div>
+              )}
               <button
                 className="btn btn-sm btn-blue"
-                disabled={!selectedAdminTournamentId || importTournamentMutation.isPending}
+                disabled={!selectedAdminTournamentId || importTournamentMutation.isPending || isAdminTournamentsLoading || Boolean(adminTournamentsError)}
                 onClick={() => importTournamentMutation.mutate(selectedAdminTournamentId)}
               >
                 {importTournamentMutation.isPending ? "Импорт..." : "Импортировать турнир"}

@@ -10,6 +10,7 @@ export async function GET() {
     const tournaments = await listAdminTournaments();
     return NextResponse.json(tournaments);
   } catch (error) {
+    console.error("[admin-sync/tournaments]", error);
     const message = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 400 });
   }

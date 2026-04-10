@@ -16,6 +16,7 @@ export async function POST(req: NextRequest) {
     const result = await importAdminTournament(body.adminTournamentId);
     return NextResponse.json(result);
   } catch (error) {
+    console.error("[admin-sync/import]", error);
     const message = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 400 });
   }
