@@ -4,7 +4,9 @@ import {
   claimWaveForProcessing,
   completeWave,
   createWaveResponse,
+  getCandidateByWaveAndDiscordAliases,
   getCandidateByWaveAndDiscordUserId,
+  getCandidateByWaveAndPlayerNickAliases,
   getDueActiveWaves,
   getSearchSessionById,
   getWaveById,
@@ -38,6 +40,9 @@ function isUniqueConstraintError(error: unknown) {
 export async function registerReadyResponse(params: {
   waveId: string;
   discordUserId: string;
+  discordUsername?: string | null;
+  discordGlobalName?: string | null;
+  discordDisplayName?: string | null;
   interactionId?: string;
 }) {
   const wave = await getWaveById(params.waveId);
@@ -53,7 +58,19 @@ export async function registerReadyResponse(params: {
     return { ok: false as const, reason: "WAVE_EXPIRED" };
   }
 
-  const candidate = await getCandidateByWaveAndDiscordUserId(wave.id, params.discordUserId);
+  let candidate = await getCandidateByWaveAndDiscordUserId(wave.id, params.discordUserId);
+  if (!candidate) {
+    candidate = await getCandidateByWaveAndDiscordAliases(
+      wave.id,
+      [params.discordUsername ?? "", params.discordGlobalName ?? "", params.discordDisplayName ?? ""]
+    );
+  }
+  if (!candidate) {
+    candidate = await getCandidateByWaveAndPlayerNickAliases(
+      wave.id,
+      [params.discordUsername ?? "", params.discordGlobalName ?? "", params.discordDisplayName ?? ""]
+    );
+  }
   if (!candidate) {
     return { ok: false as const, reason: "USER_NOT_ELIGIBLE_FOR_WAVE" };
   }
@@ -62,6 +79,18 @@ export async function registerReadyResponse(params: {
 
   try {
     await prisma.$transaction(async (tx) => {
+      if (candidate.discordUserId !== params.discordUserId) {
+        await tx.replacementWaveCandidate.update({
+          where: { id: candidate.id },
+          data: { discordUserId: params.discordUserId },
+        });
+
+        await tx.player.update({
+          where: { id: candidate.playerId },
+          data: { discordUserId: params.discordUserId },
+        });
+      }
+
       await createWaveResponse(
         {
           sessionId: wave.sessionId,
@@ -122,7 +151,10 @@ function buildWaveExhaustedAfterRespondersMessage(teamName: string, waveNumber: 
 
 export async function processWaveCompletion(
   waveId: string,
-  transport: DiscordReplacementTransport
+  transport: DiscordReplacementTransport,
+  options?: {
+    autoCreateNextWave?: boolean;
+  }
 ) {
   const claim = await claimWaveForProcessing(waveId);
   if (claim.count === 0) return false;
@@ -143,7 +175,9 @@ export async function processWaveCompletion(
       teamName: session.teamName,
       message: buildNoResponsesMessage(session.teamName, wave.waveNumber),
     });
-    await createNextReplacementWave(session.id, transport);
+    if (options?.autoCreateNextWave !== false) {
+      await createNextReplacementWave(session.id, transport);
+    }
     return true;
   }
 

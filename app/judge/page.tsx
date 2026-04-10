@@ -245,6 +245,17 @@ export default function JudgePage() {
     },
   });
 
+  const closeWaveNowMutation = useMutation({
+    mutationFn: async (sessionId: string) => {
+      const res = await fetch(`/api/discord/replacement-search/${sessionId}/close-now`, { method: "POST" });
+      if (!res.ok) throw new Error((await res.json()).error);
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["discord-replacement-search", teamId] });
+    },
+  });
+
   const col: CSSProperties = {
     display: "flex",
     flexDirection: "column",
@@ -500,6 +511,16 @@ export default function JudgePage() {
                         Отклики уже собираются. Рекомендация появится после завершения окна волны
                         {waveEndsAt ? ` в ${waveEndsAt.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}` : ""}.
                       </div>
+                      {readyCount > 0 && (
+                        <button
+                          className="btn btn-success"
+                          style={{ width: "100%", justifyContent: "center", marginBottom: 10 }}
+                          disabled={closeWaveNowMutation.isPending}
+                          onClick={() => closeWaveNowMutation.mutate(activeSearchSession.id)}
+                        >
+                          {closeWaveNowMutation.isPending ? "Завершаю волну..." : "Завершить волну сейчас"}
+                        </button>
+                      )}
                     </>
                   )}
 
@@ -532,9 +553,9 @@ export default function JudgePage() {
                     </button>
                   </div>
 
-                  {(confirmSearchMutation.isError || nextCandidateMutation.isError || cancelSearchMutation.isError) && (
+                  {(confirmSearchMutation.isError || nextCandidateMutation.isError || cancelSearchMutation.isError || closeWaveNowMutation.isError) && (
                     <div style={{ color: "#f87171", fontSize: 12, marginTop: 6 }}>
-                      Ошибка: {((confirmSearchMutation.error || nextCandidateMutation.error || cancelSearchMutation.error) as Error)?.message}
+                      Ошибка: {((confirmSearchMutation.error || nextCandidateMutation.error || cancelSearchMutation.error || closeWaveNowMutation.error) as Error)?.message}
                     </div>
                   )}
                 </>
