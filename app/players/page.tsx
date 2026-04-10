@@ -310,6 +310,20 @@ export default function PlayersPage() {
               >
                 {importTournamentMutation.isPending ? "Импорт..." : "Импортировать турнир"}
               </button>
+              {importTournamentError && (
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ color: "#f87171", fontSize: 11, maxWidth: 280 }}>
+                    {importTournamentError}
+                  </span>
+                </div>
+              )}
+              {importTournamentMessage && (
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ color: "#34d399", fontSize: 11, maxWidth: 320 }}>
+                    {importTournamentMessage}
+                  </span>
+                </div>
+              )}
             </>
           )}
           {user?.role === "OWNER" && (
