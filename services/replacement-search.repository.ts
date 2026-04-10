@@ -9,9 +9,17 @@ function getDb(tx?: DbLike) {
 
 export type SearchSessionWithRelations = Prisma.ReplacementSearchSessionGetPayload<{
   include: {
+    team: true;
+    recommendedPlayer: true;
+    selectedPlayer: true;
     waves: {
       include: {
-        candidates: true;
+        candidates: {
+          include: {
+            player: true;
+            poolEntry: true;
+          };
+        };
         responses: true;
       };
       orderBy: { waveNumber: "asc" };
@@ -22,7 +30,12 @@ export type SearchSessionWithRelations = Prisma.ReplacementSearchSessionGetPaylo
 export type SearchWaveWithRelations = Prisma.ReplacementSearchWaveGetPayload<{
   include: {
     session: true;
-    candidates: true;
+    candidates: {
+      include: {
+        player: true;
+        poolEntry: true;
+      };
+    };
     responses: true;
   };
 }>;
@@ -86,7 +99,12 @@ export async function getSearchSessionWithRelations(id: string, tx?: DbLike) {
       selectedPlayer: true,
       waves: {
         include: {
-          candidates: true,
+          candidates: {
+            include: {
+              player: true,
+              poolEntry: true,
+            },
+          },
           responses: true,
         },
         orderBy: { waveNumber: "asc" },
@@ -163,7 +181,12 @@ export async function getWaveById(id: string, tx?: DbLike): Promise<SearchWaveWi
     where: { id },
     include: {
       session: true,
-      candidates: true,
+      candidates: {
+        include: {
+          player: true,
+          poolEntry: true,
+        },
+      },
       responses: true,
     },
   });
@@ -262,6 +285,51 @@ export async function getCandidateByWaveAndDiscordUserId(
       discordUserId,
     },
   });
+}
+
+export async function getCandidateByWaveAndDiscordAliases(
+  waveId: string,
+  aliases: string[],
+  tx?: DbLike
+): Promise<ReplacementWaveCandidate | null> {
+  const normalizedAliases = aliases.map((alias) => alias.trim()).filter(Boolean);
+  if (normalizedAliases.length === 0) return null;
+
+  return getDb(tx).replacementWaveCandidate.findFirst({
+    where: {
+      waveId,
+      discordUserId: { in: normalizedAliases },
+    },
+  });
+}
+
+export async function getCandidateByWaveAndPlayerNickAliases(
+  waveId: string,
+  aliases: string[],
+  tx?: DbLike
+): Promise<ReplacementWaveCandidate | null> {
+  const normalizedAliases = aliases
+    .map((alias) => alias.trim().toLowerCase())
+    .filter(Boolean);
+
+  if (normalizedAliases.length === 0) return null;
+
+  const candidates = await getDb(tx).replacementWaveCandidate.findMany({
+    where: { waveId },
+    include: {
+      player: {
+        select: {
+          nick: true,
+        },
+      },
+    },
+  });
+
+  return (
+    candidates.find((candidate) =>
+      normalizedAliases.includes(candidate.player.nick.trim().toLowerCase())
+    ) ?? null
+  );
 }
 
 export async function updateCandidateScores(

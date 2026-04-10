@@ -90,6 +90,12 @@ async function handleInteraction(interaction: Interaction, transport: DiscordCha
     const result = await registerReadyResponse({
       waveId,
       discordUserId: interaction.user.id,
+      discordUsername: interaction.user.username,
+      discordGlobalName: interaction.user.globalName,
+      discordDisplayName:
+        interaction.member && "displayName" in interaction.member
+          ? interaction.member.displayName
+          : null,
       interactionId: interaction.id,
     });
 

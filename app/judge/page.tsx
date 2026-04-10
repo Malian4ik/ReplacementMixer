@@ -58,7 +58,25 @@ interface ActiveSearchSession {
     status: string;
     expiresAt: string;
     responses?: { id: string }[];
-    candidates?: { id: string; respondedReady: boolean }[];
+    candidates?: {
+      id: string;
+      poolEntryId: string;
+      respondedReady: boolean;
+      readyAt: string | null;
+      score: number | null;
+      selectionRank: number | null;
+      player: {
+        id: string;
+        nick: string;
+        mmr: number;
+        mainRole: number;
+        flexRole: number | null;
+        stake: number;
+      };
+      poolEntry: {
+        id: string;
+      };
+    }[];
   }[];
 }
 
@@ -138,6 +156,11 @@ export default function JudgePage() {
   const focusCandidate = selectedCandidate ?? candidates[0] ?? null;
   const currentWave = activeSearchSession?.waves?.find((wave) => wave.waveNumber === activeSearchSession.currentWaveNumber) ?? null;
   const readyCount = currentWave?.candidates?.filter((candidate) => candidate.respondedReady).length ?? currentWave?.responses?.length ?? 0;
+  const readyResponders = [...(currentWave?.candidates?.filter((candidate) => candidate.respondedReady) ?? [])].sort((a, b) => {
+    const left = a.readyAt ? new Date(a.readyAt).getTime() : Number.MAX_SAFE_INTEGER;
+    const right = b.readyAt ? new Date(b.readyAt).getTime() : Number.MAX_SAFE_INTEGER;
+    return left - right;
+  });
   const waveEndsAt = currentWave?.expiresAt ? new Date(currentWave.expiresAt) : null;
   const waitingForWaveClosure = activeSearchSession?.status === "IN_PROGRESS" && Boolean(currentWave);
 
@@ -253,6 +276,31 @@ export default function JudgePage() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["discord-replacement-search", teamId] });
+    },
+  });
+
+  const assignReadyResponderMutation = useMutation({
+    mutationFn: async (candidateId: string) => {
+      if (!judgeName.trim()) throw new Error("Укажите имя судьи");
+      if (!activeSearchSession) throw new Error("SEARCH_SESSION_NOT_FOUND");
+
+      const res = await fetch(`/api/discord/replacement-search/${activeSearchSession.id}/assign-ready`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ candidateId }),
+      });
+
+      if (!res.ok) throw new Error((await res.json()).error);
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["discord-replacement-search", teamId] });
+      qc.invalidateQueries({ queryKey: ["pool"] });
+      qc.invalidateQueries({ queryKey: ["teams"] });
+      qc.invalidateQueries({ queryKey: ["logs"] });
+      qc.invalidateQueries({ queryKey: ["stats"] });
+      setSelectedCandidateId(null);
+      setReplacedPlayerId("");
     },
   });
 
@@ -511,6 +559,42 @@ export default function JudgePage() {
                         Отклики уже собираются. Рекомендация появится после завершения окна волны
                         {waveEndsAt ? ` в ${waveEndsAt.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}` : ""}.
                       </div>
+                      {readyResponders.length > 0 && (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 }}>
+                          <div className="judge-mini-label">РћС‚РєР»РёРєРЅСѓРІС€РёРµСЃСЏ СЃРµР№С‡Р°СЃ</div>
+                          {readyResponders.map((responder) => (
+                            <div
+                              key={responder.id}
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                                gap: 10,
+                                padding: "9px 10px",
+                                borderRadius: 8,
+                                background: "rgba(16,185,129,0.08)",
+                                border: "1px solid rgba(16,185,129,0.18)",
+                              }}
+                            >
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)" }}>{responder.player.nick}</div>
+                                <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>
+                                  {responder.player.mmr.toLocaleString()} MMR · S{responder.player.stake} · R{responder.player.mainRole}
+                                  {responder.player.flexRole ? `/R${responder.player.flexRole}` : ""}
+                                  {responder.score != null ? ` · SubScore ${responder.score.toFixed(4)}` : ""}
+                                </div>
+                              </div>
+                              <button
+                                className="btn btn-success btn-sm"
+                                disabled={!judgeName.trim() || assignReadyResponderMutation.isPending}
+                                onClick={() => assignReadyResponderMutation.mutate(responder.id)}
+                              >
+                                {assignReadyResponderMutation.isPending ? "РќР°Р·РЅР°С‡Р°СЋ..." : "Р’С‹Р±СЂР°С‚СЊ"}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       {readyCount > 0 && (
                         <button
                           className="btn btn-success"
@@ -553,9 +637,9 @@ export default function JudgePage() {
                     </button>
                   </div>
 
-                  {(confirmSearchMutation.isError || nextCandidateMutation.isError || cancelSearchMutation.isError || closeWaveNowMutation.isError) && (
+                  {(confirmSearchMutation.isError || nextCandidateMutation.isError || cancelSearchMutation.isError || closeWaveNowMutation.isError || assignReadyResponderMutation.isError) && (
                     <div style={{ color: "#f87171", fontSize: 12, marginTop: 6 }}>
-                      Ошибка: {((confirmSearchMutation.error || nextCandidateMutation.error || cancelSearchMutation.error || closeWaveNowMutation.error) as Error)?.message}
+                      Ошибка: {((confirmSearchMutation.error || nextCandidateMutation.error || cancelSearchMutation.error || closeWaveNowMutation.error || assignReadyResponderMutation.error) as Error)?.message}
                     </div>
                   )}
                 </>

@@ -40,7 +40,12 @@ export async function GET(req: NextRequest) {
             selectedPlayer: true,
             waves: {
               include: {
-                candidates: true,
+                candidates: {
+                  include: {
+                    player: true,
+                    poolEntry: true,
+                  },
+                },
                 responses: true,
               },
               orderBy: { waveNumber: "asc" },
