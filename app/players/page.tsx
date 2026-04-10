@@ -33,6 +33,8 @@ export default function PlayersPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [createError, setCreateError] = useState<string | null>(null);
+  const [importTournamentMessage, setImportTournamentMessage] = useState<string | null>(null);
+  const [importTournamentError, setImportTournamentError] = useState<string | null>(null);
   const [selectedAdminTournamentId, setSelectedAdminTournamentId] = useState("");
   const [sortKey, setSortKey] = useState<"nick" | "mmr" | "stake" | "isActiveInDatabase" | "createdAt">("nick");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -139,9 +141,19 @@ export default function PlayersPage() {
       if (!res.ok) throw new Error(json.error ?? "IMPORT_FAILED");
       return json;
     },
+    onMutate: () => {
+      setImportTournamentError(null);
+      setImportTournamentMessage(null);
+    },
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["players"] });
-      alert(`Импорт завершен. Создано: ${data.createdPlayers}, обновлено: ${data.updatedPlayers}, ошибок: ${data.failedCount}`);
+      setSelectedAdminTournamentId("");
+      setImportTournamentMessage(
+        `Import complete. Created: ${data.createdPlayers}, updated: ${data.updatedPlayers}, failed: ${data.failedCount}`
+      );
+    },
+    onError: (error: Error) => {
+      setImportTournamentError(error.message);
     },
   });
 
@@ -260,7 +272,6 @@ export default function PlayersPage() {
                 onChange={e => setSelectedAdminTournamentId(e.target.value)}
                 disabled={isAdminTournamentsLoading || Boolean(adminTournamentsError)}
               >
-                <option value="">Выбрать турнир</option>
                 <option value="">
                   {isAdminTournamentsLoading
                     ? "Загрузка турниров..."
