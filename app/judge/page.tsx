@@ -115,8 +115,9 @@ export default function JudgePage() {
 
   const assignMutation = useMutation({
     mutationFn: async (poolEntryId: string) => {
-      if (!selectedTeam) throw new Error("Не выбрана команда");
+      if (!selectedTeam) throw new Error("Выберите команду");
       if (!judgeName.trim()) throw new Error("Укажите имя судьи");
+      if (!replacedPlayerId) throw new Error("Выберите игрока или пустой слот");
       const res = await fetch(`/api/replacement-pool/${poolEntryId}/assign`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -150,21 +151,23 @@ export default function JudgePage() {
 
   const searchMutation = useMutation({
     mutationFn: async () => {
-      if (!selectedTeam) throw new Error("РќРµ РІС‹Р±СЂР°РЅР° РєРѕРјР°РЅРґР°");
-      if (!judgeName.trim()) throw new Error("РЈРєР°Р¶РёС‚Рµ РёРјСЏ СЃСѓРґСЊРё");
-      if (!replacedPlayerId) throw new Error("Р’С‹Р±РµСЂРёС‚Рµ РёРіСЂРѕРєР° РёР»Рё РїСѓСЃС‚РѕР№ СЃР»РѕС‚");
+      if (!selectedTeam) throw new Error("Выберите команду");
+      if (!judgeName.trim()) throw new Error("Укажите имя судьи");
+      if (!replacedPlayerId && !isEmptySlot) throw new Error("Выберите игрока или пустой слот");
+
       const res = await fetch("/api/discord/replacement-search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           teamId,
-          replacedPlayerId: isEmptySlot ? undefined : replacedPlayerId,
+          replacedPlayerId: isEmptySlot ? undefined : replacedPlayerId || undefined,
           neededRole,
           matchId: matchId || undefined,
           comment: comment || undefined,
           judgeName: judgeName.trim(),
         }),
       });
+
       if (!res.ok) throw new Error((await res.json()).error);
       return res.json();
     },
@@ -381,7 +384,7 @@ export default function JudgePage() {
                   <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 10 }}>
                     Судья запускает поиск с сайта, игроки отвечают в Discord, а финальное подтверждение замены остаётся здесь.
                   </div>
-                  <button className="btn btn-blue" style={{ width: "100%", justifyContent: "center" }} disabled={!teamId || !replacedPlayerId || !judgeName.trim() || searchMutation.isPending} onClick={() => searchMutation.mutate()}>
+                  <button className="btn btn-blue" style={{ width: "100%", justifyContent: "center" }} disabled={!teamId || (!replacedPlayerId && !isEmptySlot) || !judgeName.trim() || searchMutation.isPending} onClick={() => searchMutation.mutate()}>
                     {searchMutation.isPending ? "Запускаю поиск..." : "Запустить поиск в Discord"}
                   </button>
                   {searchMutation.isError && <div style={{ color: "#f87171", fontSize: 12, marginTop: 6 }}>Ошибка: {(searchMutation.error as Error).message}</div>}
