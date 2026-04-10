@@ -190,27 +190,44 @@ export class AdminSourceClient {
 
   async listTournamentParticipants(adminTournamentId: string): Promise<RemoteParticipantListItem[]> {
     await this.authenticate();
-    const response = await this.request(`/admin/tournaments/participant/?tournament=${encodeURIComponent(adminTournamentId)}`);
-    const html = await response.text();
-    const $ = load(html);
-
     const participants: RemoteParticipantListItem[] = [];
-    $("th.field-nickname").each((_, cell) => {
-      const row = $(cell).closest("tr");
-      const href = row.find("th.field-nickname a").attr("href") ?? "";
-      const match = href.match(/\/admin\/tournaments\/participant\/([^/]+)\/change\//);
-      if (!match) return;
+    const seenParticipantIds = new Set<string>();
 
-      participants.push({
-        adminParticipantId: match[1],
-        nickname: cleanText(row.find("th.field-nickname").text()),
-        tournamentLabel: cleanText(row.find("td.field-tournament").text()),
-        status: cleanText(row.find("td.field-colored_status").text()) || null,
-        bidSize: parseNumber(cleanText(row.find("td.field-bid_size").text())),
-        balance: parseNumber(cleanText(row.find("td.field-balance").text())),
-        queuePosition: parseNumber(cleanText(row.find("td.field-queue_position").text())),
+    for (let page = 1; ; page += 1) {
+      const response = await this.request(
+        `/admin/tournaments/participant/?tournament=${encodeURIComponent(adminTournamentId)}&p=${page}`
+      );
+      const html = await response.text();
+      const $ = load(html);
+
+      const pageParticipants: RemoteParticipantListItem[] = [];
+      $("th.field-nickname").each((_, cell) => {
+        const row = $(cell).closest("tr");
+        const href = row.find("th.field-nickname a").attr("href") ?? "";
+        const match = href.match(/\/admin\/tournaments\/participant\/([^/]+)\/change\//);
+        if (!match) return;
+        if (seenParticipantIds.has(match[1])) return;
+
+        const participant: RemoteParticipantListItem = {
+          adminParticipantId: match[1],
+          nickname: cleanText(row.find("th.field-nickname").text()),
+          tournamentLabel: cleanText(row.find("td.field-tournament").text()),
+          status: cleanText(row.find("td.field-colored_status").text()) || null,
+          bidSize: parseNumber(cleanText(row.find("td.field-bid_size").text())),
+          balance: parseNumber(cleanText(row.find("td.field-balance").text())),
+          queuePosition: parseNumber(cleanText(row.find("td.field-queue_position").text())),
+        };
+
+        seenParticipantIds.add(participant.adminParticipantId);
+        pageParticipants.push(participant);
       });
-    });
+
+      if (pageParticipants.length === 0) {
+        break;
+      }
+
+      participants.push(...pageParticipants);
+    }
 
     return participants;
   }
