@@ -561,7 +561,7 @@ export default function JudgePage() {
                       </div>
                       {readyResponders.length > 0 && (
                         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 }}>
-                          <div className="judge-mini-label">РћС‚РєР»РёРєРЅСѓРІС€РёРµСЃСЏ СЃРµР№С‡Р°СЃ</div>
+                          <div className="judge-mini-label">Откликнувшиеся сейчас</div>
                           {readyResponders.map((responder) => (
                             <div
                               key={responder.id}
@@ -589,7 +589,7 @@ export default function JudgePage() {
                                 disabled={!judgeName.trim() || assignReadyResponderMutation.isPending}
                                 onClick={() => assignReadyResponderMutation.mutate(responder.id)}
                               >
-                                {assignReadyResponderMutation.isPending ? "РќР°Р·РЅР°С‡Р°СЋ..." : "Р’С‹Р±СЂР°С‚СЊ"}
+                                {assignReadyResponderMutation.isPending ? "Назначаю..." : "Выбрать"}
                               </button>
                             </div>
                           ))}
