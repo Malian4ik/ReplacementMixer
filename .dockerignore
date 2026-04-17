@@ -1,0 +1,13 @@
+.git
+.gitignore
+.next
+.vercel
+.bot-runtime
+node_modules
+coverage
+dist
+dev.db
+prisma/dev.db
+*.log
+.env
+.env.*

@@ -1,0 +1,19 @@
+app = "replacement-mixer-bot"
+primary_region = "arn"
+
+[build]
+  dockerfile = "Dockerfile.bot"
+
+[env]
+  NODE_ENV = "production"
+
+[processes]
+  app = "npm run bot:discord"
+
+[deploy]
+  strategy = "immediate"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512
