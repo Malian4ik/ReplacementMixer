@@ -15,6 +15,7 @@ import {
   markSessionCompleted,
   markSessionExhausted,
 } from "@/services/search-session.service";
+import { assignSubstitution } from "@/services/substitution.service";
 import {
   buildWaveEmbed,
   buildReadyButton,
@@ -153,7 +154,29 @@ async function processWaveCompletion(waveId: string, client: Client): Promise<vo
     return;
   }
 
+  // Auto-assign the winner (full DB substitution)
+  try {
+    await assignSubstitution(winner.poolEntryId, {
+      teamId: session.teamId,
+      teamName: session.teamName,
+      neededRole: session.neededRole,
+      replacedPlayerId: session.replacedPlayerId ?? undefined,
+      replacedPlayerNick: session.replacedPlayerNick ?? undefined,
+      replacedPlayerMmr: session.replacedPlayerMmr ?? undefined,
+      targetAvgMmr: session.targetAvgMmr,
+      maxDeviation: session.maxDeviation,
+      judgeName: "bot",
+      comment: `Автоматически выбран в волне #${wave.waveNumber}`,
+    });
+  } catch (err) {
+    log.error(`assignSubstitution failed for winner ${winner.nick}`, err);
+  }
+
   await markSessionCompleted(session.id, winner.playerId, winner.poolEntryId);
+
+  // Delete wave message now that substitution is done
+  await deleteWaveMessage(wave, client);
+
   await postWinnerMessage(session, winner, client);
 
   log.info(
@@ -291,6 +314,21 @@ async function postExhaustedMessage(
     await channel.send({ embeds: [buildExhaustedEmbed(session.teamName)] });
   } catch (err) {
     log.error("Failed to send exhausted message", err);
+  }
+}
+
+async function deleteWaveMessage(
+  wave: { messageId: string | null; channelId: string },
+  client: Client
+): Promise<void> {
+  if (!wave.messageId) return;
+  const channel = await getTextChannel(wave.channelId, client);
+  if (!channel) return;
+  try {
+    const msg = await channel.messages.fetch(wave.messageId);
+    await msg.delete();
+  } catch {
+    log.debug(`Could not delete wave message ${wave.messageId}`);
   }
 }
 
