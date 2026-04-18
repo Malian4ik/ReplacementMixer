@@ -1,7 +1,9 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { useUser } from "@/components/UserContext";
+import { ConfirmModal } from "@/components/ConfirmModal";
 
 type DisqualifiedPlayer = {
   id: string;
@@ -10,6 +12,7 @@ type DisqualifiedPlayer = {
   stake: number;
   wallet: string | null;
   telegramId: string | null;
+  discordId: string | null;
   mainRole: number;
   flexRole: number | null;
   nightMatches: number;
@@ -18,16 +21,30 @@ type DisqualifiedPlayer = {
 const roleNames: Record<number, string> = { 1: "Carry", 2: "Mid", 3: "Offlane", 4: "Soft Sup", 5: "Hard Sup" };
 
 export default function DisqualifiedPage() {
+  const qc = useQueryClient();
   const { user } = useUser();
-  const canView = user?.role === "OWNER" || user?.role === "JUDGE";
+  const canEdit = user?.role === "OWNER" || user?.role === "JUDGE";
+  const [confirmState, setConfirmState] = useState<{ message: string; onConfirm: () => void } | null>(null);
 
   const { data: players = [], isLoading } = useQuery<DisqualifiedPlayer[]>({
     queryKey: ["players-disqualified"],
     queryFn: () => fetch("/api/players?disqualified=true").then(r => r.json()),
-    enabled: canView,
+    enabled: canEdit,
   });
 
-  if (!canView) {
+  const undisqualifyMutation = useMutation({
+    mutationFn: (playerId: string) =>
+      fetch(`/api/players/${playerId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isDisqualified: false, isActiveInDatabase: true }),
+      }).then(r => r.json()),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["players-disqualified"] });
+    },
+  });
+
+  if (!canEdit) {
     return (
       <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12 }}>
         <div style={{ fontSize: 40 }}>🔒</div>
@@ -38,11 +55,12 @@ export default function DisqualifiedPage() {
   }
 
   return (
+    <>
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
       <div className="page-header">
         <div>
           <div className="page-title">Дисквалифицированные</div>
-          <div className="page-subtitle">Игроки, удалённые с платформы · {players.length} чел.</div>
+          <div className="page-subtitle">Удалённые с платформы · {players.length} чел. · не сбрасываются при очистке турнира</div>
         </div>
       </div>
 
@@ -54,28 +72,43 @@ export default function DisqualifiedPage() {
             Нет дисквалифицированных игроков
           </div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <div className="card" style={{ overflow: "hidden" }}>
+            <table className="tbl">
               <thead>
-                <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                  {["#", "НИК", "MMR", "РОЛЬ", "ФЛЕКС", "СТАВКА", "КОШЕЛЁК", "TELEGRAM"].map(h => (
-                    <th key={h} style={{ padding: "8px 12px", textAlign: "left", fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", color: "var(--text-secondary)", textTransform: "uppercase", whiteSpace: "nowrap" }}>{h}</th>
+                <tr>
+                  {[...["#", "НИК", "MMR", "РОЛЬ", "ФЛЕКС", "СТАВКА", "КОШЕЛЁК", "TELEGRAM", "DISCORD"], ...(canEdit ? ["ДЕЙСТВИЯ"] : [])].map(h => (
+                    <th key={h}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {players.map((p, i) => (
-                  <tr key={p.id} style={{ borderBottom: "1px solid var(--border)", background: i % 2 === 0 ? "rgba(239,68,68,0.03)" : "transparent" }}>
-                    <td style={{ padding: "10px 12px", color: "var(--text-muted)", fontSize: 11 }}>{i + 1}</td>
-                    <td style={{ padding: "10px 12px", fontWeight: 700, color: "#f87171" }}>{p.nick}</td>
-                    <td style={{ padding: "10px 12px", fontFamily: "monospace" }}>{p.mmr.toLocaleString()}</td>
-                    <td style={{ padding: "10px 12px", color: "var(--text-secondary)" }}>{roleNames[p.mainRole] ?? `R${p.mainRole}`}</td>
-                    <td style={{ padding: "10px 12px", color: "var(--text-muted)" }}>{p.flexRole ? (roleNames[p.flexRole] ?? `R${p.flexRole}`) : "—"}</td>
-                    <td style={{ padding: "10px 12px", fontFamily: "monospace" }}>{p.stake}</td>
-                    <td style={{ padding: "10px 12px", fontFamily: "monospace", color: "var(--accent)", fontSize: 12 }}>{p.wallet ?? "—"}</td>
-                    <td style={{ padding: "10px 12px", color: "var(--text-secondary)", fontSize: 12 }}>
+                  <tr key={p.id}>
+                    <td style={{ color: "var(--text-muted)", fontSize: 11 }}>{i + 1}</td>
+                    <td style={{ fontWeight: 700, color: "#f87171" }}>{p.nick}</td>
+                    <td style={{ fontFamily: "monospace" }}>{p.mmr.toLocaleString()}</td>
+                    <td style={{ color: "var(--text-secondary)" }}>{roleNames[p.mainRole] ?? `R${p.mainRole}`}</td>
+                    <td style={{ color: "var(--text-muted)" }}>{p.flexRole ? (roleNames[p.flexRole] ?? `R${p.flexRole}`) : "—"}</td>
+                    <td style={{ fontFamily: "monospace" }}>{p.stake}</td>
+                    <td style={{ fontFamily: "monospace", color: "var(--accent)", fontSize: 12 }}>{p.wallet ?? "—"}</td>
+                    <td style={{ color: "var(--text-secondary)", fontSize: 12 }}>
                       {p.telegramId ? (p.telegramId.startsWith("@") ? p.telegramId : `@${p.telegramId}`) : "—"}
                     </td>
+                    <td style={{ color: "var(--text-secondary)", fontSize: 12, fontFamily: "monospace" }}>{p.discordId ?? "—"}</td>
+                    {canEdit && (
+                      <td>
+                        <button
+                          className="btn btn-sm btn-success"
+                          disabled={undisqualifyMutation.isPending}
+                          onClick={() => setConfirmState({
+                            message: `Снять дисквалификацию с ${p.nick}? Игрок снова станет активным.`,
+                            onConfirm: () => { undisqualifyMutation.mutate(p.id); setConfirmState(null); },
+                          })}
+                        >
+                          Снять дисквал.
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -84,5 +117,13 @@ export default function DisqualifiedPage() {
         )}
       </div>
     </div>
+    {confirmState && (
+      <ConfirmModal
+        message={confirmState.message}
+        onConfirm={confirmState.onConfirm}
+        onCancel={() => setConfirmState(null)}
+      />
+    )}
+    </>
   );
 }
