@@ -46,6 +46,11 @@ function rfColor(rf: number) {
   return "#f87171";
 }
 
+function rfLabel(rf: number) {
+  if (rf >= 1) return "Основная";
+  if (rf >= 0.8) return "Флекс";
+  return "Слабая";
+}
 
 export default function JudgePage() {
   const qc = useQueryClient();
@@ -71,7 +76,6 @@ export default function JudgePage() {
 
   const [matchId, setMatchId] = useState("");
   const [teamId, setTeamId] = useState("");
-  // "" = nothing selected, EMPTY_SLOT = empty slot selected, else = player id
   const [replacedPlayerId, setReplacedPlayerId] = useState("");
   const [emptySlotRole, setEmptySlotRole] = useState<number>(1);
   const [judgeName, setJudgeName] = useState("");
@@ -126,10 +130,9 @@ export default function JudgePage() {
 
   const candidates: CandidateScore[] = queueData?.candidates ?? [];
   const candidateTotalPages: number = queueData?.totalPages ?? 1;
-
   const selectedCandidate = candidates.find(c => c.poolEntryId === selectedCandidateId);
+  const focusedCandidate = selectedCandidate ?? (candidates.length > 0 ? candidates[0] : null);
 
-  // Active Discord session polling
   const { data: activeSessionData, refetch: refetchActiveSession } = useQuery<{ session: ActiveSession | null }>({
     queryKey: ["active-session", teamId],
     queryFn: () => teamId
@@ -170,7 +173,6 @@ export default function JudgePage() {
     setDiscordResult(null);
     refetchActiveSession();
   }
-  const focusedCandidate = selectedCandidate ?? (candidates.length > 0 ? candidates[0] : null);
 
   async function handleDiscordSearch() {
     if (!teamId || !replacedPlayerId || !judgeName.trim()) return;
@@ -244,14 +246,14 @@ export default function JudgePage() {
     minWidth: 0,
   };
   const colHeader: React.CSSProperties = {
-    padding: "10px 14px",
+    padding: "8px 14px",
     borderBottom: "1px solid var(--border)",
     fontSize: 11, fontWeight: 700,
     textTransform: "uppercase", letterSpacing: "0.07em",
     color: "var(--text-secondary)", flexShrink: 0,
   };
-  const colBody: React.CSSProperties = { flex: 1, overflow: "auto", padding: "12px 14px" };
-  const field: React.CSSProperties = { marginBottom: 10 };
+  const colBody: React.CSSProperties = { flex: 1, overflow: "auto", padding: "10px 14px" };
+  const field: React.CSSProperties = { marginBottom: 8 };
 
   if (!canEdit) {
     return (
@@ -265,6 +267,8 @@ export default function JudgePage() {
 
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+
+      {/* ── Header ── */}
       <div className="page-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
           <div className="page-title">Панель судьи</div>
@@ -290,7 +294,6 @@ export default function JudgePage() {
             <div style={{ fontSize: 10, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Нужная роль</div>
             <div style={{ display: "flex", gap: 3 }}>
               {[1, 2, 3, 4, 5].map(r => {
-                const active = replacedPlayer ? replacedPlayer.mainRole === r : emptySlotRole === r;
                 const isCurrent = neededRole === r;
                 return (
                   <button key={r}
@@ -301,7 +304,7 @@ export default function JudgePage() {
                       border: `1px solid ${isCurrent ? "var(--accent)" : "var(--border)"}`,
                       color: isCurrent ? "#000" : "var(--text-secondary)",
                       fontWeight: isCurrent ? 700 : 400,
-                      opacity: replacedPlayer && !active ? 0.4 : 1,
+                      opacity: replacedPlayer && replacedPlayer.mainRole !== r ? 0.4 : 1,
                     }}>
                     R{r}
                   </button>
@@ -312,9 +315,9 @@ export default function JudgePage() {
         </div>
       </div>
 
-      <div className="judge-cols" style={{ flex: 1, overflow: "hidden", display: "grid", gridTemplateColumns: "280px 1fr 300px", gap: 12, padding: "12px 16px" }}>
+      <div className="judge-cols" style={{ flex: 1, overflow: "hidden", display: "grid", gridTemplateColumns: "260px 1fr 260px", gap: 12, padding: "12px 16px" }}>
 
-        {/* Col 1 */}
+        {/* ── Col 1 — Контекст ── */}
         <div style={col}>
           <div style={colHeader}>Контекст матча</div>
           <div style={colBody}>
@@ -322,6 +325,7 @@ export default function JudgePage() {
               <div className="lbl">Match ID</div>
               <input className="form-input" value={matchId} onChange={e => setMatchId(e.target.value)} placeholder="Опционально" />
             </div>
+
             <div style={field}>
               <div className="lbl">Команда</div>
               <select className="form-select" value={teamId} onChange={e => { setTeamId(e.target.value); setReplacedPlayerId(""); setSelectedCandidateId(null); setCandidatePage(1); }}>
@@ -332,15 +336,15 @@ export default function JudgePage() {
 
             {selectedTeam && (
               <div style={field}>
-                <div className="lbl">Состав ({activePlayerCount}/5) — выбери игрока или пустой слот</div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                <div className="lbl">Состав ({activePlayerCount}/5)</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                   {teamPlayers.map((p, i) => {
                     if (p) {
                       const isSel = replacedPlayerId === p.id;
                       return (
                         <button key={p.id}
                           onClick={() => { setReplacedPlayerId(isSel ? "" : p.id); setSelectedCandidateId(null); setCandidatePage(1); }}
-                          style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "7px 10px", borderRadius: 5, cursor: "pointer", background: isSel ? "rgba(239,68,68,0.12)" : "rgba(0,0,0,0.2)", border: `1px solid ${isSel ? "#ef4444" : "var(--border)"}`, color: "var(--text-primary)", fontSize: 12, transition: "all 0.1s", textAlign: "left" }}>
+                          style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 10px", borderRadius: 5, cursor: "pointer", background: isSel ? "rgba(239,68,68,0.12)" : "rgba(0,0,0,0.2)", border: `1px solid ${isSel ? "#ef4444" : "var(--border)"}`, color: "var(--text-primary)", fontSize: 12, transition: "all 0.1s", textAlign: "left" }}>
                           <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
                             <span style={{ color: "var(--text-muted)", fontSize: 10, minWidth: 10 }}>{i + 1}</span>
                             <span style={{ display: "flex", flexDirection: "column", gap: 1 }}>
@@ -348,7 +352,7 @@ export default function JudgePage() {
                               {p.wallet && <span style={{ fontSize: 9, color: "var(--text-muted)", fontFamily: "monospace" }}>{p.wallet}</span>}
                             </span>
                           </span>
-                          <span style={{ color: "var(--text-secondary)", fontSize: 11, fontFamily: "monospace" }}>{p.mmr} · R{p.mainRole}</span>
+                          <span style={{ color: isSel ? "#f87171" : "var(--text-secondary)", fontSize: 11, fontFamily: "monospace" }}>{p.mmr} · R{p.mainRole}</span>
                         </button>
                       );
                     } else {
@@ -356,7 +360,7 @@ export default function JudgePage() {
                       return (
                         <button key={`empty-${i}`}
                           onClick={() => { setReplacedPlayerId(isSel ? "" : EMPTY_SLOT); setSelectedCandidateId(null); setCandidatePage(1); }}
-                          style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "7px 10px", borderRadius: 5, cursor: "pointer", background: isSel ? "rgba(16,185,129,0.12)" : "rgba(0,0,0,0.1)", border: `1px dashed ${isSel ? "#34d399" : "rgba(255,255,255,0.15)"}`, color: isSel ? "#34d399" : "var(--text-muted)", fontSize: 12, transition: "all 0.1s", textAlign: "left" }}>
+                          style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 10px", borderRadius: 5, cursor: "pointer", background: isSel ? "rgba(16,185,129,0.12)" : "rgba(0,0,0,0.1)", border: `1px dashed ${isSel ? "#34d399" : "rgba(255,255,255,0.15)"}`, color: isSel ? "#34d399" : "var(--text-muted)", fontSize: 12, transition: "all 0.1s", textAlign: "left" }}>
                           <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
                             <span style={{ fontSize: 10, minWidth: 10 }}>{i + 1}</span>
                             <span>— пустое место</span>
@@ -370,27 +374,16 @@ export default function JudgePage() {
               </div>
             )}
 
-            {replacedPlayer && (
-              <div style={{ padding: "8px 10px", background: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 6, marginBottom: 10, fontSize: 12 }}>
-                <div style={{ fontWeight: 600, color: "#f87171", marginBottom: 4 }}>Заменяемый: {replacedPlayer.nick}</div>
-                <div style={{ color: "var(--text-secondary)", display: "flex", flexDirection: "column", gap: 2 }}>
-                  <span>MMR: {replacedPlayer.mmr.toLocaleString()} · Роль: R{replacedPlayer.mainRole}</span>
-                  <span>Avg MMR команды: {currentTeamAvgMmr.toLocaleString()}</span>
-                </div>
-              </div>
-            )}
-
             {isEmptySlot && (
-              <div style={{ padding: "8px 10px", background: "rgba(16,185,129,0.07)", border: "1px solid rgba(16,185,129,0.25)", borderRadius: 6, marginBottom: 10, fontSize: 12 }}>
-                <div style={{ fontWeight: 600, color: "#34d399", marginBottom: 4 }}>Заполнение пустого слота · R{emptySlotRole}</div>
-                <div style={{ color: "var(--text-secondary)" }}>Игроков в команде: {activePlayerCount}/5</div>
+              <div style={{ padding: "6px 10px", background: "rgba(16,185,129,0.07)", border: "1px solid rgba(16,185,129,0.25)", borderRadius: 6, marginBottom: 8, fontSize: 12 }}>
+                <span style={{ fontWeight: 600, color: "#34d399" }}>Пустой слот · R{emptySlotRole}</span>
+                <span style={{ color: "var(--text-muted)", marginLeft: 8 }}>{activePlayerCount}/5 игроков</span>
               </div>
             )}
 
             <div style={field}>
               <div className="lbl">Судья <span style={{ color: "#f87171" }}>*</span></div>
               <input className="form-input" value={judgeName} onChange={e => setJudgeName(e.target.value)} placeholder="Обязательно" style={!judgeName.trim() ? { borderColor: "rgba(239,68,68,0.5)" } : {}} />
-              {!judgeName.trim() && <div style={{ fontSize: 10, color: "#f87171", marginTop: 3 }}>Укажите имя судьи для назначения замены</div>}
             </div>
 
             <div style={field}>
@@ -398,32 +391,12 @@ export default function JudgePage() {
               <textarea className="form-input" value={comment} onChange={e => setComment(e.target.value)} rows={2} placeholder="Опционально" style={{ resize: "none" }} />
             </div>
 
-            {selectedCandidate && (
-              <div style={{ padding: "8px 10px", background: "rgba(16,185,129,0.07)", border: "1px solid rgba(16,185,129,0.25)", borderRadius: 6, marginBottom: 10, fontSize: 12 }}>
-                <div style={{ fontWeight: 600, color: "#34d399", marginBottom: 2 }}>Выбрана замена: {selectedCandidate.nick}</div>
-                <div style={{ color: "var(--text-secondary)" }}>
-                  SubScore: <span style={{ fontFamily: "monospace", color: "#34d399" }}>{selectedCandidate.subScore.toFixed(4)}</span>
-                  {" "}· MMR: {selectedCandidate.mmr.toLocaleString()}
-                </div>
-              </div>
-            )}
-
-            {canEdit && (
-              <button className="btn btn-accent" style={{ width: "100%", justifyContent: "center", padding: "10px 0", fontSize: 13 }}
-                disabled={!selectedCandidateId || !replacedPlayerId || !judgeName.trim() || assignMutation.isPending}
-                onClick={() => selectedCandidateId && assignMutation.mutate(selectedCandidateId)}>
-                {assignMutation.isPending ? "Назначаю..." : isEmptySlot ? "+ Добавить в команду" : "✓ Назначить замену"}
-              </button>
-            )}
-            {assignMutation.isSuccess && <div style={{ color: "#34d399", fontSize: 12, marginTop: 6, textAlign: "center" }}>{isEmptySlot ? "Игрок добавлен!" : "Замена назначена!"}</div>}
-            {assignMutation.isError && <div style={{ color: "#f87171", fontSize: 12, marginTop: 6 }}>Ошибка: {(assignMutation.error as Error).message}</div>}
-
-            {/* Active Discord session block */}
+            {/* Active Discord session */}
             {activeSession && (
-              <div style={{ marginTop: 12, padding: "10px 12px", background: "rgba(88,101,242,0.08)", border: "1px solid rgba(88,101,242,0.3)", borderRadius: 7 }}>
+              <div style={{ marginTop: 8, padding: "10px 12px", background: "rgba(88,101,242,0.08)", border: "1px solid rgba(88,101,242,0.3)", borderRadius: 7 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: "#7289da", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                    ⚡ Discord-поиск активен · Волна {activeSession.currentWave}
+                    ⚡ Discord · Волна {activeSession.currentWave}
                   </div>
                   <button
                     style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, border: "1px solid rgba(239,68,68,0.4)", background: "rgba(239,68,68,0.08)", color: "#f87171", cursor: cancelPending ? "not-allowed" : "pointer" }}
@@ -435,47 +408,43 @@ export default function JudgePage() {
                 </div>
                 <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6 }}>
                   {activeSession.teamName} · R{activeSession.neededRole}
-                  {activeSession.replacedPlayerNick ? ` · заменяет ${activeSession.replacedPlayerNick}` : ""}
+                  {activeSession.replacedPlayerNick ? ` · ${activeSession.replacedPlayerNick}` : ""}
                 </div>
 
                 {activeWave && (
                   <>
                     <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>
-                      Откликнулись: {activeWave.responses.length} / {activeWave.candidates.length} кандидатов
+                      Откликнулись: {activeWave.responses.length}/{activeWave.candidates.length}
                       {" · до "}
                       {new Date(activeWave.endsAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
                     </div>
-                    {activeWave.responses.length === 0 && (
-                      <div style={{ fontSize: 11, color: "var(--text-muted)", fontStyle: "italic" }}>Ждём откликов...</div>
-                    )}
-                    <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 4 }}>
-                      {activeWave.responses.map(r => (
-                        <div key={r.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 8px", borderRadius: 5, background: "rgba(0,0,0,0.3)", border: "1px solid rgba(88,101,242,0.2)" }}>
-                          <div>
-                            <span style={{ fontWeight: 600, fontSize: 12 }}>{r.player.nick}</span>
-                            <span style={{ fontSize: 10, color: "var(--text-muted)", marginLeft: 6 }}>
-                              {r.player.mmr.toLocaleString()} · R{r.player.mainRole}
-                              {r.subScore != null ? ` · ${r.subScore.toFixed(3)}` : ""}
-                            </span>
-                          </div>
-                          <button
-                            style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, border: "1px solid rgba(16,185,129,0.4)", background: "rgba(16,185,129,0.1)", color: "#34d399", cursor: judgeName.trim() ? "pointer" : "not-allowed", opacity: judgeName.trim() ? 1 : 0.5 }}
-                            disabled={!judgeName.trim() || pickResponderMutation.isPending}
-                            onClick={() => pickResponderMutation.mutate({ sessionId: activeSession.id, playerId: r.player.id })}
-                          >
-                            Выбрать
-                          </button>
+                    {activeWave.responses.length === 0
+                      ? <div style={{ fontSize: 11, color: "var(--text-muted)", fontStyle: "italic" }}>Ждём откликов...</div>
+                      : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                          {activeWave.responses.map(r => (
+                            <div key={r.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 8px", borderRadius: 5, background: "rgba(0,0,0,0.3)", border: "1px solid rgba(88,101,242,0.2)" }}>
+                              <div>
+                                <span style={{ fontWeight: 600, fontSize: 12 }}>{r.player.nick}</span>
+                                <span style={{ fontSize: 10, color: "var(--text-muted)", marginLeft: 6 }}>
+                                  {r.player.mmr.toLocaleString()} · R{r.player.mainRole}
+                                  {r.subScore != null ? ` · ${r.subScore.toFixed(3)}` : ""}
+                                </span>
+                              </div>
+                              <button
+                                style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, border: "1px solid rgba(16,185,129,0.4)", background: "rgba(16,185,129,0.1)", color: "#34d399", cursor: judgeName.trim() ? "pointer" : "not-allowed", opacity: judgeName.trim() ? 1 : 0.5 }}
+                                disabled={!judgeName.trim() || pickResponderMutation.isPending}
+                                onClick={() => pickResponderMutation.mutate({ sessionId: activeSession.id, playerId: r.player.id })}
+                              >
+                                Выбрать
+                              </button>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                    {pickResponderMutation.isError && (
-                      <div style={{ color: "#f87171", fontSize: 11, marginTop: 4 }}>
-                        {(pickResponderMutation.error as Error).message}
-                      </div>
-                    )}
-                    {pickResponderMutation.isSuccess && (
-                      <div style={{ color: "#34d399", fontSize: 11, marginTop: 4 }}>Замена назначена!</div>
-                    )}
+                      )
+                    }
+                    {pickResponderMutation.isError && <div style={{ color: "#f87171", fontSize: 11, marginTop: 4 }}>{(pickResponderMutation.error as Error).message}</div>}
+                    {pickResponderMutation.isSuccess && <div style={{ color: "#34d399", fontSize: 11, marginTop: 4 }}>Замена назначена!</div>}
                   </>
                 )}
               </div>
@@ -483,16 +452,15 @@ export default function JudgePage() {
           </div>
         </div>
 
-        {/* Col 2 */}
+        {/* ── Col 2 — Кандидаты ── */}
         <div style={col}>
           <div style={{ ...colHeader, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span>Кандидаты · стр. {candidatePage}/{candidateTotalPages}</span>
+            <span>Кандидаты · {candidatePage}/{candidateTotalPages}</span>
             {replacedPlayerId && <span style={{ color: "var(--text-muted)", fontSize: 10, fontWeight: 400, textTransform: "none" }}>Нужная роль: R{neededRole}</span>}
           </div>
 
           <div style={colBody}>
-            {/* Wallet search */}
-            <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+            <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
               <input
                 className="form-input"
                 value={walletSearch}
@@ -503,13 +471,15 @@ export default function JudgePage() {
               />
               <button className="btn btn-ghost btn-sm" onClick={handleWalletSearch} style={{ flexShrink: 0 }}>Найти</button>
             </div>
+
             {walletSearchResult && (
-              <div style={{ marginBottom: 8, padding: "6px 10px", borderRadius: 5, fontSize: 11, background: walletSearchResult.found ? "rgba(16,185,129,0.08)" : "rgba(239,68,68,0.08)", border: `1px solid ${walletSearchResult.found ? "rgba(16,185,129,0.3)" : "rgba(239,68,68,0.3)"}`, color: walletSearchResult.found ? "#34d399" : "#f87171" }}>
+              <div style={{ marginBottom: 8, padding: "5px 10px", borderRadius: 5, fontSize: 11, background: walletSearchResult.found ? "rgba(16,185,129,0.08)" : "rgba(239,68,68,0.08)", border: `1px solid ${walletSearchResult.found ? "rgba(16,185,129,0.3)" : "rgba(239,68,68,0.3)"}`, color: walletSearchResult.found ? "#34d399" : "#f87171" }}>
                 {walletSearchResult.found
-                  ? `Найден на стр. ${walletSearchResult.page} · Позиция #${walletSearchResult.position} — переход выполнен`
+                  ? `Найден · стр. ${walletSearchResult.page} · позиция #${walletSearchResult.position}`
                   : "Игрок не найден в пуле замен"}
               </div>
             )}
+
             {!replacedPlayerId ? (
               <div style={{ color: "var(--text-secondary)", textAlign: "center", paddingTop: 40, fontSize: 13 }}>
                 <div style={{ fontSize: 32, marginBottom: 8 }}>👆</div>
@@ -520,7 +490,7 @@ export default function JudgePage() {
             ) : candidates.length === 0 ? (
               <div style={{ color: "var(--text-secondary)", textAlign: "center", paddingTop: 40 }}>Нет активных кандидатов в пуле</div>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                 {candidateTotalPages > 1 && (
                   <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
                     <button className="btn btn-ghost btn-sm" style={{ flex: 1 }} disabled={candidatePage === 1} onClick={() => setCandidatePage(p => p - 1)}>← Назад</button>
@@ -536,22 +506,22 @@ export default function JudgePage() {
                   return (
                     <button key={c.poolEntryId} onClick={() => setSelectedCandidateId(isSelected ? null : c.poolEntryId)}
                       className={rowClass(i, candidates.length)}
-                      style={{ display: "block", width: "100%", textAlign: "left", padding: "10px 12px", borderRadius: 6, cursor: "pointer", border: isHighlighted ? "2px solid #fbbf24" : isSelected ? "1px solid var(--accent)" : "1px solid transparent", outline: isSelected && !isHighlighted ? "1px solid var(--accent)" : "none", background: isHighlighted ? "rgba(251,191,36,0.08)" : undefined, transition: "all 0.1s" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                        <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 20, height: 20, borderRadius: "50%", fontSize: 10, fontWeight: 700, background: i === 0 ? "rgba(16,185,129,0.3)" : "rgba(255,255,255,0.08)", color: i === 0 ? "#34d399" : "var(--text-secondary)" }}>{i + 1}</span>
-                          <span style={{ fontWeight: 700, fontSize: 14 }}>{c.nick}</span>
-                          {i === 0 && <span style={{ fontSize: 10, color: "#34d399", fontWeight: 600 }}>ЛУЧШИЙ</span>}
-                          {isHighlighted && <span style={{ fontSize: 10, color: "#fbbf24", fontWeight: 600 }}>НАЙДЕН</span>}
+                      style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 10px", borderRadius: 6, cursor: "pointer", border: isHighlighted ? "2px solid #fbbf24" : isSelected ? "1px solid var(--accent)" : "1px solid transparent", outline: isSelected && !isHighlighted ? "1px solid var(--accent)" : "none", background: isHighlighted ? "rgba(251,191,36,0.08)" : undefined, transition: "all 0.1s" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                          <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 18, height: 18, borderRadius: "50%", fontSize: 10, fontWeight: 700, background: i === 0 ? "rgba(16,185,129,0.3)" : "rgba(255,255,255,0.08)", color: i === 0 ? "#34d399" : "var(--text-secondary)", flexShrink: 0 }}>{i + 1}</span>
+                          <span style={{ fontWeight: 700, fontSize: 13 }}>{c.nick}</span>
+                          {i === 0 && <span style={{ fontSize: 9, color: "#34d399", fontWeight: 600, background: "rgba(16,185,129,0.12)", padding: "1px 5px", borderRadius: 3 }}>ЛУЧШИЙ</span>}
+                          {isHighlighted && <span style={{ fontSize: 9, color: "#fbbf24", fontWeight: 600 }}>НАЙДЕН</span>}
                         </span>
-                        <span style={{ fontFamily: "monospace", fontWeight: 800, fontSize: 13, color: i === 0 ? "#34d399" : "var(--text-primary)" }}>{c.subScore.toFixed(4)}</span>
+                        <span style={{ fontFamily: "monospace", fontWeight: 800, fontSize: 12, color: i === 0 ? "#34d399" : "var(--text-primary)" }}>{c.subScore.toFixed(4)}</span>
                       </div>
-                      <div style={{ display: "flex", gap: 10, fontSize: 11, color: "var(--text-secondary)" }}>
+                      <div style={{ display: "flex", gap: 8, fontSize: 10, color: "var(--text-secondary)", marginTop: 2, paddingLeft: 25 }}>
                         <span>{c.mmr.toLocaleString()} MMR</span>
-                        <span>Stake: {c.stake}</span>
+                        <span>S:{c.stake}</span>
                         <span>R{c.mainRole}{c.flexRole ? `/R${c.flexRole}` : ""}</span>
-                        <span style={{ color: rfColor(c.roleFit) }}>RF: {c.roleFit >= 1 ? "Осн" : c.roleFit >= 0.8 ? "Флекс" : "Нет"}</span>
-                        <span>BF: {c.balanceFactor.toFixed(2)}</span>
+                        <span style={{ color: rfColor(c.roleFit) }}>RF:{c.roleFit >= 1 ? "Осн" : c.roleFit >= 0.8 ? "Флекс" : "Нет"}</span>
+                        <span>BF:{c.balanceFactor.toFixed(2)}</span>
                         <span>→ {Math.round(c.teamMmrAfter).toLocaleString()}</span>
                         {c.wallet && <span style={{ color: "var(--accent)", fontFamily: "monospace" }}>{c.wallet}</span>}
                       </div>
@@ -563,10 +533,10 @@ export default function JudgePage() {
           </div>
         </div>
 
-        {/* Col 3 — Рекомендация системы */}
+        {/* ── Col 3 — Рекомендация + действия ── */}
         <div style={col}>
           <div style={{ ...colHeader, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span>Рекомендация системы</span>
+            <span>Рекомендация</span>
             {focusedCandidate && (
               <span style={{ fontFamily: "monospace", fontSize: 12, color: "#34d399", fontWeight: 800, background: "rgba(16,185,129,0.15)", padding: "1px 7px", borderRadius: 4, textTransform: "none" }}>
                 {focusedCandidate.subScore.toFixed(4)}
@@ -574,6 +544,7 @@ export default function JudgePage() {
             )}
           </div>
           <div style={{ ...colBody, display: "flex", flexDirection: "column", gap: 10 }}>
+
             {!focusedCandidate ? (
               <div style={{ color: "var(--text-muted)", fontSize: 12, textAlign: "center", paddingTop: 40 }}>
                 <div style={{ fontSize: 28, marginBottom: 8 }}>🎯</div>
@@ -581,70 +552,62 @@ export default function JudgePage() {
               </div>
             ) : (
               <>
-                {/* Candidate title */}
+                {/* Name */}
                 <div>
-                  <div style={{ fontSize: 22, fontWeight: 800, color: "var(--text-primary)", lineHeight: 1 }}>{focusedCandidate.nick}</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: "var(--text-primary)", lineHeight: 1 }}>{focusedCandidate.nick}</div>
                   {replacedPlayer && (
-                    <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>
+                    <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3 }}>
                       Замена для <span style={{ color: "#f87171" }}>{replacedPlayer.nick}</span>
+                      <span style={{ marginLeft: 6, color: "var(--text-muted)" }}>{replacedPlayer.mmr.toLocaleString()} MMR · R{replacedPlayer.mainRole}</span>
                     </div>
                   )}
                   {isEmptySlot && (
-                    <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>Заполнение пустого слота · R{emptySlotRole}</div>
+                    <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3 }}>Пустой слот · R{emptySlotRole}</div>
                   )}
                 </div>
 
-                {/* Stats grid */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                {/* Compact stats */}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
                   {[
                     { label: "MMR", value: focusedCandidate.mmr.toLocaleString() },
-                    { label: "Stake", value: focusedCandidate.stake },
-                    { label: "Роли", value: `R${focusedCandidate.mainRole}${focusedCandidate.flexRole ? `/R${focusedCandidate.flexRole}` : ""}` },
-                    { label: "MMR после замены", value: Math.round(focusedCandidate.teamMmrAfter).toLocaleString() },
+                    { label: "Stake", value: String(focusedCandidate.stake) },
+                    { label: "Роль", value: `R${focusedCandidate.mainRole}${focusedCandidate.flexRole ? `/R${focusedCandidate.flexRole}` : ""}` },
+                    { label: "→ MMR", value: Math.round(focusedCandidate.teamMmrAfter).toLocaleString() },
                   ].map(({ label, value }) => (
-                    <div key={label} style={{ background: "rgba(0,0,0,0.25)", border: "1px solid var(--border)", borderRadius: 6, padding: "7px 10px" }}>
-                      <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 2 }}>{label}</div>
-                      <div style={{ fontSize: 15, fontWeight: 700, fontFamily: "monospace" }}>{value}</div>
+                    <div key={label} style={{ flex: "1 1 calc(50% - 3px)", background: "rgba(0,0,0,0.25)", border: "1px solid var(--border)", borderRadius: 5, padding: "5px 8px" }}>
+                      <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.07em" }}>{label}</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "monospace", marginTop: 1 }}>{value}</div>
                     </div>
                   ))}
                 </div>
 
-                {/* Extra details */}
-                <div style={{ display: "flex", flexDirection: "column", gap: 5, fontSize: 12 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid var(--border)" }}>
+                {/* Role fit + BF + Wallet row */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: "1px solid var(--border)" }}>
                     <span style={{ color: "var(--text-muted)" }}>Role Fit</span>
-                    <span style={{ fontWeight: 600, color: rfColor(focusedCandidate.roleFit) }}>
-                      {focusedCandidate.roleFit >= 1 ? "Основная" : focusedCandidate.roleFit >= 0.8 ? "Флекс" : "Слабое совпадение"}
-                    </span>
+                    <span style={{ fontWeight: 600, color: rfColor(focusedCandidate.roleFit) }}>{rfLabel(focusedCandidate.roleFit)}</span>
                   </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid var(--border)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: "1px solid var(--border)" }}>
                     <span style={{ color: "var(--text-muted)" }}>Balance Factor</span>
                     <span style={{ fontWeight: 600 }}>{focusedCandidate.balanceFactor.toFixed(2)}</span>
                   </div>
                   {focusedCandidate.wallet && (
-                    <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid var(--border)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: "1px solid var(--border)" }}>
                       <span style={{ color: "var(--text-muted)" }}>Кошелёк</span>
                       <span style={{ fontFamily: "monospace", fontSize: 11, color: "var(--accent)" }}>{focusedCandidate.wallet}</span>
                     </div>
                   )}
                 </div>
 
-                {/* Focus hint */}
-                {!selectedCandidateId && (
-                  <div style={{ fontSize: 11, color: "var(--text-muted)", background: "rgba(0,0,0,0.2)", borderRadius: 5, padding: "7px 10px", lineHeight: 1.5 }}>
-                    Сейчас в фокусе лучший кандидат по SubScore. Подтверди выбор, если хочешь назначить именно его.
-                  </div>
-                )}
-
                 {/* Action buttons */}
-                <div style={{ display: "flex", gap: 6, marginTop: "auto" }}>
+                <div style={{ display: "flex", gap: 6 }}>
                   <button
                     className="btn btn-ghost btn-sm"
                     style={{ flex: 1 }}
                     onClick={() => setSelectedCandidateId(focusedCandidate.poolEntryId)}
                     disabled={selectedCandidateId === focusedCandidate.poolEntryId}
                   >
-                    Выбрать кандидата
+                    Выбрать
                   </button>
                   <button
                     className="btn btn-accent btn-sm"
@@ -655,24 +618,23 @@ export default function JudgePage() {
                     {assignMutation.isPending ? "..." : "✓ Назначить"}
                   </button>
                 </div>
+                {assignMutation.isSuccess && <div style={{ color: "#34d399", fontSize: 12, textAlign: "center" }}>{isEmptySlot ? "Игрок добавлен!" : "Замена назначена!"}</div>}
+                {assignMutation.isError && <div style={{ color: "#f87171", fontSize: 12 }}>Ошибка: {(assignMutation.error as Error).message}</div>}
               </>
             )}
 
-            {/* Discord search section */}
+            {/* Discord search */}
             <div style={{ marginTop: "auto", borderTop: "1px solid var(--border)", paddingTop: 10 }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6 }}>
                 Поиск через Discord-бот
               </div>
               <button
                 style={{
-                  width: "100%",
-                  padding: "10px 0",
-                  borderRadius: 6,
+                  width: "100%", padding: "9px 0", borderRadius: 6,
                   border: "1px solid rgba(88,101,242,0.4)",
                   background: discordPending ? "rgba(88,101,242,0.15)" : "rgba(88,101,242,0.08)",
                   color: discordPending ? "#7289da" : "rgba(88,101,242,0.9)",
-                  fontSize: 13,
-                  fontWeight: 700,
+                  fontSize: 13, fontWeight: 700,
                   cursor: (!teamId || !replacedPlayerId || !judgeName.trim() || discordPending) ? "not-allowed" : "pointer",
                   opacity: (!teamId || !replacedPlayerId || !judgeName.trim()) ? 0.5 : 1,
                   transition: "all 0.15s",
@@ -684,9 +646,7 @@ export default function JudgePage() {
               </button>
               {discordResult && (
                 <div style={{ marginTop: 6, padding: "6px 10px", background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.25)", borderRadius: 5, fontSize: 11, color: "#34d399" }}>
-                  ✅ Сессия создана для <b>{discordResult.teamName}</b>.<br />
-                  <span style={{ color: "var(--text-muted)", fontFamily: "monospace", fontSize: 10 }}>{discordResult.sessionId}</span><br />
-                  Бот подхватит поиск автоматически (до 5 сек).
+                  ✅ Сессия создана · <b>{discordResult.teamName}</b>
                 </div>
               )}
               {discordError && (
@@ -694,13 +654,9 @@ export default function JudgePage() {
                   ❌ {discordError}
                 </div>
               )}
-              <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 5, lineHeight: 1.4 }}>
-                Требует: команда + игрок + имя судьи.<br />
-                Бот должен быть запущен и настроен REPLACEMENTS_CHANNEL_ID.
-              </div>
             </div>
 
-            {/* Mini pool list */}
+            {/* Pool list */}
             <div style={{ borderTop: "1px solid var(--border)", paddingTop: 10 }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 5 }}>
                 Пул замен · {poolEntries.length}
@@ -715,8 +671,10 @@ export default function JudgePage() {
                 ))}
               </div>
             </div>
+
           </div>
         </div>
+
       </div>
     </div>
   );
