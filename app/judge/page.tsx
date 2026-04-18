@@ -315,7 +315,7 @@ export default function JudgePage() {
         </div>
       </div>
 
-      <div className="judge-cols" style={{ flex: 1, overflow: "hidden", display: "grid", gridTemplateColumns: "260px 1fr 260px", gap: 12, padding: "12px 16px" }}>
+      <div className="judge-cols" style={{ flex: 1, overflow: "hidden", display: "grid", gridTemplateColumns: "260px minmax(0, 560px) 380px", gap: 12, padding: "12px 16px" }}>
 
         {/* ── Col 1 — Контекст ── */}
         <div style={col}>
