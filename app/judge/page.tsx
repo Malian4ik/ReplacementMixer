@@ -386,9 +386,9 @@ export default function JudgePage() {
               <input className="form-input" value={judgeName} onChange={e => setJudgeName(e.target.value)} placeholder="Обязательно" style={!judgeName.trim() ? { borderColor: "rgba(239,68,68,0.5)" } : {}} />
             </div>
 
-            <div style={field}>
+            <div style={{ ...field, flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
               <div className="lbl">Комментарий</div>
-              <textarea className="form-input" value={comment} onChange={e => setComment(e.target.value)} rows={2} placeholder="Опционально" style={{ resize: "none" }} />
+              <textarea className="form-input" value={comment} onChange={e => setComment(e.target.value)} placeholder="Опционально" style={{ resize: "none", flex: 1, minHeight: 60 }} />
             </div>
 
             {/* Active Discord session */}
@@ -543,11 +543,13 @@ export default function JudgePage() {
               </span>
             )}
           </div>
-          <div style={{ ...colBody, display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ ...colBody, display: "flex", flexDirection: "column", gap: 0, padding: 0 }}>
 
+            {/* Scrollable top: recommendation content */}
+            <div style={{ flex: 1, overflow: "auto", padding: "10px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
             {!focusedCandidate ? (
-              <div style={{ color: "var(--text-muted)", fontSize: 12, textAlign: "center", paddingTop: 40 }}>
-                <div style={{ fontSize: 28, marginBottom: 8 }}>🎯</div>
+              <div style={{ color: "var(--text-muted)", fontSize: 12, textAlign: "center", paddingTop: 60 }}>
+                <div style={{ fontSize: 32, marginBottom: 8 }}>🎯</div>
                 Выберите команду и игрока<br />для получения рекомендации
               </div>
             ) : (
@@ -622,9 +624,13 @@ export default function JudgePage() {
                 {assignMutation.isError && <div style={{ color: "#f87171", fontSize: 12 }}>Ошибка: {(assignMutation.error as Error).message}</div>}
               </>
             )}
+            </div>
+
+            {/* Fixed bottom: Discord search + pool */}
+            <div style={{ flexShrink: 0, borderTop: "1px solid var(--border)", padding: "10px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
 
             {/* Discord search */}
-            <div style={{ borderTop: "1px solid var(--border)", paddingTop: 10 }}>
+            <div>
               <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6 }}>
                 Поиск через Discord-бот
               </div>
@@ -657,11 +663,11 @@ export default function JudgePage() {
             </div>
 
             {/* Pool list */}
-            <div style={{ borderTop: "1px solid var(--border)", paddingTop: 10 }}>
+            <div>
               <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 5 }}>
                 Пул замен · {poolEntries.length}
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 2, maxHeight: 140, overflowY: "auto" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 2, maxHeight: 120, overflowY: "auto" }}>
                 {poolEntries.length === 0 && <div style={{ color: "var(--text-muted)", fontSize: 11, padding: "6px 0" }}>Пул пуст</div>}
                 {poolEntries.map((e, i) => (
                   <div key={e.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 6px", borderRadius: 3, background: i === 0 ? "rgba(16,185,129,0.06)" : "rgba(0,0,0,0.15)", border: `1px solid ${i === 0 ? "rgba(16,185,129,0.2)" : "var(--border)"}`, fontSize: 10 }}>
@@ -672,6 +678,7 @@ export default function JudgePage() {
               </div>
             </div>
 
+            </div>{/* end fixed bottom */}
           </div>
         </div>
 
