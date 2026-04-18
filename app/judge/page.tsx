@@ -624,7 +624,7 @@ export default function JudgePage() {
             )}
 
             {/* Discord search */}
-            <div style={{ marginTop: "auto", borderTop: "1px solid var(--border)", paddingTop: 10 }}>
+            <div style={{ borderTop: "1px solid var(--border)", paddingTop: 10 }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6 }}>
                 Поиск через Discord-бот
               </div>

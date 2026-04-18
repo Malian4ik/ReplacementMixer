@@ -13,6 +13,7 @@ const UpdatePlayerSchema = z.object({
   discordId: z.string().nullable().optional(),
   nightMatches: z.number().int().min(0).optional(),
   isActiveInDatabase: z.boolean().optional(),
+  isDisqualified: z.boolean().optional(),
 });
 
 export async function GET(
