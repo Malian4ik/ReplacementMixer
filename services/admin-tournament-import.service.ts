@@ -32,6 +32,12 @@ export async function importTournamentParticipants(
   );
   if (!tournamentInfo) throw new Error(`Tournament ${externalTournamentId} not found in source`);
 
+  const parseDate = (s?: string): Date | null => {
+    if (!s) return null;
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+  };
+
   // Upsert AdminTournament
   const tournament = await prisma.adminTournament.upsert({
     where: { externalId: String(externalTournamentId) },
@@ -39,8 +45,8 @@ export async function importTournamentParticipants(
       externalId: String(externalTournamentId),
       name: tournamentInfo.name,
       status: tournamentInfo.status,
-      startDate: tournamentInfo.startDate ? new Date(tournamentInfo.startDate) : null,
-      endDate: tournamentInfo.endDate ? new Date(tournamentInfo.endDate) : null,
+      startDate: parseDate(tournamentInfo.startDate),
+      endDate: parseDate(tournamentInfo.endDate),
     },
     update: {
       name: tournamentInfo.name,
