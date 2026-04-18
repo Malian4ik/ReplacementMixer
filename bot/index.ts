@@ -6,7 +6,7 @@
  *   npm run bot               (via package.json script)
  *
  * Required env vars:
- *   DISCORD_TOKEN        — bot token from Discord Developer Portal
+ *   DISCORD_BOT_TOKEN    — bot token from Discord Developer Portal
  *   DISCORD_CLIENT_ID    — application client ID
  *   DISCORD_GUILD_ID     — (optional) restrict commands to one guild for faster testing
  *   REPLACEMENTS_CHANNEL_ID — default channel for wave announcements
@@ -29,7 +29,7 @@ import { prisma } from "@/lib/prisma";
 
 // ── Environment validation ────────────────────────────────────────────────────
 
-const REQUIRED_ENV = ["DISCORD_TOKEN", "DISCORD_CLIENT_ID"] as const;
+const REQUIRED_ENV = ["DISCORD_BOT_TOKEN", "DISCORD_CLIENT_ID"] as const;
 for (const key of REQUIRED_ENV) {
   if (!process.env[key]) {
     log.error(`Missing required environment variable: ${key}`);
@@ -132,7 +132,7 @@ process.on("unhandledRejection", (reason) => {
 
 // ── Login ─────────────────────────────────────────────────────────────────────
 
-client.login(process.env.DISCORD_TOKEN).catch((err) => {
+client.login(process.env.DISCORD_BOT_TOKEN).catch((err) => {
   log.error("Failed to login to Discord", err);
   process.exit(1);
 });

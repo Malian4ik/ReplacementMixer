@@ -12,12 +12,12 @@ import { REST, Routes } from "@discordjs/rest";
 import { commands } from "./commands/index";
 import { log } from "./utils/logger";
 
-const token = process.env.DISCORD_TOKEN;
+const token = process.env.DISCORD_BOT_TOKEN;
 const clientId = process.env.DISCORD_CLIENT_ID;
 const guildId = process.env.DISCORD_GUILD_ID;
 
 if (!token || !clientId) {
-  log.error("DISCORD_TOKEN and DISCORD_CLIENT_ID must be set.");
+  log.error("DISCORD_BOT_TOKEN and DISCORD_CLIENT_ID must be set.");
   process.exit(1);
 }
 
