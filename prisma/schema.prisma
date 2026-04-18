@@ -8,22 +8,35 @@ datasource db {
 }
 
 model Player {
-  id                 String   @id @default(cuid())
-  nick               String   @unique
-  mmr                Int
-  stake              Float
-  mainRole           Int
-  flexRole           Int?
-  wallet             String?
-  nightMatches       Int      @default(0)
-  telegramId         String?
-  isActiveInDatabase Boolean  @default(true)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  id                          String   @id @default(cuid())
+  nick                        String   @unique
+  mmr                         Int
+  stake                       Float
+  mainRole                    Int
+  flexRole                    Int?
+  wallet                      String?
+  nightMatches                Int      @default(0)
+  telegramId                  String?
+  discordId                   String?  @unique
+  isActiveInDatabase          Boolean  @default(true)
+  isDisqualified              Boolean  @default(false)
+  /// Сколько раз игрок был импортирован как участник турнира
+  adminParticipationCount     Int      @default(0)
+  /// Играл ли до последнего импорта
+  hasPlayedBefore             Boolean  @default(false)
+  /// Название последнего турнира, с которого был импортирован
+  lastImportedTournamentName  String?
+  /// Когда последний раз синхронизировался с админкой
+  lastSyncedAt                DateTime?
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
 
-  poolEntries         ReplacementPoolEntry[]
-  replacedInLogs      MatchReplacementLog[]  @relation("ReplacedPlayer")
-  replacementInLogs   MatchReplacementLog[]  @relation("ReplacementPlayer")
+  poolEntries          SubstitutionPoolEntry[]
+  substitutedInLogs    MatchSubstitutionLog[]  @relation("SubstitutedPlayer")
+  substitutionInLogs   MatchSubstitutionLog[]  @relation("SubstitutionPlayer")
+  waveCandidates       WaveCandidate[]
+  waveResponses        WaveResponse[]
+  tournamentParticipations PlayerTournamentParticipation[]
 }
 
 model Team {
@@ -34,14 +47,15 @@ model Team {
   player3Id String?
   player4Id String?
   player5Id String?
+  captainId String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  poolEntries ReplacementPoolEntry[]
-  logs        MatchReplacementLog[]
+  poolEntries SubstitutionPoolEntry[]
+  logs        MatchSubstitutionLog[]
 }
 
-model ReplacementPoolEntry {
+model SubstitutionPoolEntry {
   id               String     @id @default(cuid())
   playerId         String
   status           String     @default("Active")
@@ -55,7 +69,9 @@ model ReplacementPoolEntry {
 
   player       Player  @relation(fields: [playerId], references: [id])
   assignedTeam Team?   @relation(fields: [assignedTeamId], references: [id])
-  logs         MatchReplacementLog[]
+  logs         MatchSubstitutionLog[]
+
+  @@map("ReplacementPoolEntry")
 }
 
 model TournamentMatch {
@@ -75,7 +91,148 @@ model TournamentMatch {
   updatedAt    DateTime  @updatedAt
 }
 
-model MatchReplacementLog {
+// ── Tournament Import from Admin ──────────────────────────────────────────────
+
+model AdminTournament {
+  id              String   @id @default(cuid())
+  /// ID турнира в системе источника
+  externalId      String   @unique
+  name            String
+  status          String?
+  startDate       DateTime?
+  endDate         DateTime?
+  participantCount Int     @default(0)
+  lastSyncedAt    DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  participations PlayerTournamentParticipation[]
+  syncRuns       AdminTournamentSyncRun[]
+}
+
+model PlayerTournamentParticipation {
+  id                String   @id @default(cuid())
+  playerId          String
+  tournamentId      String
+  /// Сколько раз участвовал в этом турнире (по данным импорта)
+  participationCount Int     @default(1)
+  /// Участвовал ли до этого импорта
+  playedBefore      Boolean  @default(false)
+  /// Статус в очереди: Registered | Waiting | Confirmed | Disqualified и т.д.
+  tournamentStatus  String?
+  queuePosition     Int?
+  qualifyRating     Float?
+  bidSize           Float?
+  balance           Float?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  player     Player           @relation(fields: [playerId], references: [id])
+  tournament AdminTournament  @relation(fields: [tournamentId], references: [id])
+
+  @@unique([playerId, tournamentId])
+}
+
+model AdminTournamentSyncRun {
+  id           String   @id @default(cuid())
+  tournamentId String
+  startedAt    DateTime @default(now())
+  finishedAt   DateTime?
+  status       String   @default("Running")
+  created      Int      @default(0)
+  updated      Int      @default(0)
+  failed       Int      @default(0)
+  total        Int      @default(0)
+  errorLog     String?
+
+  tournament AdminTournament @relation(fields: [tournamentId], references: [id])
+}
+
+// ── Discord Bot: Substitution Search ──────────────────────────────────────────
+
+model SubstitutionSearchSession {
+  id                  String   @id @default(cuid())
+  teamId              String
+  teamName            String
+  neededRole          Int
+  replacedPlayerId    String?
+  replacedPlayerNick  String?
+  replacedPlayerMmr   Int      @default(0)
+  currentPlayerCount  Int      @default(5)
+  currentTeamAvgMmr   Int
+  targetAvgMmr        Int
+  maxDeviation        Int      @default(800)
+  /// Active | Completed | Exhausted | Cancelled
+  status              String   @default("Active")
+  /// Discord user ID or judge name who triggered the search
+  triggeredBy         String
+  guildId             String
+  channelId           String
+  currentWave         Int      @default(0)
+  selectedPlayerId    String?
+  selectedPoolEntryId String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  waves SubstitutionWave[]
+
+  @@map("ReplacementSearchSession")
+}
+
+model SubstitutionWave {
+  id         String   @id @default(cuid())
+  sessionId  String
+  waveNumber Int
+  /// Active | Processing | Completed | NoResponse
+  status     String   @default("Active")
+  /// Discord message ID posted in the channel
+  messageId  String?
+  channelId  String
+  startsAt   DateTime @default(now())
+  endsAt     DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  session    SubstitutionSearchSession @relation(fields: [sessionId], references: [id])
+  candidates WaveCandidate[]
+  responses  WaveResponse[]
+
+  @@map("ReplacementWave")
+}
+
+model WaveCandidate {
+  id            String  @id @default(cuid())
+  waveId        String
+  playerId      String
+  poolEntryId   String
+  /// Snapshot of player.discordId at wave creation time (for mentions)
+  discordId     String?
+  /// Position in the reserve queue (0-based) when this wave was created
+  queuePosition Int
+  createdAt     DateTime @default(now())
+
+  wave   SubstitutionWave @relation(fields: [waveId], references: [id])
+  player Player           @relation(fields: [playerId], references: [id])
+}
+
+model WaveResponse {
+  id        String   @id @default(cuid())
+  waveId    String
+  playerId  String
+  discordId String
+  clickedAt DateTime @default(now())
+  subScore  Float?
+  selected  Boolean  @default(false)
+
+  wave   SubstitutionWave @relation(fields: [waveId], references: [id])
+  player Player           @relation(fields: [playerId], references: [id])
+
+  @@unique([waveId, playerId])
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+
+model MatchSubstitutionLog {
   id                    String   @id @default(cuid())
   timestamp             DateTime @default(now())
   actionType            String
@@ -95,8 +252,10 @@ model MatchReplacementLog {
   poolEntryId           String?
   createdAt             DateTime @default(now())
 
-  team              Team?                @relation(fields: [teamId], references: [id])
-  replacedPlayer    Player?              @relation("ReplacedPlayer", fields: [replacedPlayerId], references: [id])
-  replacementPlayer Player?              @relation("ReplacementPlayer", fields: [replacementPlayerId], references: [id])
-  poolEntry         ReplacementPoolEntry? @relation(fields: [poolEntryId], references: [id])
+  team              Team?                  @relation(fields: [teamId], references: [id])
+  substitutedPlayer Player?               @relation("SubstitutedPlayer", fields: [replacedPlayerId], references: [id])
+  substitutionPlayer Player?              @relation("SubstitutionPlayer", fields: [replacementPlayerId], references: [id])
+  poolEntry         SubstitutionPoolEntry? @relation(fields: [poolEntryId], references: [id])
+
+  @@map("MatchReplacementLog")
 }

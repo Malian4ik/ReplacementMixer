@@ -1,0 +1,21 @@
+app = "replacement-mixer-bot"
+primary_region = "fra"
+
+[build]
+  dockerfile = "Dockerfile.bot"
+
+[env]
+  NODE_ENV = "production"
+
+[[vm]]
+  memory = "256mb"
+  cpu_kind = "shared"
+  cpus = 1
+
+# Secrets (set via `fly secrets set`):
+#   DISCORD_TOKEN
+#   DISCORD_CLIENT_ID
+#   DISCORD_GUILD_ID
+#   REPLACEMENTS_CHANNEL_ID
+#   TURSO_DATABASE_URL
+#   TURSO_AUTH_TOKEN

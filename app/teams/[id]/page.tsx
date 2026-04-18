@@ -1,7 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
+import { useUser } from "@/components/UserContext";
 
 type Player = {
   id: string; nick: string; mmr: number; mainRole: number; flexRole: number | null;
@@ -11,6 +13,7 @@ type Player = {
 
 type Team = {
   id: string; name: string; avgMmr: number;
+  captainId: string | null;
   players: (Player | null)[];
 };
 
@@ -29,14 +32,105 @@ const btnBase: React.CSSProperties = {
   lineHeight: 1.6,
 };
 
+// Inline swap picker component
+function SwapPicker({
+  currentTeamId,
+  currentPlayerId,
+  allTeams,
+  onSwap,
+  onClose,
+}: {
+  currentTeamId: string;
+  currentPlayerId: string;
+  allTeams: Team[];
+  onSwap: (targetTeamId: string, targetPlayerId: string) => void;
+  onClose: () => void;
+}) {
+  const [targetTeamId, setTargetTeamId] = useState("");
+  const targetTeam = allTeams.find(t => t.id === targetTeamId);
+  const targetPlayers = (targetTeam?.players ?? []).filter(
+    (p): p is Player => p !== null && p.id !== currentPlayerId
+  );
+
+  return (
+    <div style={{
+      position: "absolute", zIndex: 100, right: 0, top: "100%", marginTop: 4,
+      background: "var(--bg-card)", border: "1px solid var(--border)",
+      borderRadius: 8, padding: 12, minWidth: 260, boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+    }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-secondary)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+        Поменять местами с...
+      </div>
+
+      <select
+        className="form-select"
+        value={targetTeamId}
+        onChange={e => setTargetTeamId(e.target.value)}
+        style={{ marginBottom: 8, fontSize: 12 }}
+      >
+        <option value="">— Выберите команду —</option>
+        {allTeams
+          .filter(t => t.id !== currentTeamId || t.players.some(p => p && p.id !== currentPlayerId))
+          .map(t => <option key={t.id} value={t.id}>{t.name}</option>)
+        }
+      </select>
+
+      {targetTeamId && targetPlayers.length === 0 && (
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>Нет доступных игроков</div>
+      )}
+
+      {targetPlayers.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 3, maxHeight: 220, overflow: "auto" }}>
+          {targetPlayers.map(p => (
+            <button
+              key={p.id}
+              onClick={() => onSwap(targetTeamId, p.id)}
+              style={{
+                display: "flex", justifyContent: "space-between", alignItems: "center",
+                padding: "6px 10px", borderRadius: 5, cursor: "pointer",
+                background: "rgba(0,0,0,0.2)", border: "1px solid var(--border)",
+                color: "var(--text-primary)", fontSize: 12, textAlign: "left",
+                transition: "all 0.1s",
+              }}
+              onMouseEnter={e => (e.currentTarget.style.background = "rgba(0,212,232,0.1)")}
+              onMouseLeave={e => (e.currentTarget.style.background = "rgba(0,0,0,0.2)")}
+            >
+              <span style={{ fontWeight: 600 }}>{p.nick}</span>
+              <span style={{ color: "var(--text-muted)", fontSize: 11, fontFamily: "monospace" }}>{p.mmr.toLocaleString()} · R{p.mainRole}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      <button
+        onClick={onClose}
+        style={{ ...btnBase, marginTop: 8, width: "100%", justifyContent: "center", padding: "4px 0", color: "var(--text-muted)", fontSize: 11 }}
+      >
+        Отмена
+      </button>
+    </div>
+  );
+}
+
 export default function TeamDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const qc = useQueryClient();
+  const { user } = useUser();
+  const canEdit = user?.role === "OWNER" || user?.role === "JUDGE";
+
+  const [swapOpenFor, setSwapOpenFor] = useState<string | null>(null);
+  const [nightAllPending, setNightAllPending] = useState(false);
 
   const { data: team, isLoading } = useQuery<Team>({
     queryKey: ["team", id],
     queryFn: () => fetch(`/api/teams/${id}`).then(r => r.json()),
+  });
+
+  const { data: allTeams = [] } = useQuery<Team[]>({
+    queryKey: ["teams"],
+    queryFn: () => fetch("/api/teams").then(r => r.json()),
+    enabled: canEdit,
   });
 
   const roleMutation = useMutation({
@@ -48,6 +142,68 @@ export default function TeamDetailPage() {
       }).then(r => r.json()),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["team", id] }),
   });
+
+  const nightMutation = useMutation({
+    mutationFn: ({ playerId, nightMatches }: { playerId: string; nightMatches: number }) =>
+      fetch(`/api/players/${playerId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nightMatches }),
+      }).then(r => r.json()),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["team", id] }),
+  });
+
+  const captainMutation = useMutation({
+    mutationFn: (captainId: string | null) =>
+      fetch(`/api/teams/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ captainId }),
+      }).then(r => r.json()),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["team", id] });
+      qc.invalidateQueries({ queryKey: ["teams"] });
+    },
+  });
+
+  const swapMutation = useMutation({
+    mutationFn: ({ targetTeamId, targetPlayerId, sourcePlayerId }: { targetTeamId: string; targetPlayerId: string; sourcePlayerId: string }) =>
+      fetch("/api/teams/swap", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          playerAId: sourcePlayerId,
+          teamAId: id,
+          playerBId: targetPlayerId,
+          teamBId: targetTeamId,
+        }),
+      }).then(async r => {
+        if (!r.ok) throw new Error((await r.json()).error);
+        return r.json();
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["team", id] });
+      qc.invalidateQueries({ queryKey: ["teams"] });
+      setSwapOpenFor(null);
+    },
+  });
+
+  async function giveNightStreakToAll() {
+    const activePlayers = players.filter((p): p is Player => p !== null);
+    if (!activePlayers.length) return;
+    setNightAllPending(true);
+    await Promise.all(
+      activePlayers.map(p =>
+        fetch(`/api/players/${p.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ nightMatches: p.nightMatches + 1 }),
+        })
+      )
+    );
+    await qc.invalidateQueries({ queryKey: ["team", id] });
+    setNightAllPending(false);
+  }
 
   if (isLoading) return (
     <div style={{ padding: 32, color: "var(--text-muted)", textAlign: "center" }}>Загрузка...</div>
@@ -68,10 +224,27 @@ export default function TeamDetailPage() {
         >
           ←
         </button>
-        <div>
+        <div style={{ flex: 1 }}>
           <div className="page-title">{team.name}</div>
           <div className="page-subtitle">{players.filter(Boolean).length} игроков · Avg MMR: {team.avgMmr.toLocaleString()}</div>
         </div>
+        {canEdit && (
+          <button
+            style={{
+              ...btnBase,
+              padding: "6px 14px",
+              fontSize: 13,
+              background: nightAllPending ? "rgba(0,212,232,0.1)" : "rgba(0,0,0,0.3)",
+              color: nightAllPending ? "var(--accent)" : "var(--text-secondary)",
+              borderColor: "rgba(0,212,232,0.3)",
+              borderRadius: 6,
+            }}
+            onClick={giveNightStreakToAll}
+            disabled={nightAllPending || players.filter(Boolean).length === 0}
+          >
+            {nightAllPending ? "..." : "🌙 +1 всем"}
+          </button>
+        )}
       </div>
 
       <div style={{ flex: 1, overflow: "auto", padding: "16px 24px" }}>
@@ -89,6 +262,8 @@ export default function TeamDetailPage() {
                 <th>Telegram</th>
                 <th>Ночные</th>
                 <th>Статус</th>
+                {canEdit && <th>Капитан</th>}
+                {canEdit && <th>Обмен</th>}
               </tr>
             </thead>
             <tbody>
@@ -158,7 +333,20 @@ export default function TeamDetailPage() {
                           ? (p.telegramId.startsWith("@") ? p.telegramId : `@${p.telegramId}`)
                           : "—"}
                       </td>
-                      <td style={{ textAlign: "center" }}>{p.nightMatches}</td>
+                      <td style={{ textAlign: "center" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                          <button
+                            style={{ ...btnBase, padding: "1px 7px", fontSize: 14 }}
+                            onClick={() => nightMutation.mutate({ playerId: p.id, nightMatches: Math.max(0, p.nightMatches - 1) })}
+                            disabled={p.nightMatches <= 0}
+                          >−</button>
+                          <span style={{ minWidth: 20, fontWeight: 600 }}>{p.nightMatches}</span>
+                          <button
+                            style={{ ...btnBase, padding: "1px 7px", fontSize: 14 }}
+                            onClick={() => nightMutation.mutate({ playerId: p.id, nightMatches: p.nightMatches + 1 })}
+                          >+</button>
+                        </div>
+                      </td>
                       <td>
                         <span style={{
                           fontSize: 11, fontWeight: 600, padding: "2px 7px", borderRadius: 4,
@@ -168,9 +356,57 @@ export default function TeamDetailPage() {
                           {p.isActiveInDatabase ? "Активен" : "Неактивен"}
                         </span>
                       </td>
+                      {canEdit && (
+                        <td>
+                          {team.captainId === p.id ? (
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: "#f59e0b" }}>★ Капитан</span>
+                              <button
+                                style={{ ...btnBase, fontSize: 10, color: "#f87171", borderColor: "rgba(248,113,113,0.3)" }}
+                                onClick={() => captainMutation.mutate(null)}
+                              >Снять</button>
+                            </div>
+                          ) : (
+                            <button
+                              style={{ ...btnBase }}
+                              onClick={() => captainMutation.mutate(p.id)}
+                            >Назначить</button>
+                          )}
+                        </td>
+                      )}
+                      {canEdit && (
+                        <td style={{ position: "relative" }}>
+                          <button
+                            style={{
+                              ...btnBase,
+                              background: swapOpenFor === p.id ? "rgba(0,212,232,0.12)" : "transparent",
+                              color: swapOpenFor === p.id ? "var(--accent)" : "var(--text-secondary)",
+                              borderColor: swapOpenFor === p.id ? "var(--accent)" : "rgba(0,212,232,0.25)",
+                              whiteSpace: "nowrap",
+                            }}
+                            onClick={() => setSwapOpenFor(swapOpenFor === p.id ? null : p.id)}
+                          >
+                            ⇄ Обменять
+                          </button>
+                          {swapOpenFor === p.id && (
+                            <SwapPicker
+                              currentTeamId={id}
+                              currentPlayerId={p.id}
+                              allTeams={allTeams}
+                              onSwap={(targetTeamId, targetPlayerId) =>
+                                swapMutation.mutate({ targetTeamId, targetPlayerId, sourcePlayerId: p.id })
+                              }
+                              onClose={() => setSwapOpenFor(null)}
+                            />
+                          )}
+                          {swapMutation.isPending && swapOpenFor === p.id && (
+                            <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>Меняю...</div>
+                          )}
+                        </td>
+                      )}
                     </>
                   ) : (
-                    <td colSpan={9} style={{ color: "var(--text-muted)", fontStyle: "italic", fontSize: 12 }}>
+                    <td colSpan={canEdit ? 12 : 10} style={{ color: "var(--text-muted)", fontStyle: "italic", fontSize: 12 }}>
                       — пусто —
                     </td>
                   )}

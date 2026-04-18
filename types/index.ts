@@ -9,8 +9,15 @@ export interface Player {
   flexRole: RoleNumber | null;
   telegramId: string | null;
   wallet: string | null;
+  discordId: string | null;
   nightMatches: number;
   isActiveInDatabase: boolean;
+  adminParticipationCount: number;
+  hasPlayedBefore: boolean;
+  lastImportedTournamentName: string | null;
+  lastSyncedAt: string | null;
+  inTeam?: boolean;
+  isCaptain?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -29,7 +36,7 @@ export interface Team {
   updatedAt: string;
 }
 
-export interface ReplacementPoolEntry {
+export interface SubstitutionPoolEntry {
   id: string;
   playerId: string;
   player: Player;
@@ -43,6 +50,7 @@ export interface ReplacementPoolEntry {
   createdAt: string;
   updatedAt: string;
 }
+
 
 export interface CandidateScore {
   poolEntryId: string;
@@ -62,7 +70,7 @@ export interface CandidateScore {
   subScore: number;
 }
 
-export interface MatchReplacementLog {
+export interface MatchSubstitutionLog {
   id: string;
   timestamp: string;
   actionType: "Assign" | "Return" | "AddToPool";
@@ -82,3 +90,4 @@ export interface MatchReplacementLog {
   poolEntryId: string | null;
   createdAt: string;
 }
+

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatMoscow } from "@/lib/date";
-import type { MatchReplacementLog } from "@/types";
+import type { MatchSubstitutionLog } from "@/types";
 import { useUser } from "@/components/UserContext";
 import { ConfirmModal } from "@/components/ConfirmModal";
 
@@ -32,15 +32,25 @@ export default function LogsPage() {
   const [tgSetupError, setTgSetupError] = useState<string | null>(null);
   const [sendStatus, setSendStatus] = useState<string | null>(null);
 
-  const { data: logs = [], isLoading } = useQuery<MatchReplacementLog[]>({
+  const { data: logs = [], isLoading } = useQuery<MatchSubstitutionLog[]>({
     queryKey: ["logs"],
-    queryFn: () => fetch("/api/replacement-logs").then(r => r.json()),
+    queryFn: () => fetch("/api/substitution-logs").then(r => r.json()),
     refetchInterval: 15000,
   });
 
+  // Substitution counter: count Assign actions per team
+  const assignLogs = logs.filter(l => l.actionType === "Assign");
+  const totalReplacements = assignLogs.length;
+  const perTeam = assignLogs.reduce<Record<string, number>>((acc, l) => {
+    const name = l.teamName ?? "—";
+    acc[name] = (acc[name] ?? 0) + 1;
+    return acc;
+  }, {});
+  const perTeamSorted = Object.entries(perTeam).sort((a, b) => b[1] - a[1]);
+
   const clearMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch("/api/replacement-logs", { method: "DELETE" });
+      const res = await fetch("/api/substitution-logs", { method: "DELETE" });
       if (!res.ok) throw new Error((await res.json()).error ?? "Ошибка");
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["logs"] }),
@@ -189,6 +199,46 @@ export default function LogsPage() {
               )}
             </>
           )}
+        </div>
+      )}
+
+      {/* Substitution counter */}
+      {!isLoading && (
+        <div style={{ padding: "12px 24px", borderBottom: "1px solid var(--border)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <div style={{
+              background: "rgba(52,211,153,0.1)",
+              border: "1px solid rgba(52,211,153,0.25)",
+              borderRadius: 8,
+              padding: "8px 16px",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              minWidth: 100,
+            }}>
+              <span style={{ fontSize: 22, fontWeight: 700, color: "#34d399" }}>{totalReplacements}</span>
+              <span style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 2 }}>замен всего</span>
+            </div>
+            {perTeamSorted.length > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {perTeamSorted.map(([name, count]) => (
+                  <div key={name} style={{
+                    background: "var(--bg-panel)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 6,
+                    padding: "4px 10px",
+                    fontSize: 12,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                  }}>
+                    <span style={{ color: "var(--text-secondary)" }}>{name}</span>
+                    <span style={{ fontWeight: 700, color: "#fbbf24" }}>{count}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

@@ -19,5 +19,5 @@ export interface LogData {
 }
 
 export async function createLog(data: LogData) {
-  return prisma.matchReplacementLog.create({ data });
+  return prisma.matchSubstitutionLog.create({ data });
 }

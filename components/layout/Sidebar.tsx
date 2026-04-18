@@ -2,39 +2,51 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Gavel, ListOrdered, Users2, ShieldCheck, Trophy, ScrollText, CalendarDays, UserCog, Swords, BookOpen } from "lucide-react";
+import { Gavel, ListOrdered, Users2, ShieldCheck, Trophy, ScrollText, CalendarDays, UserCog, Swords, BookOpen, Ban, Moon, Download } from "lucide-react";
 import { useUser } from "@/components/UserContext";
 
 const nav = [
-  { href: "/queue",   label: "Очередь",  icon: ListOrdered, desc: "TOP-10 кандидатов" },
-  { href: "/pool",    label: "Пул",      icon: ShieldCheck, desc: "Активные кандидаты" },
-  { href: "/players", label: "Игроки",   icon: Users2,      desc: "База игроков" },
-  { href: "/teams",   label: "Команды",  icon: Trophy,      desc: "Составы команд" },
-  { href: "/logs",    label: "Журнал",   icon: ScrollText,  desc: "История действий" },
+  { href: "/queue",        label: "Очередь",               icon: ListOrdered, desc: "TOP-10 кандидатов" },
+  { href: "/pool",         label: "Пул",                   icon: ShieldCheck, desc: "Активные кандидаты" },
+  { href: "/players",      label: "Игроки",                icon: Users2,      desc: "База игроков" },
+  { href: "/teams",        label: "Команды",               icon: Trophy,      desc: "Составы команд" },
+  { href: "/logs",         label: "Журнал",                icon: ScrollText,  desc: "История действий" },
+  { href: "/night-top",    label: "Ночные стрики",         icon: Moon,        desc: "Рейтинг по ночным" },
+  { href: "/disqualified", label: "Дисквалифицированные",  icon: Ban,         desc: "Удалённые игроки" },
 ];
 
 const judgeNav = [
-  { href: "/judge", label: "Судья",       icon: Gavel,    desc: "Назначение замен" },
-  { href: "/guide", label: "FAQ",         icon: BookOpen, desc: "Инструкция для судьи" },
+  { href: "/judge", label: "Судья", icon: Gavel,    desc: "Назначение замен" },
+  { href: "/guide", label: "FAQ",   icon: BookOpen, desc: "Инструкция для судьи" },
 ];
 
 const ownerNav = [
-  { href: "/schedule", label: "Расписание", icon: CalendarDays, desc: "Round-robin турнир" },
+  { href: "/schedule",      label: "Расписание", icon: CalendarDays, desc: "Round-robin турнир" },
+  { href: "/admin/import",  label: "Импорт",     icon: Download,     desc: "Импорт из админки" },
 ];
 
 const PUBLIC_PATHS = ["/login", "/register", "/setup"];
+
+const marketingNav = [
+  { href: "/teams",        label: "Команды",              icon: Trophy,      desc: "Составы команд" },
+  { href: "/logs",         label: "Журнал",               icon: ScrollText,  desc: "История действий" },
+  { href: "/night-top",    label: "Ночные стрики",        icon: Moon,        desc: "Рейтинг по ночным" },
+];
 
 export function Sidebar() {
   const pathname = usePathname();
   const { user } = useUser();
   const isJudgeOrOwner = user?.role === "OWNER" || user?.role === "JUDGE";
+  const isMarketing = user?.role === "MARKETING";
 
   if (PUBLIC_PATHS.some(p => pathname.startsWith(p))) return null;
-  const visibleNav = [
-    ...(isJudgeOrOwner ? judgeNav : []),
-    ...nav,
-    ...(user?.role === "OWNER" ? ownerNav : []),
-  ];
+  const visibleNav = isMarketing
+    ? marketingNav
+    : [
+        ...(isJudgeOrOwner ? judgeNav : []),
+        ...nav,
+        ...(user?.role === "OWNER" ? ownerNav : []),
+      ];
 
   return (
     <>
@@ -144,14 +156,17 @@ export function Sidebar() {
 function MobileNav({ pathname }: { pathname: string }) {
   const { user } = useUser();
   const isJudgeOrOwner = user?.role === "OWNER" || user?.role === "JUDGE";
-  const mobileItems = [
-    ...(isJudgeOrOwner ? judgeNav : []),
-    ...nav,
-    ...(user?.role === "OWNER" ? ownerNav : []),
-    ...(user?.role === "OWNER"
-      ? [{ href: "/admin/users", label: "Юзеры", icon: UserCog, desc: "Управление" }]
-      : []),
-  ];
+  const isMarketing = user?.role === "MARKETING";
+  const mobileItems = isMarketing
+    ? marketingNav
+    : [
+        ...(isJudgeOrOwner ? judgeNav : []),
+        ...nav,
+        ...(user?.role === "OWNER" ? ownerNav : []),
+        ...(user?.role === "OWNER"
+          ? [{ href: "/admin/users", label: "Юзеры", icon: UserCog, desc: "Управление" }]
+          : []),
+      ];
   return (
     <nav className="sidebar-mobile">
       {mobileItems.map(({ href, label, icon: Icon }) => {
@@ -201,9 +216,9 @@ function UserInfo() {
         <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 130 }}>{user.name}</span>
         <span style={{
           fontSize: 10, padding: "1px 6px", borderRadius: 4,
-          background: user.role === "OWNER" ? "rgba(0,212,232,0.15)" : "rgba(96,165,250,0.12)",
-          color: user.role === "OWNER" ? "var(--accent)" : "#60a5fa",
-          border: user.role === "OWNER" ? "1px solid rgba(0,212,232,0.3)" : "1px solid rgba(96,165,250,0.2)",
+          background: user.role === "OWNER" ? "rgba(0,212,232,0.15)" : user.role === "MARKETING" ? "rgba(217,70,239,0.12)" : "rgba(96,165,250,0.12)",
+          color: user.role === "OWNER" ? "var(--accent)" : user.role === "MARKETING" ? "#e879f9" : "#60a5fa",
+          border: user.role === "OWNER" ? "1px solid rgba(0,212,232,0.3)" : user.role === "MARKETING" ? "1px solid rgba(217,70,239,0.3)" : "1px solid rgba(96,165,250,0.2)",
           fontWeight: 700,
         }}>{user.role}</span>
       </div>

@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { createLog } from "./log.service";
 
 export async function checkNoDuplicate(playerId: string): Promise<void> {
-  const existing = await prisma.replacementPoolEntry.findFirst({
+  const existing = await prisma.substitutionPoolEntry.findFirst({
     where: { playerId, status: "Active" },
   });
   if (existing) {
@@ -27,7 +27,7 @@ export async function checkNotInTeam(playerId: string): Promise<void> {
   }
 }
 
-export async function addPlayerToReplacementPool(
+export async function addPlayerToSubstitutionPool(
   playerId: string,
   source: string,
   judgeName?: string
@@ -37,7 +37,7 @@ export async function addPlayerToReplacementPool(
 
   const player = await prisma.player.findUniqueOrThrow({ where: { id: playerId } });
 
-  const entry = await prisma.replacementPoolEntry.create({
+  const entry = await prisma.substitutionPoolEntry.create({
     data: { playerId, source, status: "Active", joinTime: new Date() },
     include: { player: true },
   });

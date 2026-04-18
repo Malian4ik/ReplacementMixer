@@ -7,13 +7,14 @@ import { ConfirmModal } from "@/components/ConfirmModal";
 
 interface AdminUser { id: string; email: string; name: string; role: string; isApproved: number; createdAt: string; }
 
-const ROLES = ["OWNER", "JUDGE", "VIEWER", "PENDING"];
+const ROLES = ["OWNER", "JUDGE", "MARKETING", "VIEWER", "PENDING"];
 
 const ROLE_BADGE: Record<string, React.CSSProperties> = {
-  OWNER: { background: "rgba(240,165,0,0.15)", color: "#f0a500", border: "1px solid rgba(240,165,0,0.3)" },
-  JUDGE: { background: "rgba(52,211,153,0.12)", color: "#34d399", border: "1px solid rgba(52,211,153,0.3)" },
-  VIEWER: { background: "rgba(96,165,250,0.12)", color: "#60a5fa", border: "1px solid rgba(96,165,250,0.3)" },
-  PENDING: { background: "rgba(100,116,139,0.12)", color: "#94a3b8", border: "1px solid rgba(100,116,139,0.3)" },
+  OWNER:     { background: "rgba(240,165,0,0.15)",  color: "#f0a500", border: "1px solid rgba(240,165,0,0.3)" },
+  JUDGE:     { background: "rgba(52,211,153,0.12)", color: "#34d399", border: "1px solid rgba(52,211,153,0.3)" },
+  MARKETING: { background: "rgba(217,70,239,0.12)", color: "#e879f9", border: "1px solid rgba(217,70,239,0.3)" },
+  VIEWER:    { background: "rgba(96,165,250,0.12)", color: "#60a5fa", border: "1px solid rgba(96,165,250,0.3)" },
+  PENDING:   { background: "rgba(100,116,139,0.12)",color: "#94a3b8", border: "1px solid rgba(100,116,139,0.3)" },
 };
 
 export default function AdminUsersPage() {

@@ -36,8 +36,8 @@ function getRandInt(min: number, max: number, seed: number): number {
 async function main() {
   console.log("Seeding database...");
 
-  await prisma.matchReplacementLog.deleteMany();
-  await prisma.replacementPoolEntry.deleteMany();
+  await prisma.matchSubstitutionLog.deleteMany();
+  await prisma.substitutionPoolEntry.deleteMany();
   await prisma.team.deleteMany();
   await prisma.player.deleteMany();
 
@@ -93,7 +93,7 @@ async function main() {
   const poolPlayers = createdPlayers.slice(TEAM_COUNT * 5, TEAM_COUNT * 5 + 6);
   await Promise.all(
     poolPlayers.map((p) =>
-      prisma.replacementPoolEntry.create({
+      prisma.substitutionPoolEntry.create({
         data: {
           playerId: p.id,
           status: "Active",

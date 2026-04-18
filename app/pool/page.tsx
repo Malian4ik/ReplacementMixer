@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatMoscow } from "@/lib/date";
-import type { Player, ReplacementPoolEntry } from "@/types";
+import type { Player, SubstitutionPoolEntry } from "@/types";
 import { useUser } from "@/components/UserContext";
 import { ConfirmModal } from "@/components/ConfirmModal";
 
@@ -29,16 +29,16 @@ export default function PoolPage() {
   const [searchResults, setSearchResults] = useState<Player[]>([]);
   const [confirmState, setConfirmState] = useState<{ message: string; onConfirm: () => void } | null>(null);
 
-  const { data: entries = [], isLoading } = useQuery<ReplacementPoolEntry[]>({
+  const { data: entries = [], isLoading } = useQuery<SubstitutionPoolEntry[]>({
     queryKey: ["pool", statusFilter],
     queryFn: () => {
       const sp = statusFilter ? `?status=${statusFilter}` : "";
-      return fetch(`/api/replacement-pool${sp}`).then(r => r.json());
+      return fetch(`/api/substitution-pool${sp}`).then(r => r.json());
     },
   });
 
   const cleanupMutation = useMutation({
-    mutationFn: () => fetch("/api/replacement-pool/cleanup", { method: "POST" }).then(r => r.json()),
+    mutationFn: () => fetch("/api/substitution-pool/cleanup", { method: "POST" }).then(r => r.json()),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["pool"] });
     },
@@ -54,7 +54,7 @@ export default function PoolPage() {
 
   const patchMutation = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
-      fetch(`/api/replacement-pool/${id}`, {
+      fetch(`/api/substitution-pool/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
@@ -67,7 +67,7 @@ export default function PoolPage() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) =>
-      fetch(`/api/replacement-pool/${id}`, { method: "DELETE" }).then(r => r.json()),
+      fetch(`/api/substitution-pool/${id}`, { method: "DELETE" }).then(r => r.json()),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["pool"] });
       qc.invalidateQueries({ queryKey: ["queue"] });
@@ -76,7 +76,7 @@ export default function PoolPage() {
 
   const returnMutation = useMutation({
     mutationFn: (id: string) =>
-      fetch(`/api/replacement-pool/${id}/return`, {
+      fetch(`/api/substitution-pool/${id}/return`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
@@ -89,7 +89,7 @@ export default function PoolPage() {
 
   const addToPoolMutation = useMutation({
     mutationFn: async (playerId: string) => {
-      const res = await fetch("/api/replacement-pool", {
+      const res = await fetch("/api/substitution-pool", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ playerId, source: "manual_add" }),
@@ -116,13 +116,15 @@ export default function PoolPage() {
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 10;
 
+  const visibleEntries = entries.filter(e => !e.inTeam);
+
   const counts = entries.reduce((acc, e) => {
     acc[e.status] = (acc[e.status] ?? 0) + 1;
     return acc;
   }, {} as Record<string, number>);
 
-  const totalPages = Math.max(1, Math.ceil(entries.length / PAGE_SIZE));
-  const pageEntries = entries.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const totalPages = Math.max(1, Math.ceil(visibleEntries.length / PAGE_SIZE));
+  const pageEntries = visibleEntries.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   // Active player IDs already in pool (for search results)
   const inPoolIds = new Set(entries.filter(e => e.status === "Active").map(e => e.playerId));
@@ -212,17 +214,12 @@ export default function PoolPage() {
               </thead>
               <tbody>
                 {pageEntries.map(e => (
-                  <tr key={e.id} style={e.inTeam && e.status === "Active" ? { background: "rgba(239,68,68,0.05)" } : {}}>
+                  <tr key={e.id}>
                     <td style={{ color: "var(--text-muted)", fontSize: 12, fontWeight: 700, minWidth: 28 }}>
-                      {entries.indexOf(e) + 1}
+                      {visibleEntries.indexOf(e) + 1}
                     </td>
                     <td style={{ fontWeight: 600 }}>
                       {e.player.nick}
-                      {e.inTeam && (
-                        <span style={{ marginLeft: 6, fontSize: 10, color: "#f87171", background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 3, padding: "1px 5px", verticalAlign: "middle" }}>
-                          В команде
-                        </span>
-                      )}
                     </td>
                     <td>{e.player.mmr.toLocaleString()}</td>
                     <td>{e.player.stake}</td>
@@ -274,7 +271,7 @@ export default function PoolPage() {
                     )}
                   </tr>
                 ))}
-                {entries.length === 0 && (
+                {visibleEntries.length === 0 && (
                   <tr>
                     <td colSpan={9} style={{ textAlign: "center", color: "var(--text-muted)", padding: 32 }}>
                       Нет записей

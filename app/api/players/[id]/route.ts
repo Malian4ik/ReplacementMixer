@@ -10,6 +10,7 @@ const UpdatePlayerSchema = z.object({
   flexRole: z.number().int().min(1).max(5).nullable().optional(),
   telegramId: z.string().nullable().optional(),
   wallet: z.string().nullable().optional(),
+  discordId: z.string().nullable().optional(),
   nightMatches: z.number().int().min(0).optional(),
   isActiveInDatabase: z.boolean().optional(),
 });
@@ -46,7 +47,11 @@ export async function DELETE(
 ) {
   const { id } = await params;
   try {
-    await prisma.player.delete({ where: { id } });
+    // Soft-delete: mark as disqualified instead of hard delete
+    await prisma.player.update({
+      where: { id },
+      data: { isDisqualified: true, isActiveInDatabase: false },
+    });
     return NextResponse.json({ ok: true });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "Bad request";

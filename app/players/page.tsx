@@ -19,7 +19,7 @@ const inputStyle: React.CSSProperties = {
 
 const EMPTY_FORM = {
   nick: "", mmr: 8000, stake: 20, mainRole: 1 as 1|2|3|4|5,
-  flexRole: "" as "" | 1|2|3|4|5, wallet: "", telegramId: "", nightMatches: 0,
+  flexRole: "" as "" | 1|2|3|4|5, wallet: "", telegramId: "", discordId: "", nightMatches: 0,
 };
 
 export default function PlayersPage() {
@@ -104,7 +104,7 @@ export default function PlayersPage() {
   });
 
   const addUnassignedMutation = useMutation({
-    mutationFn: () => fetch("/api/replacement-pool/add-unassigned", { method: "POST" }).then(r => r.json()),
+    mutationFn: () => fetch("/api/substitution-pool/add-unassigned", { method: "POST" }).then(r => r.json()),
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["pool"] });
       alert(data.message ?? `Добавлено в пул замен: ${data.added}`);
@@ -135,6 +135,7 @@ export default function PlayersPage() {
       nick: p.nick, mmr: p.mmr, stake: p.stake,
       mainRole: p.mainRole, flexRole: p.flexRole ?? undefined,
       wallet: p.wallet ?? undefined, telegramId: p.telegramId ?? undefined,
+      discordId: p.discordId ?? undefined,
       nightMatches: p.nightMatches, isActiveInDatabase: p.isActiveInDatabase,
     });
   }
@@ -153,6 +154,7 @@ export default function PlayersPage() {
       flexRole: form.flexRole !== "" ? Number(form.flexRole) : null,
       wallet: form.wallet || null,
       telegramId: form.telegramId || null,
+      discordId: form.discordId || null,
       nightMatches: Number(form.nightMatches),
     });
   }
@@ -205,7 +207,7 @@ export default function PlayersPage() {
               {showAdd ? "Отмена" : "+ Добавить"}
             </button>
           )}
-          {user?.role === "OWNER" && (
+          {canEdit && (
             <button
               className="btn btn-sm btn-accent"
               disabled={addUnassignedMutation.isPending}
@@ -272,6 +274,10 @@ export default function PlayersPage() {
             <input style={{ ...inputStyle, width: 110 }} value={form.telegramId} placeholder="@username" onChange={e => setForm(f => ({ ...f, telegramId: e.target.value }))} />
           </div>
           <div>
+            <div className="lbl">Discord ID</div>
+            <input style={{ ...inputStyle, width: 130 }} value={form.discordId} placeholder="123456789012345678" onChange={e => setForm(f => ({ ...f, discordId: e.target.value }))} />
+          </div>
+          <div>
             <div className="lbl">Кошелёк</div>
             <input style={{ ...inputStyle, width: 100 }} value={form.wallet} onChange={e => setForm(f => ({ ...f, wallet: e.target.value }))} />
           </div>
@@ -301,7 +307,7 @@ export default function PlayersPage() {
             <table className="tbl">
               <thead>
                 <tr>
-                  {(["НИК", "MMR", "STAKE", "РОЛЬ", "FLEX", "TELEGRAM", "КОШЕЛЁК", "НОЧИ", "СТАТУС", "ДОБАВЛЕН"] as const).map(h => {
+                  {(["НИК", "MMR", "STAKE", "РОЛЬ", "FLEX", "TELEGRAM", "DISCORD ID", "КОШЕЛЁК", "НОЧИ", "СТАТУС", "ДОБАВЛЕН"] as const).map(h => {
                     const key = h === "НИК" ? "nick" : h === "MMR" ? "mmr" : h === "STAKE" ? "stake" : h === "СТАТУС" ? "isActiveInDatabase" : h === "ДОБАВЛЕН" ? "createdAt" : null;
                     const active = key && sortKey === key;
                     return (
@@ -336,6 +342,7 @@ export default function PlayersPage() {
                           </select>
                         </td>
                         <td><input style={{ ...inputStyle, width: 100 }} value={editData.telegramId ?? ""} onChange={e => set("telegramId", e.target.value || null as unknown as string)} /></td>
+                        <td><input style={{ ...inputStyle, width: 130 }} value={editData.discordId ?? ""} placeholder="ID или @тег" onChange={e => set("discordId", e.target.value || null as unknown as string)} /></td>
                         <td><input style={{ ...inputStyle, width: 100 }} value={editData.wallet ?? ""} onChange={e => set("wallet", e.target.value || null as unknown as string)} /></td>
                         <td><input type="number" style={{ ...inputStyle, width: 60 }} value={editData.nightMatches ?? 0} onChange={e => set("nightMatches", Number(e.target.value))} /></td>
                         <td>
@@ -366,12 +373,20 @@ export default function PlayersPage() {
                         <td><span style={{ color: "var(--accent)" }}>R{p.mainRole}</span></td>
                         <td style={{ color: "var(--text-secondary)" }}>{p.flexRole ? `R${p.flexRole}` : "—"}</td>
                         <td style={{ color: "var(--text-secondary)", fontSize: 12 }}>{p.telegramId ?? "—"}</td>
+                        <td style={{ color: p.discordId ? "#7289da" : "var(--text-muted)", fontSize: 12, fontFamily: "monospace" }}>{p.discordId ?? "—"}</td>
                         <td style={{ color: "var(--text-secondary)", fontSize: 12, fontFamily: "monospace" }}>{p.wallet ?? "—"}</td>
                         <td>{p.nightMatches}</td>
                         <td>
-                          <span className={p.isActiveInDatabase ? "badge badge-green" : "badge badge-gray"}>
-                            {p.isActiveInDatabase ? "Активен" : "Неактивен"}
-                          </span>
+                          {p.inTeam ? (
+                            <span style={{ display: "inline-flex", gap: 4, flexWrap: "wrap" }}>
+                              <span className="badge badge-blue">В команде</span>
+                              {p.isCaptain && <span className="badge badge-gold">Капитан</span>}
+                            </span>
+                          ) : (
+                            <span className={p.isActiveInDatabase ? "badge badge-green" : "badge badge-gray"}>
+                              {p.isActiveInDatabase ? "Активен" : "Неактивен"}
+                            </span>
+                          )}
                         </td>
                         <td style={{ color: "var(--text-secondary)", fontSize: 11, whiteSpace: "nowrap" }}>
                           {p.createdAt ? new Date(p.createdAt).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Moscow" }) : "—"}

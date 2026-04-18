@@ -9,6 +9,7 @@ const UpdateTeamSchema = z.object({
   player3Id: z.string().nullable().optional(),
   player4Id: z.string().nullable().optional(),
   player5Id: z.string().nullable().optional(),
+  captainId: z.string().nullable().optional(),
 });
 
 export async function GET(
@@ -30,7 +31,7 @@ export async function GET(
     ? Math.round(activePlayers.reduce((s, p) => s + p!.mmr, 0) / activePlayers.length)
     : 0;
 
-  return NextResponse.json({ ...team, avgMmr, players: roster });
+  return NextResponse.json({ ...team, avgMmr, players: roster, captainId: team.captainId ?? null });
 }
 
 export async function PATCH(
@@ -41,13 +42,14 @@ export async function PATCH(
   try {
     const body = await req.json();
     const data = UpdateTeamSchema.parse(body);
+
     const team = await prisma.team.update({ where: { id }, data });
 
     // Deactivate Active pool entries for any players now added to this team
     const newPlayerIds = [data.player1Id, data.player2Id, data.player3Id, data.player4Id, data.player5Id]
       .filter((v): v is string => typeof v === "string");
     if (newPlayerIds.length > 0) {
-      await prisma.replacementPoolEntry.updateMany({
+      await prisma.substitutionPoolEntry.updateMany({
         where: { playerId: { in: newPlayerIds }, status: "Active" },
         data: { status: "Inactive" },
       });
@@ -67,12 +69,12 @@ export async function DELETE(
   const { id } = await params;
   try {
     // Nullify assignedTeamId in pool entries referencing this team
-    await prisma.replacementPoolEntry.updateMany({
+    await prisma.substitutionPoolEntry.updateMany({
       where: { assignedTeamId: id },
       data: { assignedTeamId: null },
     });
     // Nullify teamId in logs referencing this team
-    await prisma.matchReplacementLog.updateMany({
+    await prisma.matchSubstitutionLog.updateMany({
       where: { teamId: id },
       data: { teamId: null },
     });

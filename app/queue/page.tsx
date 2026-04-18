@@ -41,7 +41,7 @@ export default function QueuePage() {
         neededRole: String(neededRole),
         page: String(page),
       });
-      return fetch(`/api/replacement-queue?${sp}`).then(r => r.json());
+      return fetch(`/api/substitution-queue?${sp}`).then(r => r.json());
     },
     enabled: !!stats,
   });

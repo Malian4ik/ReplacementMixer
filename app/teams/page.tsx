@@ -484,21 +484,36 @@ export default function TeamsPage() {
                       (t.players ?? []).map((p, i) => p && (
                         <div key={p.id} style={{
                           display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          padding: "4px 8px",
+                          flexDirection: "column",
+                          padding: "5px 8px",
                           borderRadius: 4,
                           background: "rgba(0,0,0,0.2)",
                           fontSize: 12,
+                          gap: 2,
                         }}>
-                          <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <span style={{ color: "var(--text-muted)", fontSize: 10, minWidth: 12 }}>{i + 1}</span>
-                            <span style={{ fontWeight: 500 }}>{p.nick}</span>
-                          </span>
-                          <span style={{ color: "var(--text-secondary)", fontFamily: "monospace", fontSize: 11 }}>
-                            {p.mmr.toLocaleString()} · R{p.mainRole}
-                            {p.flexRole ? <span style={{ opacity: 0.6 }}>/R{p.flexRole}</span> : null}
-                          </span>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <span style={{ color: "var(--text-muted)", fontSize: 10, minWidth: 12 }}>{i + 1}</span>
+                              <span style={{ fontWeight: 500 }}>{p.nick}</span>
+                            </span>
+                            <span style={{ color: "var(--text-secondary)", fontFamily: "monospace", fontSize: 11 }}>
+                              {p.mmr.toLocaleString()} · R{p.mainRole}
+                              {p.flexRole ? <span style={{ opacity: 0.6 }}>/R{p.flexRole}</span> : null}
+                            </span>
+                          </div>
+                          {p.wallet && (
+                            <div style={{
+                              fontSize: 10,
+                              fontFamily: "monospace",
+                              color: "var(--text-muted)",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                              paddingLeft: 18,
+                            }} title={p.wallet}>
+                              {p.wallet}
+                            </div>
+                          )}
                         </div>
                       ))
                     )}

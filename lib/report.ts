@@ -12,7 +12,7 @@ export async function buildDailyReport(): Promise<string> {
   // Load data in parallel
   const [teams, logs] = await Promise.all([
     prisma.team.findMany({ orderBy: { name: "asc" } }),
-    prisma.matchReplacementLog.findMany({
+    prisma.matchSubstitutionLog.findMany({
       orderBy: { timestamp: "desc" },
       take: 100,
     }),
@@ -53,6 +53,25 @@ export async function buildDailyReport(): Promise<string> {
   }
   lines.push("");
 
+
+  // ── Substitution counter (all time per team) ──
+  const assignLogs = logs.filter(l => l.actionType === "Assign");
+  const perTeam = assignLogs.reduce<Record<string, number>>((acc, l) => {
+    const name = l.teamName ?? "—";
+    acc[name] = (acc[name] ?? 0) + 1;
+    return acc;
+  }, {});
+  const perTeamSorted = Object.entries(perTeam).sort((a, b) => b[1] - a[1]);
+
+  lines.push(`<b>🔄 СЧЁТЧИК ЗАМЕН (всего: ${assignLogs.length})</b>`);
+  if (perTeamSorted.length === 0) {
+    lines.push("Замен не было");
+  } else {
+    for (const [name, count] of perTeamSorted) {
+      lines.push(`• ${esc(name)}: <b>${count}</b>`);
+    }
+  }
+  lines.push("");
 
   // ── Today's logs (last 24h) ──
   const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
