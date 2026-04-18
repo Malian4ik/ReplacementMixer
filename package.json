@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "bot": "tsx bot/index.ts",
+    "bot:discord": "tsx bot/index.ts",
     "bot:deploy": "tsx bot/deploy-commands.ts",
     "bot:test": "node --experimental-vm-modules node_modules/.bin/jest bot/__tests__"
   },
