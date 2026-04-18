@@ -238,6 +238,7 @@ async function postWinnerMessage(
     subScore: number;
     roleFit: number;
     poolEntryId: string;
+    discordId: string | null;
   },
   client: Client
 ): Promise<void> {
@@ -251,10 +252,14 @@ async function postWinnerMessage(
     subScore: winner.subScore,
     roleFit: winner.roleFit,
     poolEntryId: winner.poolEntryId,
+    discordId: winner.discordId,
   });
 
+  // Ping the winner in the message content so they get a notification
+  const mention = winner.discordId ? `<@${winner.discordId}>` : `**${winner.nick}**`;
+
   try {
-    await channel.send({ embeds: [embed] });
+    await channel.send({ content: mention, embeds: [embed] });
   } catch (err) {
     log.error("Failed to send winner message", err);
   }

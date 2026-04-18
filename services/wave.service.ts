@@ -188,6 +188,7 @@ export interface SelectionResult {
   stake: number;
   subScore: number;
   roleFit: number;
+  discordId: string | null;
 }
 
 /**
@@ -263,6 +264,10 @@ export async function selectBestResponder(
     }),
   ]);
 
+  // Find discordId from the winning pool entry's player
+  const winnerEntry = poolEntries.find((e) => e.playerId === winner.playerId);
+  const discordId = (winnerEntry?.player as { discordId?: string | null } | undefined)?.discordId ?? null;
+
   return {
     poolEntryId: winner.poolEntryId,
     playerId: winner.playerId,
@@ -271,6 +276,7 @@ export async function selectBestResponder(
     stake: winner.stake,
     subScore: winner.subScore,
     roleFit: winner.roleFit,
+    discordId,
   };
 }
 

@@ -70,17 +70,19 @@ export interface WinnerEmbedOptions {
   subScore: number;
   roleFit: number;
   poolEntryId: string;
+  discordId: string | null;
 }
 
 export function buildWinnerEmbed(opts: WinnerEmbedOptions): EmbedBuilder {
   const roleFitPct = Math.round(opts.roleFit * 100);
   const subScoreDisplay = opts.subScore.toFixed(3);
+  const playerMention = opts.discordId ? `<@${opts.discordId}>` : `**${opts.nick}**`;
 
   return new EmbedBuilder()
     .setColor(0x388e3c as ColorResolvable)
     .setTitle("✅ Замена найдена")
     .setDescription(
-      `Выбран игрок **${opts.nick}** для команды **${opts.teamName}**.`
+      `${playerMention} теперь новый игрок команды **${opts.teamName}**. GLHF! 🎮`
     )
     .addFields(
       { name: "MMR", value: String(opts.mmr), inline: true },
