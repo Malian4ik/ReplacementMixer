@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { scoreCandidates } from "./queue.service";
 import type { SubstitutionPoolEntry, RoleNumber } from "@/types";
-import { WAVE_SIZE, WAVE_DURATION_MS } from "@/lib/substitution-config";
+import { WAVE_DURATION_MS } from "@/lib/substitution-config";
 
 // ── Eligibility ───────────────────────────────────────────────────────────────
 
@@ -26,19 +26,15 @@ async function getInTeamPlayerIds(): Promise<Set<string>> {
 }
 
 /**
- * Returns the next `WAVE_SIZE` eligible candidates from the reserve queue,
- * excluding players already contacted in this session.
+ * Returns ALL eligible reserve players (no batch limit).
+ * Sorted by joinTime asc (first in queue = highest priority).
  *
- * Eligibility criteria:
+ * Eligibility:
  * - SubstitutionPoolEntry.status === "Active"
- * - Not currently assigned to a team
- * - Not disqualified
- * - isActiveInDatabase
- * - Not already contacted in this session (contactedIds)
+ * - Not currently on a team
+ * - Not disqualified, isActiveInDatabase
  */
-export async function getNextEligibleBatch(
-  contactedIds: string[]
-): Promise<SubstitutionPoolEntry[]> {
+export async function getAllEligiblePlayers(): Promise<SubstitutionPoolEntry[]> {
   const inTeamIds = await getInTeamPlayerIds();
 
   const rawEntries = await prisma.substitutionPoolEntry.findMany({
@@ -50,13 +46,17 @@ export async function getNextEligibleBatch(
     orderBy: { joinTime: "asc" },
   });
 
-  const contactedSet = new Set(contactedIds);
+  return rawEntries.filter((e) => !inTeamIds.has(e.playerId)) as unknown as SubstitutionPoolEntry[];
+}
 
-  const eligible = rawEntries.filter(
-    (e) => !inTeamIds.has(e.playerId) && !contactedSet.has(e.playerId)
-  );
-
-  return eligible.slice(0, WAVE_SIZE) as unknown as SubstitutionPoolEntry[];
+/**
+ * @deprecated Use getAllEligiblePlayers instead.
+ * Kept for backward compatibility with any code still calling it.
+ */
+export async function getNextEligibleBatch(
+  _contactedIds: string[]
+): Promise<SubstitutionPoolEntry[]> {
+  return getAllEligiblePlayers();
 }
 
 // ── Wave CRUD ─────────────────────────────────────────────────────────────────
@@ -145,12 +145,28 @@ export async function markWaveNoResponse(waveId: string) {
  * Throws ALREADY_RESPONDED if the player already clicked in this wave.
  * Throws PLAYER_NOT_LINKED if discordId has no player mapping.
  * Throws CANDIDATE_NOT_IN_WAVE if the player was not a candidate in this wave.
+ *
+ * @param username - Discord username (tag) as fallback if numeric ID not found in DB.
  */
-export async function recordReadyResponse(waveId: string, discordId: string) {
-  // Look up player by discordId
-  const player = await prisma.player.findUnique({
+export async function recordReadyResponse(waveId: string, discordId: string, username?: string) {
+  // Look up player by numeric discordId first
+  let player = await prisma.player.findUnique({
     where: { discordId },
   });
+
+  // Fallback: DB may still store username instead of numeric ID
+  if (!player && username) {
+    player = await prisma.player.findFirst({
+      where: { discordId: username },
+    });
+    if (player) {
+      // One-time migration: replace username with numeric ID in DB
+      await prisma.player
+        .update({ where: { id: player.id }, data: { discordId } })
+        .catch(() => {});
+    }
+  }
+
   if (!player) throw new Error("PLAYER_NOT_LINKED");
 
   // Check wave is active
@@ -278,6 +294,101 @@ export async function selectBestResponder(
     roleFit: winner.roleFit,
     discordId,
   };
+}
+
+/**
+ * Scores all responders and returns the top N candidates for multi-slot assignment.
+ * Tie-breakers: subScore desc → queuePosition asc → clickedAt asc.
+ * Returns an empty array if no eligible responders remain.
+ */
+export async function selectBestNResponders(
+  wave: {
+    id: string;
+    responses: Array<{ playerId: string; discordId: string; clickedAt: Date }>;
+    candidates: Array<{ playerId: string; queuePosition: number }>;
+  },
+  session: {
+    neededRole: number;
+    currentTeamAvgMmr: number;
+    replacedPlayerMmr: number;
+    currentPlayerCount: number;
+    targetAvgMmr: number;
+    maxDeviation: number;
+  },
+  n: number
+): Promise<SelectionResult[]> {
+  if (n <= 0) return [];
+
+  const responderIds = wave.responses.map((r) => r.playerId);
+  const poolEntries = await prisma.substitutionPoolEntry.findMany({
+    where: {
+      playerId: { in: responderIds },
+      status: "Active",
+      player: { isDisqualified: false, isActiveInDatabase: true },
+    },
+    include: { player: true },
+  });
+
+  if (poolEntries.length === 0) return [];
+
+  // Build queue position map from wave candidates (1-based for scoring)
+  const totalInQueue = wave.candidates.length;
+  const queuePositions = new Map(
+    wave.candidates.map((c) => [c.playerId, c.queuePosition + 1])
+  );
+
+  const scored = scoreCandidates(
+    poolEntries as unknown as SubstitutionPoolEntry[],
+    {
+      neededRole: session.neededRole as RoleNumber,
+      currentTeamAvgMmr: session.currentTeamAvgMmr,
+      replacedPlayerMmr: session.replacedPlayerMmr,
+      currentPlayerCount: session.currentPlayerCount,
+      targetAvgMmr: session.targetAvgMmr,
+      maxDeviation: session.maxDeviation,
+    },
+    totalInQueue > 0 ? queuePositions : undefined
+  );
+
+  const clickedAt = new Map(wave.responses.map((r) => [r.playerId, r.clickedAt.getTime()]));
+  const queuePos = new Map(wave.candidates.map((c) => [c.playerId, c.queuePosition]));
+
+  scored.sort((a, b) => {
+    if (b.subScore !== a.subScore) return b.subScore - a.subScore;
+    const posA = queuePos.get(a.playerId) ?? 999;
+    const posB = queuePos.get(b.playerId) ?? 999;
+    if (posA !== posB) return posA - posB;
+    return (clickedAt.get(a.playerId) ?? 0) - (clickedAt.get(b.playerId) ?? 0);
+  });
+
+  const winners = scored.slice(0, n);
+
+  // Persist subScores and mark wave completed
+  await prisma.$transaction([
+    prisma.waveResponse.updateMany({ where: { waveId: wave.id }, data: { subScore: null, selected: false } }),
+    ...winners.map((w) =>
+      prisma.waveResponse.updateMany({
+        where: { waveId: wave.id, playerId: w.playerId },
+        data: { subScore: w.subScore, selected: true },
+      })
+    ),
+    prisma.substitutionWave.update({ where: { id: wave.id }, data: { status: "Completed" } }),
+  ]);
+
+  return winners.map((w) => {
+    const entry = poolEntries.find((e) => e.playerId === w.playerId);
+    const discordId = (entry?.player as { discordId?: string | null } | undefined)?.discordId ?? null;
+    return {
+      poolEntryId: w.poolEntryId,
+      playerId: w.playerId,
+      nick: w.nick,
+      mmr: w.mmr,
+      stake: w.stake,
+      subScore: w.subScore,
+      roleFit: w.roleFit,
+      discordId,
+    };
+  });
 }
 
 // ── Active wave recovery ──────────────────────────────────────────────────────

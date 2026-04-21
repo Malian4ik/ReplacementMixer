@@ -16,6 +16,7 @@ model Player {
   flexRole                    Int?
   wallet                      String?
   nightMatches                Int      @default(0)
+  matchesPlayed               Int      @default(0)
   telegramId                  String?
   discordId                   String?  @unique
   isActiveInDatabase          Boolean  @default(true)
@@ -171,12 +172,33 @@ model SubstitutionSearchSession {
   currentWave         Int      @default(0)
   selectedPlayerId    String?
   selectedPoolEntryId String?
+  /// Number of substitution slots needed (multi-sub support)
+  slotsNeeded         Int      @default(1)
+  /// Active match ID from admin site (optional, for display in bot message)
+  activeMatchId       String?
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
   waves SubstitutionWave[]
+  slots SubstitutionSlot[]
 
   @@map("ReplacementSearchSession")
+}
+
+model SubstitutionSlot {
+  id                  String    @id @default(cuid())
+  sessionId           String
+  slotIndex           Int
+  replacedPlayerId    String?
+  replacedPlayerNick  String?
+  neededRole          Int
+  teamSlot            Int
+  assignedPlayerId    String?
+  assignedPoolEntryId String?
+  assignedAt          DateTime?
+  createdAt           DateTime  @default(now())
+
+  session SubstitutionSearchSession @relation(fields: [sessionId], references: [id])
 }
 
 model SubstitutionWave {

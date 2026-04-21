@@ -1,5 +1,5 @@
 // Re-export shared config so bot code can import everything from one place
-export { WAVE_DURATION_MS, WAVE_SIZE } from "@/lib/substitution-config";
+export { SESSION_DURATION_MS, WAVE_DURATION_MS, PING_INTERVAL_MS } from "@/lib/substitution-config";
 
 /** Custom ID prefix for the "Готов" button. Full ID: `ready:${waveId}` */
 export const READY_BUTTON_PREFIX = "ready";

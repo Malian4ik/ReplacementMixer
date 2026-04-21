@@ -1,5 +1,13 @@
 import { prisma } from "@/lib/prisma";
 
+export interface SlotInput {
+  slotIndex: number;
+  neededRole: number;
+  teamSlot: number;
+  replacedPlayerId?: string;
+  replacedPlayerNick?: string;
+}
+
 export interface CreateSessionInput {
   teamId: string;
   teamName: string;
@@ -14,6 +22,8 @@ export interface CreateSessionInput {
   triggeredBy: string;
   guildId: string;
   channelId: string;
+  activeMatchId?: string;
+  slots?: SlotInput[];
 }
 
 /**
@@ -25,6 +35,16 @@ export async function createSearchSession(input: CreateSessionInput) {
     where: { teamId: input.teamId, status: "Active" },
   });
   if (existing) throw new Error("DUPLICATE_SESSION");
+
+  const slots = input.slots ?? [
+    {
+      slotIndex: 0,
+      neededRole: input.neededRole,
+      teamSlot: 1,
+      replacedPlayerId: input.replacedPlayerId,
+      replacedPlayerNick: input.replacedPlayerNick,
+    },
+  ];
 
   return prisma.substitutionSearchSession.create({
     data: {
@@ -41,14 +61,18 @@ export async function createSearchSession(input: CreateSessionInput) {
       triggeredBy: input.triggeredBy,
       guildId: input.guildId,
       channelId: input.channelId,
+      activeMatchId: input.activeMatchId ?? null,
+      slotsNeeded: slots.length,
+      slots: { createMany: { data: slots } },
     },
+    include: { slots: true },
   });
 }
 
 export async function getActiveSession(sessionId: string) {
   return prisma.substitutionSearchSession.findFirst({
     where: { id: sessionId, status: "Active" },
-    include: { waves: { include: { candidates: true } } },
+    include: { waves: { include: { candidates: true } }, slots: true },
   });
 }
 
@@ -77,7 +101,7 @@ export async function markSessionExhausted(sessionId: string) {
   });
 }
 
-/** Returns all player IDs that were included in any wave for this session (for dedup). */
+/** Returns all player IDs that were included in any wave for this session. */
 export async function getContactedPlayerIds(sessionId: string): Promise<string[]> {
   const candidates = await prisma.waveCandidate.findMany({
     where: { wave: { sessionId } },

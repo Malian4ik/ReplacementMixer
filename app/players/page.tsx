@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { Player } from "@/types";
 import { useUser } from "@/components/UserContext";
 import { ConfirmModal } from "@/components/ConfirmModal";
+import { MatchBadge } from "@/components/MatchBadge";
 
 const inputStyle: React.CSSProperties = {
   background: "rgba(0,0,0,0.5)",
@@ -33,7 +34,7 @@ export default function PlayersPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [createError, setCreateError] = useState<string | null>(null);
-  const [sortKey, setSortKey] = useState<"nick" | "mmr" | "stake" | "isActiveInDatabase" | "createdAt">("nick");
+  const [sortKey, setSortKey] = useState<"nick" | "mmr" | "stake" | "isActiveInDatabase" | "createdAt" | "matchesPlayed">("nick");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [confirmState, setConfirmState] = useState<{ message: string; onConfirm: () => void } | null>(null);
 
@@ -218,6 +219,9 @@ export default function PlayersPage() {
               {addUnassignedMutation.isPending ? "..." : "В пул замен"}
             </button>
           )}
+          {canEdit && (
+            <RecalcMatchStatsButton onSuccess={() => qc.invalidateQueries({ queryKey: ["players"] })} />
+          )}
           {user?.role === "OWNER" && (
             <button
               className="btn btn-sm btn-danger"
@@ -307,8 +311,8 @@ export default function PlayersPage() {
             <table className="tbl">
               <thead>
                 <tr>
-                  {(["НИК", "MMR", "STAKE", "РОЛЬ", "FLEX", "TELEGRAM", "DISCORD ID", "КОШЕЛЁК", "НОЧИ", "СТАТУС", "ДОБАВЛЕН"] as const).map(h => {
-                    const key = h === "НИК" ? "nick" : h === "MMR" ? "mmr" : h === "STAKE" ? "stake" : h === "СТАТУС" ? "isActiveInDatabase" : h === "ДОБАВЛЕН" ? "createdAt" : null;
+                  {(["НИК", "MMR", "STAKE", "РОЛЬ", "FLEX", "TELEGRAM", "DISCORD ID", "КОШЕЛЁК", "НОЧИ", "МАТЧИ", "СТАТУС", "ДОБАВЛЕН"] as const).map(h => {
+                    const key = h === "НИК" ? "nick" : h === "MMR" ? "mmr" : h === "STAKE" ? "stake" : h === "СТАТУС" ? "isActiveInDatabase" : h === "ДОБАВЛЕН" ? "createdAt" : h === "МАТЧИ" ? "matchesPlayed" : null;
                     const active = key && sortKey === key;
                     return (
                       <th key={h}
@@ -345,6 +349,9 @@ export default function PlayersPage() {
                         <td><input style={{ ...inputStyle, width: 130 }} value={editData.discordId ?? ""} placeholder="ID или @тег" onChange={e => set("discordId", e.target.value || null as unknown as string)} /></td>
                         <td><input style={{ ...inputStyle, width: 100 }} value={editData.wallet ?? ""} onChange={e => set("wallet", e.target.value || null as unknown as string)} /></td>
                         <td><input type="number" style={{ ...inputStyle, width: 60 }} value={editData.nightMatches ?? 0} onChange={e => set("nightMatches", Number(e.target.value))} /></td>
+                        <td style={{ color: "var(--text-muted)", fontSize: 11, textAlign: "center" }}>
+                          {(p as Player & { matchesPlayed?: number }).matchesPlayed ?? 0}
+                        </td>
                         <td>
                           <select style={{ ...inputStyle, width: 80 }} value={editData.isActiveInDatabase ? "1" : "0"} onChange={e => set("isActiveInDatabase", e.target.value === "1")}>
                             <option value="1">Активен</option>
@@ -376,6 +383,9 @@ export default function PlayersPage() {
                         <td style={{ color: p.discordId ? "#7289da" : "var(--text-muted)", fontSize: 12, fontFamily: "monospace" }}>{p.discordId ?? "—"}</td>
                         <td style={{ color: "var(--text-secondary)", fontSize: 12, fontFamily: "monospace" }}>{p.wallet ?? "—"}</td>
                         <td>{p.nightMatches}</td>
+                        <td>
+                          <MatchBadge count={(p as Player & { matchesPlayed?: number }).matchesPlayed ?? 0} />
+                        </td>
                         <td>
                           {p.inTeam ? (
                             <span style={{ display: "inline-flex", gap: 4, flexWrap: "wrap" }}>
@@ -431,5 +441,41 @@ export default function PlayersPage() {
       />
     )}
   </>
+  );
+}
+
+// ── Local components ──────────────────────────────────────────────────────────
+
+function RecalcMatchStatsButton({ onSuccess }: { onSuccess: () => void }) {
+  const [pending, setPending] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+
+  async function handleClick() {
+    setPending(true);
+    setResult(null);
+    try {
+      const res = await fetch("/api/admin/players/recalculate-match-stats", { method: "POST" });
+      const data = await res.json();
+      setResult(`Обновлено: ${data.playersUpdated} игр.`);
+      onSuccess();
+    } catch {
+      setResult("Ошибка");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <button
+        className="btn btn-sm btn-ghost"
+        disabled={pending}
+        onClick={handleClick}
+        title="Пересчитать количество матчей для каждого игрока"
+      >
+        {pending ? "..." : "▶ Матчи"}
+      </button>
+      {result && <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{result}</span>}
+    </div>
   );
 }

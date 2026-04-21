@@ -24,7 +24,7 @@ import {
 import { log } from "./utils/logger";
 import { commandMap } from "./commands/index";
 import { isReadyButton, handleReadyButton } from "./interactions/ready-button";
-import { recoverActiveWaves, startWave } from "./workers/wave-orchestrator";
+import { recoverActiveWaves, startWave, forceProcessWave } from "./workers/wave-orchestrator";
 import { prisma } from "@/lib/prisma";
 
 // ── Environment validation ────────────────────────────────────────────────────
@@ -61,12 +61,26 @@ client.once(Events.ClientReady, async (readyClient) => {
   // Poll for web-triggered sessions (created via judge panel)
   setInterval(async () => {
     try {
-      const sessions = await prisma.substitutionSearchSession.findMany({
+      // 1. Start waves for new sessions
+      const newSessions = await prisma.substitutionSearchSession.findMany({
         where: { status: "Active", currentWave: 0 },
       });
-      for (const session of sessions) {
+      for (const session of newSessions) {
         log.info(`Web-triggered session detected: ${session.id} (team: ${session.teamName})`);
         await startWave(session.id, readyClient);
+      }
+
+      // 2. Immediately process waves for sessions manually completed via website
+      const stuckWaves = await prisma.substitutionWave.findMany({
+        where: {
+          status: "Active",
+          session: { status: "Completed", selectedPlayerId: { not: null } },
+        },
+        select: { id: true },
+      });
+      for (const wave of stuckWaves) {
+        log.info(`Detected manually-completed session with active wave ${wave.id} — processing immediately.`);
+        await forceProcessWave(wave.id, readyClient);
       }
     } catch (err) {
       log.error("Session polling error", err);

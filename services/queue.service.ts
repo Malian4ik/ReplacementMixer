@@ -1,6 +1,6 @@
 import type { SubstitutionPoolEntry, CandidateScore, RoleNumber } from "@/types";
 import {
-  calculateStakeNorm,
+  calculateQueuePositionNorm,
   calculateMMRNorm,
   calculateRoleFit,
   calculateTeamMMRAfter,
@@ -32,17 +32,25 @@ export function getTop10Candidates(
   return baseQueue.slice(0, 10);
 }
 
+/**
+ * Scores candidates using QueuePositionNorm (60%), MMRNorm (30%), RoleFit (10%).
+ *
+ * @param queuePositions - optional map of playerId → 1-based position in the reserve queue.
+ *   If provided, queue position drives the 60% weight. If omitted, all players get norm=0.
+ */
 export function scoreCandidates(
   candidates: SubstitutionPoolEntry[],
-  context: QueueContext
+  context: QueueContext,
+  queuePositions?: Map<string, number>
 ): CandidateScore[] {
-  const maxStake = Math.max(...candidates.map((c) => c.player.stake), 1);
+  const totalInQueue = queuePositions?.size ?? 0;
   const maxMmr = Math.max(...candidates.map((c) => c.player.mmr), 1);
 
   return candidates
     .map((entry) => {
       const p = entry.player;
-      const stakeNorm = calculateStakeNorm(p.stake, maxStake);
+      const rawPos = queuePositions?.get(p.id) ?? 0;
+      const queuePositionNorm = calculateQueuePositionNorm(rawPos, totalInQueue);
       const mmrNorm = calculateMMRNorm(p.mmr, maxMmr);
       const roleFit = calculateRoleFit(
         p.mainRole as RoleNumber,
@@ -60,7 +68,7 @@ export function scoreCandidates(
         context.targetAvgMmr,
         context.maxDeviation
       );
-      const baseScore = calculateBaseScore(stakeNorm, mmrNorm, roleFit);
+      const baseScore = calculateBaseScore(queuePositionNorm, mmrNorm, roleFit);
       const subScore = calculateSubScore(baseScore, balanceFactor);
 
       return {
@@ -72,7 +80,7 @@ export function scoreCandidates(
         stake: p.stake,
         mainRole: p.mainRole as RoleNumber,
         flexRole: p.flexRole as RoleNumber | null,
-        stakeNorm,
+        stakeNorm: queuePositionNorm, // field reused for display, semantics changed
         mmrNorm,
         roleFit,
         baseScore,

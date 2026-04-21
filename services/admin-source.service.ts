@@ -64,6 +64,11 @@ function makeHeaders(): HeadersInit {
   return h;
 }
 
+/** Returns auth headers for the current admin session (login first if needed). */
+export function getAdminHeaders(): HeadersInit {
+  return makeHeaders();
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface AdminTournamentInfo {

@@ -26,7 +26,7 @@ export async function handleReadyButton(interaction: ButtonInteraction): Promise
   log.debug(`Ready button pressed`, { waveId, discordId, user: interaction.user.tag });
 
   try {
-    await recordReadyResponse(waveId, discordId);
+    await recordReadyResponse(waveId, discordId, interaction.user.username);
     await interaction.editReply({
       content: "✅ **Ваш отклик принят!** Результат будет объявлен по окончании таймера.",
     });
