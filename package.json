@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma db push && prisma generate && next build --webpack",
+    "build": "prisma db push --accept-data-loss --skip-generate && prisma generate && next build --webpack",
     "start": "next start",
     "lint": "eslint",
     "bot": "tsx bot/index.ts",
