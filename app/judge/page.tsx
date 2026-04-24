@@ -448,6 +448,25 @@ export default function JudgePage() {
               >
                 ↻ Обновить
               </button>
+              {user?.role === "OWNER" && (
+                <button
+                  className="btn btn-sm"
+                  style={{ fontSize: 11, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.3)", color: "#f87171" }}
+                  disabled={testMatchPending}
+                  onClick={async () => {
+                    setTestMatchPending(true);
+                    setTestMatchMsg(null);
+                    try {
+                      await fetch("/api/admin/test-match", { method: "DELETE" });
+                      qc.invalidateQueries({ queryKey: ["active-match"] });
+                      refetchMatch();
+                    } catch { /* ignore */ }
+                    finally { setTestMatchPending(false); }
+                  }}
+                >
+                  {testMatchPending ? "..." : "🗑 Удалить тест"}
+                </button>
+              )}
             </div>
           </div>
 
