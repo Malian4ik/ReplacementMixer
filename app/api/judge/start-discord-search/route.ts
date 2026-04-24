@@ -4,6 +4,8 @@ import { createSearchSession } from "@/services/search-session.service";
 import { z } from "zod";
 
 const SlotSchema = z.object({
+  teamId: z.string().optional(),
+  teamName: z.string().optional(),
   replacedPlayerId: z.string().optional(),
   replacedPlayerNick: z.string().optional(),
   neededRole: z.number().int().min(1).max(5),
@@ -11,14 +13,20 @@ const SlotSchema = z.object({
 });
 
 const Schema = z.object({
-  teamId: z.string(),
+  // Unified match session fields (new format — both provided together)
+  homeTeamId: z.string().optional(),
+  homeTeamName: z.string().optional(),
+  awayTeamId: z.string().optional(),
+  awayTeamName: z.string().optional(),
+  // Single-team session (backward compat)
+  teamId: z.string().optional(),
+  // Common
   judgeName: z.string().min(1),
   targetAvgMmr: z.number(),
   maxDeviation: z.number().default(800),
   activeMatchId: z.string().optional(),
-  // Multi-slot (new format)
   slots: z.array(SlotSchema).min(1).optional(),
-  // Single-slot backward-compat fields
+  // Legacy single-slot backward-compat fields
   replacedPlayerId: z.string().optional(),
   neededRole: z.number().int().min(1).max(5).optional(),
 });
@@ -30,7 +38,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Неверные параметры", details: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { teamId, judgeName, targetAvgMmr, maxDeviation, activeMatchId } = parsed.data;
+  const { judgeName, targetAvgMmr, maxDeviation, activeMatchId } = parsed.data;
 
   const guildId = process.env.DISCORD_GUILD_ID ?? "";
   const channelId = process.env.REPLACEMENTS_CHANNEL_ID ?? "";
@@ -38,10 +46,99 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "REPLACEMENTS_CHANNEL_ID не настроен" }, { status: 500 });
   }
 
+  const isMatchSession = !!(parsed.data.homeTeamId && parsed.data.awayTeamId);
+
+  // ── Unified match session ─────────────────────────────────────────────────
+  if (isMatchSession) {
+    const { homeTeamId, homeTeamName, awayTeamId, awayTeamName } = parsed.data as {
+      homeTeamId: string; homeTeamName?: string; awayTeamId: string; awayTeamName?: string;
+    };
+
+    const homeTeam = await prisma.team.findUnique({ where: { id: homeTeamId } });
+    if (!homeTeam) return NextResponse.json({ error: "Команда home не найдена" }, { status: 404 });
+
+    // Calculate home team MMR
+    const homePlayerIds = [homeTeam.player1Id, homeTeam.player2Id, homeTeam.player3Id, homeTeam.player4Id, homeTeam.player5Id]
+      .filter((id): id is string => !!id);
+    const homePlayers = await prisma.player.findMany({
+      where: { id: { in: homePlayerIds } },
+      select: { mmr: true },
+    });
+    const homePlayerCount = homePlayers.length;
+    const homeAvgMmr = homePlayerCount > 0
+      ? Math.round(homePlayers.reduce((s, p) => s + p.mmr, 0) / homePlayerCount)
+      : 0;
+
+    // Build slots with slotTeamId/slotTeamName from per-slot teamId field
+    const rawSlots = parsed.data.slots ?? [];
+    if (rawSlots.length === 0) {
+      return NextResponse.json({ error: "Не указаны слоты для матч-сессии" }, { status: 400 });
+    }
+
+    const enrichedSlots = await Promise.all(
+      rawSlots.map(async (s, i) => {
+        let nick = s.replacedPlayerNick;
+        if (!nick && s.replacedPlayerId) {
+          const p = await prisma.player.findUnique({ where: { id: s.replacedPlayerId }, select: { nick: true } });
+          nick = p?.nick;
+        }
+        return {
+          slotIndex: i,
+          neededRole: s.neededRole,
+          teamSlot: s.teamSlot,
+          replacedPlayerId: s.replacedPlayerId,
+          replacedPlayerNick: nick,
+          slotTeamId: s.teamId ?? homeTeamId,
+          slotTeamName: s.teamName ?? (homeTeamName ?? homeTeam.name),
+        };
+      })
+    );
+
+    const resolvedHomeName = homeTeamName ?? homeTeam.name;
+    const resolvedAwayName = awayTeamName ?? awayTeamId;
+
+    try {
+      const session = await createSearchSession({
+        teamId: homeTeamId,
+        teamName: resolvedHomeName,
+        awayTeamId,
+        awayTeamName: resolvedAwayName,
+        neededRole: enrichedSlots[0].neededRole,
+        replacedPlayerId: enrichedSlots[0].replacedPlayerId,
+        replacedPlayerNick: enrichedSlots[0].replacedPlayerNick,
+        replacedPlayerMmr: 0,
+        currentPlayerCount: homePlayerCount,
+        currentTeamAvgMmr: homeAvgMmr,
+        targetAvgMmr,
+        maxDeviation,
+        triggeredBy: `web:${judgeName}`,
+        guildId,
+        channelId,
+        activeMatchId,
+        slots: enrichedSlots,
+      });
+      return NextResponse.json({
+        sessionId: session.id,
+        teamName: `${resolvedHomeName} vs ${resolvedAwayName}`,
+      });
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message === "DUPLICATE_SESSION") {
+        return NextResponse.json({ error: "Для этого матча уже запущен активный поиск" }, { status: 409 });
+      }
+      console.error("start-discord-search (match) error", err);
+      return NextResponse.json({ error: "Внутренняя ошибка сервера" }, { status: 500 });
+    }
+  }
+
+  // ── Single-team session (backward compat) ─────────────────────────────────
+  const teamId = parsed.data.teamId;
+  if (!teamId) {
+    return NextResponse.json({ error: "Укажите teamId или homeTeamId+awayTeamId" }, { status: 400 });
+  }
+
   const team = await prisma.team.findUnique({ where: { id: teamId } });
   if (!team) return NextResponse.json({ error: "Команда не найдена" }, { status: 404 });
 
-  // Calculate team MMR
   const playerIds = [team.player1Id, team.player2Id, team.player3Id, team.player4Id, team.player5Id]
     .filter((id): id is string => !!id);
   const players = await prisma.player.findMany({
@@ -53,16 +150,11 @@ export async function POST(req: NextRequest) {
     ? Math.round(players.reduce((s, p) => s + p.mmr, 0) / currentPlayerCount)
     : 0;
 
-  // Build slots array
   let slots: Array<{ slotIndex: number; neededRole: number; teamSlot: number; replacedPlayerId?: string; replacedPlayerNick?: string }>;
 
   if (parsed.data.slots && parsed.data.slots.length > 0) {
-    // New multi-slot format
-    const rawSlots = parsed.data.slots;
-
-    // Enrich with replacedPlayerNick if only ID was passed
     const enriched = await Promise.all(
-      rawSlots.map(async (s, i) => {
+      parsed.data.slots.map(async (s, i) => {
         let nick = s.replacedPlayerNick;
         if (!nick && s.replacedPlayerId) {
           const p = await prisma.player.findUnique({ where: { id: s.replacedPlayerId }, select: { nick: true } });
@@ -79,7 +171,6 @@ export async function POST(req: NextRequest) {
     );
     slots = enriched;
   } else {
-    // Backward-compat: single slot from old fields
     if (!parsed.data.neededRole) {
       return NextResponse.json({ error: "Укажите neededRole или массив slots" }, { status: 400 });
     }
@@ -99,7 +190,6 @@ export async function POST(req: NextRequest) {
     }];
   }
 
-  // Derive session-level replacedPlayerMmr from first slot if applicable
   let replacedPlayerMmr = 0;
   const firstSlotWithPlayer = slots.find((s) => s.replacedPlayerId);
   if (firstSlotWithPlayer?.replacedPlayerId) {

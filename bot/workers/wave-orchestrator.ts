@@ -188,6 +188,7 @@ async function sendRePing(
 
   const embed = buildRePingEmbed({
     teamName: session.teamName,
+    awayTeamName: (session as typeof session & { awayTeamName?: string | null }).awayTeamName ?? undefined,
     slotsNeeded: session.slotsNeeded,
     minutesLeft,
     notYetResponded: notYet.length,
@@ -278,10 +279,14 @@ async function processWaveCompletion(waveId: string, client: Client): Promise<vo
     const winner = winners[i];
     const slot = slots[i];
 
+    // Use per-slot team info if available (unified match session)
+    const slotTeamId = (slot as typeof slot & { slotTeamId?: string | null })?.slotTeamId ?? session.teamId;
+    const slotTeamName = (slot as typeof slot & { slotTeamName?: string | null })?.slotTeamName ?? session.teamName;
+
     try {
       await assignSubstitution(winner.poolEntryId, {
-        teamId: session.teamId,
-        teamName: session.teamName,
+        teamId: slotTeamId,
+        teamName: slotTeamName,
         neededRole: slot?.neededRole ?? session.neededRole,
         replacedPlayerId: slot?.replacedPlayerId ?? session.replacedPlayerId ?? undefined,
         replacedPlayerNick: slot?.replacedPlayerNick ?? session.replacedPlayerNick ?? undefined,
@@ -316,6 +321,7 @@ async function processWaveCompletion(waveId: string, client: Client): Promise<vo
       subScore: winner.subScore,
       discordId: winner.discordId,
       resolvedMention: resolved ? `<@${resolved}>` : `**${winner.nick}**`,
+      teamName: slotTeamName,
     });
   }
 
@@ -345,7 +351,7 @@ async function getTextChannel(channelId: string, client: Client): Promise<TextCh
 const NUMERIC_ID_RE = /^\d{17,20}$/;
 
 async function postInitialMessage(
-  session: { channelId: string; teamName: string; slotsNeeded: number; activeMatchId: string | null },
+  session: { channelId: string; teamName: string; awayTeamName?: string | null; slotsNeeded: number; activeMatchId: string | null },
   wave: { id: string; endsAt: Date; waveNumber: number },
   allPlayers: Array<{ playerId: string; player: { discordId?: string | null; nick: string } }>,
   neededRoles: number[],
@@ -388,11 +394,12 @@ async function postInitialMessage(
 
   const embed = buildSearchEmbed({
     teamName: session.teamName,
+    awayTeamName: session.awayTeamName ?? undefined,
     neededRoles,
     totalPinged: allPlayers.length,
     waveId: wave.id,
     endsAt: wave.endsAt,
-    matchInfo: session.activeMatchId ? `Матч ID: ${session.activeMatchId}` : undefined,
+    matchInfo: !session.awayTeamName && session.activeMatchId ? `Матч ID: ${session.activeMatchId}` : undefined,
   });
 
   try {
@@ -409,14 +416,18 @@ async function postInitialMessage(
 }
 
 async function postCompletionMessage(
-  session: { channelId: string; teamName: string },
+  session: { channelId: string; teamName: string; awayTeamName?: string | null },
   winners: CompletionWinner[],
   client: Client
 ): Promise<void> {
   const channel = await getTextChannel(session.channelId, client);
   if (!channel) return;
 
-  const embed = buildCompletionEmbed({ teamName: session.teamName, winners });
+  const embed = buildCompletionEmbed({
+    teamName: session.teamName,
+    awayTeamName: session.awayTeamName ?? undefined,
+    winners,
+  });
   const allMentions = winners.map((w) => w.resolvedMention).join(" ");
 
   try {

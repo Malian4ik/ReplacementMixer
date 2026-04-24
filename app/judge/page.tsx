@@ -89,8 +89,7 @@ export default function JudgePage() {
   // ── Active match mode state ───────────────────────────────────────────────
   const [selectedHome, setSelectedHome] = useState<Set<string>>(new Set());
   const [selectedAway, setSelectedAway] = useState<Set<string>>(new Set());
-  const [homeSearch, setHomeSearch] = useState<SearchState>({ pending: false, result: null, error: null });
-  const [awaySearch, setAwaySearch] = useState<SearchState>({ pending: false, result: null, error: null });
+  const [matchSearch, setMatchSearch] = useState<SearchState>({ pending: false, result: null, error: null });
 
   // ── Manual mode state (fallback) ──────────────────────────────────────────
   const [teamId, setTeamId] = useState("");
@@ -138,8 +137,8 @@ export default function JudgePage() {
     refetchInterval: 4000,
   });
 
-  // Active sessions for active match teams
-  const { data: homeSessionData, refetch: refetchHomeSession } = useQuery<{ session: ActiveSession | null }>({
+  // Active session for the current match (polls by homeTeam.id — backend also checks awayTeamId)
+  const { data: matchSessionData, refetch: refetchMatchSession } = useQuery<{ session: ActiveSession | null }>({
     queryKey: ["active-session", activeMatch?.homeTeam?.id],
     queryFn: () => activeMatch?.homeTeam?.id
       ? fetch(`/api/judge/active-session?teamId=${activeMatch.homeTeam.id}`).then((r) => r.json())
@@ -148,30 +147,30 @@ export default function JudgePage() {
     refetchInterval: 4000,
   });
 
-  const { data: awaySessionData, refetch: refetchAwaySession } = useQuery<{ session: ActiveSession | null }>({
-    queryKey: ["active-session", activeMatch?.awayTeam?.id],
-    queryFn: () => activeMatch?.awayTeam?.id
-      ? fetch(`/api/judge/active-session?teamId=${activeMatch.awayTeam.id}`).then((r) => r.json())
-      : Promise.resolve({ session: null }),
-    enabled: !!activeMatch?.awayTeam?.id,
-    refetchInterval: 4000,
-  });
-
   // ── Actions ───────────────────────────────────────────────────────────────
 
-  async function startDiscordSearch(
-    team: ActiveGameTeam,
-    selectedIds: Set<string>,
-    setState: (s: SearchState) => void,
-    refetch: () => void
-  ) {
-    if (!judgeName.trim() || selectedIds.size === 0) return;
-    setState({ pending: true, result: null, error: null });
+  async function startMatchSearch() {
+    if (!activeMatch || !judgeName.trim()) return;
+    if (selectedHome.size === 0 && selectedAway.size === 0) return;
+    setMatchSearch({ pending: true, result: null, error: null });
 
-    const slots = Array.from(selectedIds).map((playerId, i) => {
-      const player = team.players.find((p) => p?.id === playerId);
+    const homeSlots = Array.from(selectedHome).map((pid, i) => {
+      const player = activeMatch.homeTeam.players.find((p) => p?.id === pid);
       return {
-        replacedPlayerId: playerId,
+        teamId: activeMatch.homeTeam.id,
+        teamName: activeMatch.homeTeam.name,
+        replacedPlayerId: pid,
+        replacedPlayerNick: player?.nick,
+        neededRole: player?.role ?? 1,
+        teamSlot: i + 1,
+      };
+    });
+    const awaySlots = Array.from(selectedAway).map((pid, i) => {
+      const player = activeMatch.awayTeam.players.find((p) => p?.id === pid);
+      return {
+        teamId: activeMatch.awayTeam.id,
+        teamName: activeMatch.awayTeam.name,
+        replacedPlayerId: pid,
         replacedPlayerNick: player?.nick,
         neededRole: player?.role ?? 1,
         teamSlot: i + 1,
@@ -183,27 +182,31 @@ export default function JudgePage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          teamId: team.id,
+          homeTeamId: activeMatch.homeTeam.id,
+          homeTeamName: activeMatch.homeTeam.name,
+          awayTeamId: activeMatch.awayTeam.id,
+          awayTeamName: activeMatch.awayTeam.name,
+          activeMatchId: activeMatch.id,
           judgeName: judgeName.trim(),
           targetAvgMmr,
           maxDeviation: MAX_DEVIATION,
-          activeMatchId: activeMatch?.id,
-          slots,
+          slots: [...homeSlots, ...awaySlots],
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Ошибка сервера");
-      setState({ pending: false, result: { sessionId: data.sessionId, teamName: data.teamName }, error: null });
-      refetch();
+      setMatchSearch({ pending: false, result: { sessionId: data.sessionId, teamName: data.teamName }, error: null });
+      refetchMatchSession();
     } catch (err: unknown) {
-      setState({ pending: false, result: null, error: err instanceof Error ? err.message : "Ошибка" });
+      setMatchSearch({ pending: false, result: null, error: err instanceof Error ? err.message : "Ошибка" });
     }
   }
 
-  async function cancelSession(sessionTeamId: string, refetch: () => void) {
-    await fetch(`/api/judge/active-session?teamId=${sessionTeamId}`, { method: "DELETE" });
-    refetch();
-    qc.invalidateQueries({ queryKey: ["active-session", sessionTeamId] });
+  async function cancelMatchSession() {
+    if (!activeMatch) return;
+    await fetch(`/api/judge/active-session?teamId=${activeMatch.homeTeam.id}`, { method: "DELETE" });
+    refetchMatchSession();
+    qc.invalidateQueries({ queryKey: ["active-session"] });
   }
 
   // Manual mode discord search
@@ -250,8 +253,7 @@ export default function JudgePage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["pool"] });
       qc.invalidateQueries({ queryKey: ["active-session"] });
-      refetchHomeSession();
-      refetchAwaySession();
+      refetchMatchSession();
       refetchActiveSession();
     },
   });
@@ -295,16 +297,8 @@ export default function JudgePage() {
   function renderTeamColumn(
     team: ActiveGameTeam,
     selected: Set<string>,
-    setSelected: (s: Set<string>) => void,
-    search: SearchState,
-    setSearch: (s: SearchState) => void,
-    sessionData: { session: ActiveSession | null } | undefined,
-    refetch: () => void
+    setSelected: (s: Set<string>) => void
   ) {
-    const session = sessionData?.session ?? null;
-    const activeWave = session?.waves?.[0] ?? null;
-    const hasSession = !!session;
-
     function toggle(playerId: string) {
       const next = new Set(selected);
       if (next.has(playerId)) next.delete(playerId);
@@ -323,7 +317,6 @@ export default function JudgePage() {
           )}
         </div>
 
-        {/* Player list */}
         <div style={{ padding: "10px 12px", flex: 1 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {team.players.map((player, i) => {
@@ -366,86 +359,6 @@ export default function JudgePage() {
               );
             })}
           </div>
-
-          {/* Active Discord session for this team */}
-          {hasSession && (
-            <div style={{ marginTop: 12, padding: "10px 12px", background: "rgba(88,101,242,0.08)", border: "1px solid rgba(88,101,242,0.25)", borderRadius: 7 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#7289da" }}>⚡ Поиск активен</div>
-                <button
-                  onClick={() => cancelSession(team.id, refetch)}
-                  style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, border: "1px solid rgba(239,68,68,0.4)", background: "rgba(239,68,68,0.08)", color: "#f87171", cursor: "pointer" }}
-                >
-                  Отменить
-                </button>
-              </div>
-              <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6 }}>
-                {session.slotsNeeded} замен · волна {session.currentWave}
-              </div>
-
-              {activeWave && (
-                <>
-                  <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 6 }}>
-                    Откликнулись: {activeWave.responses.length}/{activeWave.candidates.length}
-                    {" · до "}
-                    {new Date(activeWave.endsAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                  </div>
-                  {activeWave.responses.map((r) => (
-                    <div key={r.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 8px", borderRadius: 4, background: "rgba(0,0,0,0.25)", border: "1px solid rgba(88,101,242,0.15)", marginBottom: 3 }}>
-                      <span style={{ fontSize: 12 }}>
-                        <b>{r.player.nick}</b>
-                        <span style={{ fontSize: 10, color: "var(--text-muted)", marginLeft: 6 }}>
-                          {r.player.mmr.toLocaleString()} · {roleLabel(r.player.mainRole)}
-                          {r.subScore != null ? ` · ${r.subScore.toFixed(3)}` : ""}
-                        </span>
-                      </span>
-                      <button
-                        style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, border: "1px solid rgba(16,185,129,0.4)", background: "rgba(16,185,129,0.1)", color: "#34d399", cursor: judgeName.trim() ? "pointer" : "not-allowed", opacity: judgeName.trim() ? 1 : 0.5 }}
-                        disabled={!judgeName.trim() || pickResponderMutation.isPending}
-                        onClick={() => pickResponderMutation.mutate({ sessionId: session.id, playerId: r.player.id })}
-                      >
-                        Выбрать
-                      </button>
-                    </div>
-                  ))}
-                  {activeWave.responses.length === 0 && (
-                    <div style={{ fontSize: 11, color: "var(--text-muted)", fontStyle: "italic" }}>Ждём откликов...</div>
-                  )}
-                </>
-              )}
-            </div>
-          )}
-
-          {/* Search result / error */}
-          {!hasSession && search.result && (
-            <div style={{ marginTop: 10, padding: "6px 10px", background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.25)", borderRadius: 5, fontSize: 11, color: "#34d399" }}>
-              ✅ Сессия запущена · {search.result.teamName}
-            </div>
-          )}
-          {search.error && (
-            <div style={{ marginTop: 10, padding: "6px 10px", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 5, fontSize: 11, color: "#f87171" }}>
-              ❌ {search.error}
-            </div>
-          )}
-        </div>
-
-        {/* Search button */}
-        <div style={{ padding: "10px 12px", borderTop: "1px solid var(--border)" }}>
-          <button
-            style={{
-              width: "100%", padding: "9px 0", borderRadius: 6,
-              border: "1px solid rgba(88,101,242,0.4)",
-              background: search.pending ? "rgba(88,101,242,0.15)" : "rgba(88,101,242,0.08)",
-              color: "rgba(88,101,242,0.9)",
-              fontSize: 13, fontWeight: 700, cursor: "pointer",
-              opacity: (selected.size === 0 || !judgeName.trim() || search.pending || hasSession) ? 0.4 : 1,
-              transition: "all 0.15s",
-            }}
-            disabled={selected.size === 0 || !judgeName.trim() || search.pending || hasSession}
-            onClick={() => startDiscordSearch(team, selected, setSearch, refetch)}
-          >
-            {search.pending ? "Запускаю..." : hasSession ? "Поиск идёт..." : "🔍 Поиск в Discord"}
-          </button>
         </div>
       </div>
     );
@@ -492,7 +405,7 @@ export default function JudgePage() {
           Загрузка матча...
         </div>
       ) : activeMatch ? (
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", padding: "12px 16px", gap: 10 }}>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "auto", padding: "12px 16px", gap: 10 }}>
 
           {/* Match banner */}
           <div style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.25)", borderRadius: 8, padding: "10px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
@@ -532,25 +445,106 @@ export default function JudgePage() {
           )}
 
           {/* Two-column team UI */}
-          <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, minHeight: 0, overflow: "auto" }}>
-            {renderTeamColumn(
-              activeMatch.homeTeam,
-              selectedHome,
-              setSelectedHome,
-              homeSearch,
-              setHomeSearch,
-              homeSessionData,
-              refetchHomeSession
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            {renderTeamColumn(activeMatch.homeTeam, selectedHome, setSelectedHome)}
+            {renderTeamColumn(activeMatch.awayTeam, selectedAway, setSelectedAway)}
+          </div>
+
+          {/* Unified Discord search panel */}
+          <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+            {/* Active session panel */}
+            {matchSessionData?.session && (() => {
+              const session = matchSessionData.session;
+              const activeWave = session.waves?.[0] ?? null;
+              return (
+                <div style={{ padding: "10px 14px", background: "rgba(88,101,242,0.08)", border: "1px solid rgba(88,101,242,0.25)", borderRadius: 7 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#7289da" }}>⚡ Поиск активен · {session.slotsNeeded} замены · волна {session.currentWave}</div>
+                    <button
+                      onClick={cancelMatchSession}
+                      style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, border: "1px solid rgba(239,68,68,0.4)", background: "rgba(239,68,68,0.08)", color: "#f87171", cursor: "pointer" }}
+                    >
+                      Отменить
+                    </button>
+                  </div>
+                  {activeWave && (
+                    <>
+                      <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 6 }}>
+                        Откликнулись: {activeWave.responses.length}/{activeWave.candidates.length}
+                        {" · до "}
+                        {new Date(activeWave.endsAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                        {activeWave.responses.map((r) => (
+                          <div key={r.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 8px", borderRadius: 4, background: "rgba(0,0,0,0.25)", border: "1px solid rgba(88,101,242,0.15)" }}>
+                            <span style={{ fontSize: 12 }}>
+                              <b>{r.player.nick}</b>
+                              <span style={{ fontSize: 10, color: "var(--text-muted)", marginLeft: 6 }}>
+                                {r.player.mmr.toLocaleString()} · {roleLabel(r.player.mainRole)}
+                                {r.subScore != null ? ` · ${r.subScore.toFixed(3)}` : ""}
+                              </span>
+                            </span>
+                            <button
+                              style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, border: "1px solid rgba(16,185,129,0.4)", background: "rgba(16,185,129,0.1)", color: "#34d399", cursor: judgeName.trim() ? "pointer" : "not-allowed", opacity: judgeName.trim() ? 1 : 0.5 }}
+                              disabled={!judgeName.trim() || pickResponderMutation.isPending}
+                              onClick={() => pickResponderMutation.mutate({ sessionId: session.id, playerId: r.player.id })}
+                            >
+                              Выбрать
+                            </button>
+                          </div>
+                        ))}
+                        {activeWave.responses.length === 0 && (
+                          <div style={{ fontSize: 11, color: "var(--text-muted)", fontStyle: "italic" }}>Ждём откликов...</div>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* Result / error */}
+            {!matchSessionData?.session && matchSearch.result && (
+              <div style={{ padding: "6px 12px", background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.25)", borderRadius: 5, fontSize: 11, color: "#34d399" }}>
+                ✅ Сессия запущена · {matchSearch.result.teamName}
+              </div>
             )}
-            {renderTeamColumn(
-              activeMatch.awayTeam,
-              selectedAway,
-              setSelectedAway,
-              awaySearch,
-              setAwaySearch,
-              awaySessionData,
-              refetchAwaySession
+            {matchSearch.error && (
+              <div style={{ padding: "6px 12px", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 5, fontSize: 11, color: "#f87171" }}>
+                ❌ {matchSearch.error}
+              </div>
             )}
+
+            {/* Single unified search button */}
+            {(() => {
+              const hasSession = !!matchSessionData?.session;
+              const hasSelected = selectedHome.size > 0 || selectedAway.size > 0;
+              const disabled = !hasSelected || !judgeName.trim() || matchSearch.pending || hasSession;
+              const totalSelected = selectedHome.size + selectedAway.size;
+              return (
+                <button
+                  style={{
+                    width: "100%", padding: "10px 0", borderRadius: 6,
+                    border: "1px solid rgba(88,101,242,0.4)",
+                    background: matchSearch.pending ? "rgba(88,101,242,0.15)" : "rgba(88,101,242,0.08)",
+                    color: "rgba(88,101,242,0.9)",
+                    fontSize: 13, fontWeight: 700, cursor: disabled ? "not-allowed" : "pointer",
+                    opacity: disabled ? 0.4 : 1,
+                    transition: "all 0.15s",
+                  }}
+                  disabled={disabled}
+                  onClick={startMatchSearch}
+                >
+                  {matchSearch.pending
+                    ? "Запускаю..."
+                    : hasSession
+                    ? "Поиск идёт..."
+                    : totalSelected > 0
+                    ? `🔍 Поиск в Discord (${totalSelected} замен${totalSelected > 1 ? "ы" : "а"})`
+                    : "🔍 Поиск в Discord"}
+                </button>
+              );
+            })()}
           </div>
         </div>
 

@@ -2,14 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 /** GET /api/judge/active-session?teamId=X
- *  Возвращает активную сессию поиска для команды вместе с откликнувшимися.
+ *  Возвращает активную сессию поиска для команды (по teamId или awayTeamId).
  */
 export async function GET(req: NextRequest) {
   const teamId = req.nextUrl.searchParams.get("teamId");
   if (!teamId) return NextResponse.json({ session: null });
 
   const session = await prisma.substitutionSearchSession.findFirst({
-    where: { teamId, status: "Active" },
+    where: {
+      OR: [
+        { teamId, status: "Active" },
+        { awayTeamId: teamId, status: "Active" },
+      ],
+    },
     include: {
       waves: {
         where: { status: "Active" },
@@ -26,6 +31,7 @@ export async function GET(req: NextRequest) {
           },
         },
       },
+      slots: { orderBy: { slotIndex: "asc" } },
     },
   });
 
@@ -38,7 +44,12 @@ export async function DELETE(req: NextRequest) {
   if (!teamId) return NextResponse.json({ error: "teamId required" }, { status: 400 });
 
   const session = await prisma.substitutionSearchSession.findFirst({
-    where: { teamId, status: "Active" },
+    where: {
+      OR: [
+        { teamId, status: "Active" },
+        { awayTeamId: teamId, status: "Active" },
+      ],
+    },
   });
   if (!session) return NextResponse.json({ error: "Нет активной сессии" }, { status: 404 });
 

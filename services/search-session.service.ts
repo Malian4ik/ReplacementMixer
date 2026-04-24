@@ -6,6 +6,8 @@ export interface SlotInput {
   teamSlot: number;
   replacedPlayerId?: string;
   replacedPlayerNick?: string;
+  slotTeamId?: string;
+  slotTeamName?: string;
 }
 
 export interface CreateSessionInput {
@@ -23,6 +25,8 @@ export interface CreateSessionInput {
   guildId: string;
   channelId: string;
   activeMatchId?: string;
+  awayTeamId?: string;
+  awayTeamName?: string;
   slots?: SlotInput[];
 }
 
@@ -31,8 +35,17 @@ export interface CreateSessionInput {
  * Throws DUPLICATE_SESSION if an Active session already exists for this team.
  */
 export async function createSearchSession(input: CreateSessionInput) {
+  const orConditions: Array<{ teamId?: string; awayTeamId?: string; status: string }> = [
+    { teamId: input.teamId, status: "Active" },
+    { awayTeamId: input.teamId, status: "Active" },
+  ];
+  if (input.awayTeamId) {
+    orConditions.push({ teamId: input.awayTeamId, status: "Active" });
+    orConditions.push({ awayTeamId: input.awayTeamId, status: "Active" });
+  }
+
   const existing = await prisma.substitutionSearchSession.findFirst({
-    where: { teamId: input.teamId, status: "Active" },
+    where: { OR: orConditions },
   });
   if (existing) throw new Error("DUPLICATE_SESSION");
 
@@ -62,6 +75,8 @@ export async function createSearchSession(input: CreateSessionInput) {
       guildId: input.guildId,
       channelId: input.channelId,
       activeMatchId: input.activeMatchId ?? null,
+      awayTeamId: input.awayTeamId ?? null,
+      awayTeamName: input.awayTeamName ?? null,
       slotsNeeded: slots.length,
       slots: { createMany: { data: slots } },
     },

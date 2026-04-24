@@ -18,6 +18,10 @@ const MIGRATIONS = [
     name: "wave_startsAt",
     sql: "ALTER TABLE ReplacementWave ADD COLUMN startsAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP",
   },
+  { name: "slot_slotTeamId", sql: "ALTER TABLE SubstitutionSlot ADD COLUMN slotTeamId TEXT" },
+  { name: "slot_slotTeamName", sql: "ALTER TABLE SubstitutionSlot ADD COLUMN slotTeamName TEXT" },
+  { name: "session_awayTeamId", sql: "ALTER TABLE ReplacementSearchSession ADD COLUMN awayTeamId TEXT" },
+  { name: "session_awayTeamName", sql: "ALTER TABLE ReplacementSearchSession ADD COLUMN awayTeamName TEXT" },
   {
     name: "create_SubstitutionSlot",
     sql: `CREATE TABLE IF NOT EXISTS SubstitutionSlot (

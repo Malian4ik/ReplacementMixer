@@ -176,6 +176,10 @@ model SubstitutionSearchSession {
   slotsNeeded         Int      @default(1)
   /// Active match ID from admin site (optional, for display in bot message)
   activeMatchId       String?
+  /// Away team ID (set when this is a unified match session covering both teams)
+  awayTeamId          String?
+  /// Away team name
+  awayTeamName        String?
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
@@ -193,6 +197,9 @@ model SubstitutionSlot {
   replacedPlayerNick  String?
   neededRole          Int
   teamSlot            Int
+  /// Which team this slot belongs to (for unified match sessions)
+  slotTeamId          String?
+  slotTeamName        String?
   assignedPlayerId    String?
   assignedPoolEntryId String?
   assignedAt          DateTime?
