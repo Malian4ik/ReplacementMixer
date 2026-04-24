@@ -26,6 +26,8 @@ import {
 } from "@/bot/utils/embeds";
 import { resolveToNumericId } from "@/bot/utils/discord-resolve";
 import { PING_INTERVAL_MS } from "@/lib/substitution-config";
+import { calculateTeamMMRAfter, calculateBalanceFactor } from "@/services/subscore.service";
+import type { SelectionResult } from "@/services/wave.service";
 
 // ── Timer registries ──────────────────────────────────────────────────────────
 
@@ -272,12 +274,109 @@ async function processWaveCompletion(waveId: string, client: Client): Promise<vo
     return;
   }
 
-  // Assign each winner to a corresponding slot
+  // ── Per-slot optimal assignment for match sessions ───────────────────────────
+  //
+  // For unified match sessions (awayTeamId set), do greedy per-slot assignment:
+  // for each slot, pick the available winner whose MMR best balances THAT team
+  // toward the target avg (not the home team globally).
+  //
+  // For single-team sessions: keep positional order (backward compat).
+
+  type SlotRecord = (typeof slots)[number];
+  type Pair = { winner: SelectionResult; slot: SlotRecord };
+
+  const isMatchSession = !!(
+    (session as typeof session & { awayTeamId?: string | null }).awayTeamId
+  );
+
+  let orderedPairs: Pair[];
+
+  if (isMatchSession && slots.length > 1) {
+    // Fetch team avg MMR for each unique slotTeamId
+    const uniqueTeamIds = [
+      ...new Set(
+        slots.map(
+          (s) => (s as typeof s & { slotTeamId?: string | null }).slotTeamId ?? session.teamId
+        )
+      ),
+    ];
+
+    const teamCtxMap = new Map<string, { avgMmr: number; playerCount: number }>();
+    for (const teamId of uniqueTeamIds) {
+      const team = await prisma.team.findUnique({
+        where: { id: teamId },
+        select: {
+          player1Id: true, player2Id: true, player3Id: true,
+          player4Id: true, player5Id: true,
+        },
+      });
+      if (!team) continue;
+      const ids = [team.player1Id, team.player2Id, team.player3Id, team.player4Id, team.player5Id]
+        .filter(Boolean) as string[];
+      const players = await prisma.player.findMany({
+        where: { id: { in: ids } },
+        select: { mmr: true },
+      });
+      teamCtxMap.set(teamId, {
+        avgMmr:
+          players.length > 0
+            ? Math.round(players.reduce((sum, p) => sum + p.mmr, 0) / players.length)
+            : session.currentTeamAvgMmr,
+        playerCount: players.length,
+      });
+    }
+
+    // Fetch replaced player MMRs per slot
+    const replacedMmrMap = new Map<string, number>();
+    for (const slot of slots) {
+      if (slot.replacedPlayerId) {
+        const rp = await prisma.player.findUnique({
+          where: { id: slot.replacedPlayerId },
+          select: { mmr: true },
+        });
+        replacedMmrMap.set(slot.id, rp?.mmr ?? 0);
+      }
+    }
+
+    // Greedy: for each slot (ordered by slotIndex), pick the winner who best balances that team's MMR
+    const remaining = [...winners];
+    orderedPairs = [];
+
+    for (const slot of slots) {
+      if (remaining.length === 0) break;
+      const slotTeamId =
+        (slot as typeof slot & { slotTeamId?: string | null }).slotTeamId ?? session.teamId;
+      const teamCtx = teamCtxMap.get(slotTeamId) ?? {
+        avgMmr: session.currentTeamAvgMmr,
+        playerCount: 5,
+      };
+      const replacedMmr = replacedMmrMap.get(slot.id) ?? 0;
+
+      const scored = remaining
+        .map((w) => ({
+          winner: w,
+          score: calculateBalanceFactor(
+            calculateTeamMMRAfter(teamCtx.avgMmr, replacedMmr, w.mmr, teamCtx.playerCount),
+            session.targetAvgMmr,
+            session.maxDeviation
+          ),
+        }))
+        .sort((a, b) => b.score - a.score);
+
+      const best = scored[0].winner;
+      remaining.splice(remaining.indexOf(best), 1);
+      orderedPairs.push({ winner: best, slot });
+    }
+  } else {
+    // Single team — positional assignment
+    orderedPairs = winners.map((winner, i) => ({ winner, slot: slots[i] }));
+  }
+
+  // Assign each winner to their optimal slot
   const assignedWinners: CompletionWinner[] = [];
 
-  for (let i = 0; i < winners.length; i++) {
-    const winner = winners[i];
-    const slot = slots[i];
+  for (let i = 0; i < orderedPairs.length; i++) {
+    const { winner, slot } = orderedPairs[i];
 
     // Use per-slot team info if available (unified match session)
     const slotTeamId = (slot as typeof slot & { slotTeamId?: string | null })?.slotTeamId ?? session.teamId;
@@ -325,8 +424,9 @@ async function processWaveCompletion(waveId: string, client: Client): Promise<vo
     });
   }
 
-  // Mark session completed (use first winner as "selected" for backward compat)
-  await markSessionCompleted(session.id, winners[0].playerId, winners[0].poolEntryId);
+  // Mark session completed (use first ordered pair as "selected" for backward compat)
+  const firstWinner = orderedPairs[0]?.winner ?? winners[0];
+  await markSessionCompleted(session.id, firstWinner.playerId, firstWinner.poolEntryId);
 
   await deleteWaveMessage(wave, client);
   await postCompletionMessage(session, assignedWinners, client);
