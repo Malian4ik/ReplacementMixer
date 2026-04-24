@@ -180,13 +180,9 @@ async function sendRePing(
   const channel = await getTextChannel(session.channelId, client);
   if (!channel) return;
 
-  // Use only already-numeric IDs for re-ping (no blocking API calls)
-  const resolvedIds = notYet.map((c) => {
-    const rawId = (c.player as { discordId?: string | null }).discordId;
-    return rawId && NUMERIC_ID_RE.test(rawId) ? rawId : null;
-  });
-
-  const mentions = resolvedIds.filter(Boolean).map((id) => `<@${id}>`).join(" ");
+  // Prefer @reserve role ping — same as initial message
+  const reserveRoleId = process.env.DISCORD_RESERVE_ROLE_ID;
+  const mentions = reserveRoleId ? `<@&${reserveRoleId}>` : "";
 
   const embed = buildRePingEmbed({
     teamName: session.teamName,
