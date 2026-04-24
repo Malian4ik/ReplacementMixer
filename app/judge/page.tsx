@@ -31,14 +31,26 @@ interface ActiveGame {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+interface ActiveSessionSlot {
+  id: string;
+  slotIndex: number;
+  neededRole: number;
+  replacedPlayerNick: string | null;
+  slotTeamId: string | null;
+  slotTeamName: string | null;
+  assignedPlayerId: string | null;
+}
+
 interface ActiveSession {
   id: string;
   teamName: string;
+  awayTeamName: string | null;
   neededRole: number;
   replacedPlayerNick: string | null;
   slotsNeeded: number;
   currentWave: number;
   status: string;
+  slots: ActiveSessionSlot[];
   waves: Array<{
     id: string;
     waveNumber: number;
@@ -90,6 +102,8 @@ export default function JudgePage() {
   const [selectedHome, setSelectedHome] = useState<Set<string>>(new Set());
   const [selectedAway, setSelectedAway] = useState<Set<string>>(new Set());
   const [matchSearch, setMatchSearch] = useState<SearchState>({ pending: false, result: null, error: null });
+  // slotId selected per respondent player: playerId → slotId
+  const [slotPickMap, setSlotPickMap] = useState<Record<string, string>>({});
 
   // ── Manual mode state (fallback) ──────────────────────────────────────────
   const [teamId, setTeamId] = useState("");
@@ -240,11 +254,11 @@ export default function JudgePage() {
   }
 
   const pickResponderMutation = useMutation({
-    mutationFn: ({ sessionId, playerId }: { sessionId: string; playerId: string }) =>
+    mutationFn: ({ sessionId, playerId, slotId }: { sessionId: string; playerId: string; slotId?: string }) =>
       fetch("/api/judge/pick-responder", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, playerId, judgeName: judgeName.trim() }),
+        body: JSON.stringify({ sessionId, playerId, slotId, judgeName: judgeName.trim() }),
       }).then(async (r) => {
         const d = await r.json();
         if (!r.ok) throw new Error(d.error ?? "Ошибка");
@@ -456,10 +470,15 @@ export default function JudgePage() {
             {matchSessionData?.session && (() => {
               const session = matchSessionData.session;
               const activeWave = session.waves?.[0] ?? null;
+              const openSlots = session.slots.filter((s) => !s.assignedPlayerId);
+              const isMatchSession = !!session.awayTeamName;
+
               return (
                 <div style={{ padding: "10px 14px", background: "rgba(88,101,242,0.08)", border: "1px solid rgba(88,101,242,0.25)", borderRadius: 7 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "#7289da" }}>⚡ Поиск активен · {session.slotsNeeded} замены · волна {session.currentWave}</div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#7289da" }}>
+                      ⚡ Поиск активен · {openSlots.length} незаполнен{openSlots.length === 1 ? "" : "о"} из {session.slotsNeeded} · волна {session.currentWave}
+                    </div>
                     <button
                       onClick={cancelMatchSession}
                       style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, border: "1px solid rgba(239,68,68,0.4)", background: "rgba(239,68,68,0.08)", color: "#f87171", cursor: "pointer" }}
@@ -467,6 +486,30 @@ export default function JudgePage() {
                       Отменить
                     </button>
                   </div>
+
+                  {/* Slots overview */}
+                  {session.slots.length > 0 && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 8 }}>
+                      {session.slots.map((slot) => {
+                        const teamLabel = isMatchSession ? (slot.slotTeamName ?? session.teamName) : null;
+                        const filled = !!slot.assignedPlayerId;
+                        return (
+                          <div key={slot.id} style={{
+                            padding: "2px 8px", borderRadius: 4, fontSize: 10, fontWeight: 600,
+                            background: filled ? "rgba(16,185,129,0.12)" : "rgba(239,68,68,0.08)",
+                            border: `1px solid ${filled ? "rgba(16,185,129,0.35)" : "rgba(239,68,68,0.3)"}`,
+                            color: filled ? "#34d399" : "#f87171",
+                          }}>
+                            {filled ? "✓" : "○"}{" "}
+                            {teamLabel && <span style={{ color: "var(--text-muted)", marginRight: 3 }}>{teamLabel} ·</span>}
+                            {roleLabel(slot.neededRole)}
+                            {slot.replacedPlayerNick && <span style={{ color: "var(--text-muted)", marginLeft: 3 }}>({slot.replacedPlayerNick})</span>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
                   {activeWave && (
                     <>
                       <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 6 }}>
@@ -474,25 +517,53 @@ export default function JudgePage() {
                         {" · до "}
                         {new Date(activeWave.endsAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
                       </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                        {activeWave.responses.map((r) => (
-                          <div key={r.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 8px", borderRadius: 4, background: "rgba(0,0,0,0.25)", border: "1px solid rgba(88,101,242,0.15)" }}>
-                            <span style={{ fontSize: 12 }}>
-                              <b>{r.player.nick}</b>
-                              <span style={{ fontSize: 10, color: "var(--text-muted)", marginLeft: 6 }}>
-                                {r.player.mmr.toLocaleString()} · {roleLabel(r.player.mainRole)}
-                                {r.subScore != null ? ` · ${r.subScore.toFixed(3)}` : ""}
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                        {activeWave.responses.map((r) => {
+                          const currentSlotId = slotPickMap[r.player.id] ?? (openSlots[0]?.id ?? "");
+                          return (
+                            <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 8px", borderRadius: 4, background: "rgba(0,0,0,0.25)", border: "1px solid rgba(88,101,242,0.15)" }}>
+                              {/* Player info */}
+                              <span style={{ fontSize: 12, flex: 1, minWidth: 0 }}>
+                                <b>{r.player.nick}</b>
+                                <span style={{ fontSize: 10, color: "var(--text-muted)", marginLeft: 6 }}>
+                                  {r.player.mmr.toLocaleString()} · {roleLabel(r.player.mainRole)}
+                                  {r.subScore != null ? ` · ${r.subScore.toFixed(3)}` : ""}
+                                </span>
                               </span>
-                            </span>
-                            <button
-                              style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, border: "1px solid rgba(16,185,129,0.4)", background: "rgba(16,185,129,0.1)", color: "#34d399", cursor: judgeName.trim() ? "pointer" : "not-allowed", opacity: judgeName.trim() ? 1 : 0.5 }}
-                              disabled={!judgeName.trim() || pickResponderMutation.isPending}
-                              onClick={() => pickResponderMutation.mutate({ sessionId: session.id, playerId: r.player.id })}
-                            >
-                              Выбрать
-                            </button>
-                          </div>
-                        ))}
+                              {/* Slot selector (only for multi-slot sessions) */}
+                              {isMatchSession && openSlots.length > 0 && (
+                                <select
+                                  value={currentSlotId}
+                                  onChange={(e) => setSlotPickMap((m) => ({ ...m, [r.player.id]: e.target.value }))}
+                                  style={{
+                                    fontSize: 10, padding: "2px 4px", borderRadius: 4,
+                                    background: "rgba(0,0,0,0.4)", border: "1px solid var(--border)",
+                                    color: "var(--text-primary)", maxWidth: 160,
+                                  }}
+                                >
+                                  {openSlots.map((slot) => (
+                                    <option key={slot.id} value={slot.id}>
+                                      {slot.slotTeamName ?? session.teamName} · {roleLabel(slot.neededRole)}
+                                      {slot.replacedPlayerNick ? ` (${slot.replacedPlayerNick})` : ""}
+                                    </option>
+                                  ))}
+                                </select>
+                              )}
+                              {/* Assign button */}
+                              <button
+                                style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, border: "1px solid rgba(16,185,129,0.4)", background: "rgba(16,185,129,0.1)", color: "#34d399", cursor: judgeName.trim() && openSlots.length > 0 ? "pointer" : "not-allowed", opacity: judgeName.trim() && openSlots.length > 0 ? 1 : 0.4, flexShrink: 0 }}
+                                disabled={!judgeName.trim() || pickResponderMutation.isPending || openSlots.length === 0}
+                                onClick={() => pickResponderMutation.mutate({
+                                  sessionId: session.id,
+                                  playerId: r.player.id,
+                                  slotId: isMatchSession ? (currentSlotId || undefined) : undefined,
+                                })}
+                              >
+                                Выбрать
+                              </button>
+                            </div>
+                          );
+                        })}
                         {activeWave.responses.length === 0 && (
                           <div style={{ fontSize: 11, color: "var(--text-muted)", fontStyle: "italic" }}>Ждём откликов...</div>
                         )}
