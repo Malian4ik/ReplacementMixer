@@ -98,6 +98,8 @@ export default function JudgePage() {
   const [emptySlotRole, setEmptySlotRole] = useState<number>(1);
   const [manualSearch, setManualSearch] = useState<SearchState>({ pending: false, result: null, error: null });
   const [cancelPending, setCancelPending] = useState(false);
+  const [testMatchPending, setTestMatchPending] = useState(false);
+  const [testMatchMsg, setTestMatchMsg] = useState<string | null>(null);
 
   // ── Queries ───────────────────────────────────────────────────────────────
 
@@ -554,7 +556,55 @@ export default function JudgePage() {
 
       ) : (
         /* ── Manual mode (no active match) ─────────────────────────────── */
-        <ManualFallback
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          {/* Test match toolbar (OWNER only) */}
+          {user?.role === "OWNER" && (
+            <div style={{ padding: "8px 16px", borderBottom: "1px solid var(--border)", background: "rgba(251,191,36,0.04)", display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+              <span style={{ fontSize: 11, color: "#fbbf24", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>⚙ Тест</span>
+              <button
+                className="btn btn-sm"
+                style={{ background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.3)", color: "#fbbf24", fontSize: 11 }}
+                disabled={testMatchPending}
+                onClick={async () => {
+                  setTestMatchPending(true);
+                  setTestMatchMsg(null);
+                  try {
+                    const r = await fetch("/api/admin/test-match", { method: "POST" });
+                    const d = await r.json();
+                    if (!r.ok) { setTestMatchMsg("Ошибка: " + d.error); return; }
+                    setTestMatchMsg(`Матч создан: ${d.homeTeam} vs ${d.awayTeam}`);
+                    qc.invalidateQueries({ queryKey: ["active-match"] });
+                    refetchMatch();
+                  } catch { setTestMatchMsg("Сетевая ошибка"); }
+                  finally { setTestMatchPending(false); }
+                }}
+              >
+                {testMatchPending ? "..." : "Создать тест-матч"}
+              </button>
+              <button
+                className="btn btn-sm btn-ghost"
+                style={{ fontSize: 11 }}
+                disabled={testMatchPending}
+                onClick={async () => {
+                  setTestMatchPending(true);
+                  setTestMatchMsg(null);
+                  try {
+                    await fetch("/api/admin/test-match", { method: "DELETE" });
+                    setTestMatchMsg("Тест-матч удалён");
+                    qc.invalidateQueries({ queryKey: ["active-match"] });
+                    refetchMatch();
+                  } catch { setTestMatchMsg("Сетевая ошибка"); }
+                  finally { setTestMatchPending(false); }
+                }}
+              >
+                Удалить тест-матч
+              </button>
+              {testMatchMsg && (
+                <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>{testMatchMsg}</span>
+              )}
+            </div>
+          )}
+          <ManualFallback
           teams={teams}
           poolEntries={poolEntries}
           targetAvgMmr={targetAvgMmr}
@@ -574,6 +624,7 @@ export default function JudgePage() {
           onPickResponder={(sessionId, playerId) => pickResponderMutation.mutate({ sessionId, playerId })}
           pickPending={pickResponderMutation.isPending}
         />
+        </div>
       )}
     </div>
   );
