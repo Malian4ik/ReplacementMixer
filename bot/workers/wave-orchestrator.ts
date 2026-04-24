@@ -343,7 +343,6 @@ async function getTextChannel(channelId: string, client: Client): Promise<TextCh
 }
 
 const NUMERIC_ID_RE = /^\d{17,20}$/;
-const MENTION_CHUNK_SIZE = 40; // ~40 × 21 chars ≈ 840 chars — safely under 2000
 
 async function postInitialMessage(
   session: { channelId: string; teamName: string; slotsNeeded: number; activeMatchId: string | null },
@@ -355,33 +354,37 @@ async function postInitialMessage(
   const channel = await getTextChannel(session.channelId, client);
   if (!channel) return null;
 
-  // Use only already-numeric IDs — no API calls, no rate limits, instant.
-  const numericIds: string[] = [];
-  const needsResolve: Array<{ playerId: string; rawId: string }> = [];
+  // Prefer pinging the @reserve role — one mention, reaches everyone at once.
+  // Fall back to individual pings if role ID is not configured.
+  const reserveRoleId = process.env.DISCORD_RESERVE_ROLE_ID;
+  let content: string;
 
-  for (const e of allPlayers) {
-    const rawId = (e.player as { discordId?: string | null }).discordId;
-    if (!rawId) continue;
-    if (NUMERIC_ID_RE.test(rawId)) {
-      numericIds.push(rawId);
-    } else {
-      needsResolve.push({ playerId: e.playerId, rawId });
+  if (reserveRoleId) {
+    content = `<@&${reserveRoleId}>`;
+  } else {
+    // Legacy: use cached numeric IDs, resolve usernames in background
+    const numericIds: string[] = [];
+    const needsResolve: Array<{ playerId: string; rawId: string }> = [];
+    for (const e of allPlayers) {
+      const rawId = (e.player as { discordId?: string | null }).discordId;
+      if (!rawId) continue;
+      if (NUMERIC_ID_RE.test(rawId)) numericIds.push(rawId);
+      else needsResolve.push({ playerId: e.playerId, rawId });
     }
+    if (needsResolve.length > 0) {
+      void (async () => {
+        for (const { playerId, rawId } of needsResolve) {
+          try { await resolveToNumericId(rawId, playerId, client); } catch { /* ignore */ }
+        }
+      })();
+    }
+    const CHUNK = 40;
+    const chunks = [];
+    for (let i = 0; i < numericIds.length; i += CHUNK) {
+      chunks.push(numericIds.slice(i, i + CHUNK).map((id) => `<@${id}>`).join(" "));
+    }
+    content = chunks.join("\n");
   }
-
-  // Fire-and-forget: resolve usernames in background so next session is faster
-  if (needsResolve.length > 0) {
-    void (async () => {
-      for (const { playerId, rawId } of needsResolve) {
-        try {
-          await resolveToNumericId(rawId, playerId, client);
-        } catch { /* ignore */ }
-      }
-    })();
-  }
-
-  const unlinked = allPlayers.length - numericIds.length - needsResolve.length;
-  const noDiscord = needsResolve.length + unlinked;
 
   const embed = buildSearchEmbed({
     teamName: session.teamName,
@@ -392,31 +395,12 @@ async function postInitialMessage(
     matchInfo: session.activeMatchId ? `Матч ID: ${session.activeMatchId}` : undefined,
   });
 
-  const row = buildReadyButton(wave.id);
-
-  // Split mentions into chunks to stay under Discord's 2000-char limit
-  const chunks: string[] = [];
-  for (let i = 0; i < numericIds.length; i += MENTION_CHUNK_SIZE) {
-    chunks.push(numericIds.slice(i, i + MENTION_CHUNK_SIZE).map((id) => `<@${id}>`).join(" "));
-  }
-
   try {
-    const firstContent = [
-      chunks[0] ?? "",
-      noDiscord > 0 ? `*(+${noDiscord} без Discord-привязки)*` : "",
-    ].filter(Boolean).join("\n");
-
     const msg = await channel.send({
-      content: firstContent || undefined,
+      content: content || undefined,
       embeds: [embed],
-      components: [row],
+      components: [buildReadyButton(wave.id)],
     });
-
-    // Send remaining mention chunks as follow-up messages (no embed)
-    for (let i = 1; i < chunks.length; i++) {
-      await channel.send({ content: chunks[i] });
-    }
-
     return msg.id;
   } catch (err) {
     log.error("Failed to send initial search message", err);
