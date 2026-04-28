@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { Team, SubstitutionPoolEntry } from "@/types";
 import { useUser } from "@/components/UserContext";
@@ -11,12 +11,14 @@ interface ActiveGamePlayer {
   id: string;
   nick: string;
   role: number;
+  mmr: number;
   discordId: string | null;
 }
 
 interface ActiveGameTeam {
   id: string;
   name: string;
+  avgMmr: number;
   players: (ActiveGamePlayer | null)[];
 }
 
@@ -60,7 +62,7 @@ interface ActiveSession {
       id: string;
       clickedAt: string;
       subScore: number | null;
-      player: { id: string; nick: string; mmr: number; mainRole: number };
+      player: { id: string; nick: string; mmr: number; mainRole: number; flexRole: number | null };
     }>;
     candidates: Array<{ player: { nick: string } }>;
   }>;
@@ -87,6 +89,18 @@ const ROLE_LABELS: Record<number, string> = {
 
 function roleLabel(r: number) {
   return ROLE_LABELS[r] ?? `R${r}`;
+}
+
+function roleFitScore(mainRole: number, flexRole: number | null, needed: number): number {
+  if (mainRole === needed) return 1.0;
+  if (flexRole === needed) return 0.8;
+  return 0.5;
+}
+
+function slotFitLabel(fit: number): string {
+  if (fit >= 1.0) return "★";
+  if (fit >= 0.8) return "~";
+  return "·";
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -159,6 +173,27 @@ export default function JudgePage() {
     enabled: !!activeMatch?.homeTeam?.id,
     refetchInterval: 4000,
   });
+
+  // Auto-fill slotPickMap: for each new respondent pick the slot with the best roleFit
+  const _matchSession = matchSessionData?.session ?? null;
+  const _activeMatchWave = _matchSession?.waves?.[0] ?? null;
+  useEffect(() => {
+    if (!_matchSession) return;
+    const openSlots = _matchSession.slots.filter((s) => !s.assignedPlayerId);
+    if (openSlots.length === 0) return;
+    const responses = _activeMatchWave?.responses ?? [];
+    setSlotPickMap((prev) => {
+      const next = { ...prev };
+      responses.forEach((r) => {
+        if (next[r.player.id]) return;
+        const best = openSlots
+          .map((slot) => ({ slot, fit: roleFitScore(r.player.mainRole, r.player.flexRole, slot.neededRole) }))
+          .sort((a, b) => b.fit - a.fit)[0];
+        if (best) next[r.player.id] = best.slot.id;
+      });
+      return next;
+    });
+  }, [_activeMatchWave?.responses?.length, _matchSession?.slots?.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
@@ -322,7 +357,14 @@ export default function JudgePage() {
     return (
       <div style={{ ...col, flex: 1 }}>
         <div style={{ ...colHeader, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span>{team.name}</span>
+          <span style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+            <span>{team.name}</span>
+            {team.avgMmr > 0 && (
+              <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "monospace", fontWeight: 400, textTransform: "none" }}>
+                {team.avgMmr.toLocaleString()} avg
+              </span>
+            )}
+          </span>
           {selected.size > 0 && (
             <span style={{ color: "#f87171", fontWeight: 800, textTransform: "none", fontSize: 12 }}>
               {selected.size} выбран{selected.size > 1 ? "о" : ""}
@@ -547,6 +589,7 @@ export default function JudgePage() {
                                 <b>{r.player.nick}</b>
                                 <span style={{ fontSize: 10, color: "var(--text-muted)", marginLeft: 6 }}>
                                   {r.player.mmr.toLocaleString()} · {roleLabel(r.player.mainRole)}
+                                  {r.player.flexRole != null ? `/${roleLabel(r.player.flexRole)}` : ""}
                                   {r.subScore != null ? ` · ${r.subScore.toFixed(3)}` : ""}
                                 </span>
                               </span>
@@ -561,12 +604,15 @@ export default function JudgePage() {
                                     color: "var(--text-primary)", maxWidth: 160,
                                   }}
                                 >
-                                  {openSlots.map((slot) => (
-                                    <option key={slot.id} value={slot.id}>
-                                      {slot.slotTeamName ?? session.teamName} · {roleLabel(slot.neededRole)}
-                                      {slot.replacedPlayerNick ? ` (${slot.replacedPlayerNick})` : ""}
-                                    </option>
-                                  ))}
+                                  {openSlots.map((slot) => {
+                                    const fit = roleFitScore(r.player.mainRole, r.player.flexRole, slot.neededRole);
+                                    return (
+                                      <option key={slot.id} value={slot.id}>
+                                        {slotFitLabel(fit)} {slot.slotTeamName ?? session.teamName} · {roleLabel(slot.neededRole)}
+                                        {slot.replacedPlayerNick ? ` (${slot.replacedPlayerNick})` : ""}
+                                      </option>
+                                    );
+                                  })}
                                 </select>
                               )}
                               {/* Assign button */}

@@ -18,12 +18,14 @@ export interface ActiveGamePlayer {
   id: string;
   nick: string;
   role: number;
+  mmr: number;
   discordId: string | null;
 }
 
 export interface ActiveGameTeam {
   id: string;
   name: string;
+  avgMmr: number;
   players: (ActiveGamePlayer | null)[];
 }
 
@@ -160,7 +162,7 @@ async function buildTeam(teamName: string): Promise<ActiveGameTeam | null> {
     nonNull.length > 0
       ? await prisma.player.findMany({
           where: { id: { in: nonNull } },
-          select: { id: true, nick: true, mainRole: true, discordId: true },
+          select: { id: true, nick: true, mainRole: true, discordId: true, mmr: true },
         })
       : [];
 
@@ -170,10 +172,15 @@ async function buildTeam(teamName: string): Promise<ActiveGameTeam | null> {
     if (!id) return null;
     const p = playerMap.get(id);
     if (!p) return null;
-    return { id: p.id, nick: p.nick, role: p.mainRole, discordId: p.discordId ?? null };
+    return { id: p.id, nick: p.nick, role: p.mainRole, discordId: p.discordId ?? null, mmr: p.mmr };
   });
 
-  return { id: team.id, name: team.name, players: slots };
+  const nonNullSlots = slots.filter((p): p is ActiveGamePlayer => !!p);
+  const avgMmr = nonNullSlots.length > 0
+    ? Math.round(nonNullSlots.reduce((s, p) => s + p.mmr, 0) / nonNullSlots.length)
+    : 0;
+
+  return { id: team.id, name: team.name, players: slots, avgMmr };
 }
 
 // ── Substitute queue (from reserve pool, ordered by joinTime) ──────────────────
