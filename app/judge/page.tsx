@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { Team, SubstitutionPoolEntry } from "@/types";
 import { useUser } from "@/components/UserContext";
@@ -753,6 +753,31 @@ function ManualFallback({
   const neededRole = isEmptySlot ? emptySlotRole : (replacedPlayer?.mainRole ?? 1);
   const activeWave = activeSession?.waves?.[0] ?? null;
 
+  // Calculate subScore for each pool entry given the current context
+  const poolSubScores = useMemo(() => {
+    if (!selectedTeam || !replacedPlayerId) return null;
+    const total = poolEntries.length;
+    if (total === 0) return null;
+    const maxMmr = Math.max(...poolEntries.map((e) => e.player.mmr), 1);
+    const replacedMmr = isEmptySlot ? 0 : (replacedPlayer?.mmr ?? 0);
+    const currentCount = isEmptySlot
+      ? (selectedTeam.players?.filter(Boolean).length ?? 4)
+      : 5;
+    const result = new Map<string, number>();
+    poolEntries.forEach((e, i) => {
+      const pos = i + 1;
+      const queueNorm = (total - pos + 1) / total;
+      const mmrNorm = e.player.mmr / maxMmr;
+      const roleFit = e.player.mainRole === neededRole ? 1.0 : (e.player.flexRole === neededRole ? 0.8 : 0.5);
+      const teamMmrAfter = isEmptySlot
+        ? (selectedTeam.avgMmr * currentCount + e.player.mmr) / (currentCount + 1)
+        : (selectedTeam.avgMmr * currentCount - replacedMmr + e.player.mmr) / currentCount;
+      const balance = Math.max(0, 1 - Math.abs(teamMmrAfter - targetAvgMmr) / MAX_DEVIATION);
+      result.set(e.id, (0.6 * queueNorm + 0.3 * mmrNorm + 0.1 * roleFit) * balance);
+    });
+    return result;
+  }, [poolEntries, selectedTeam, replacedPlayerId, neededRole, targetAvgMmr, isEmptySlot, replacedPlayer]);
+
   async function handleCancel() {
     if (!teamId) return;
     setCancelPending(true);
@@ -907,6 +932,11 @@ function ManualFallback({
                   </span>
                   <span style={{ display: "flex", alignItems: "center", gap: 6, fontFamily: "monospace" }}>
                     <span style={{ color: "var(--text-secondary)" }}>{e.player.mmr.toLocaleString()} · R{e.player.mainRole}</span>
+                    {poolSubScores && (
+                      <span style={{ color: "var(--accent)", fontSize: 10, fontWeight: 700 }}>
+                        {(poolSubScores.get(e.id) ?? 0).toFixed(3)}
+                      </span>
+                    )}
                     <MatchBadge count={(e.player as typeof e.player & { matchesPlayed?: number }).matchesPlayed ?? 0} />
                   </span>
                 </div>
