@@ -139,7 +139,6 @@ export default function JudgePage() {
   const { data: teams = [] } = useQuery<Team[]>({
     queryKey: ["teams"],
     queryFn: () => fetch("/api/teams").then((r) => r.json()),
-    enabled: !activeMatch,
   });
 
   const { data: activeSessionData, refetch: refetchActiveSession } = useQuery<{ session: ActiveSession | null }>({
@@ -147,7 +146,7 @@ export default function JudgePage() {
     queryFn: () => teamId
       ? fetch(`/api/judge/active-session?teamId=${teamId}`).then((r) => r.json())
       : Promise.resolve({ session: null }),
-    enabled: !activeMatch && !!teamId,
+    enabled: !!teamId,
     refetchInterval: 4000,
   });
 
@@ -418,8 +417,10 @@ export default function JudgePage() {
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)" }}>
           Загрузка матча...
         </div>
-      ) : activeMatch ? (
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "auto", padding: "12px 16px", gap: 10 }}>
+      ) : (
+        <>
+        {activeMatch && (
+        <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", overflow: "auto", padding: "12px 16px", gap: 10, borderBottom: "1px solid var(--border)" }}>
 
           {/* Match banner */}
           <div style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.25)", borderRadius: 8, padding: "10px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
@@ -637,9 +638,9 @@ export default function JudgePage() {
             })()}
           </div>
         </div>
+        )}
 
-      ) : (
-        /* ── Manual mode (no active match) ─────────────────────────────── */
+        {/* ── Manual fallback — always visible ───────────────────────── */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           {/* Test match toolbar (OWNER only) */}
           {user?.role === "OWNER" && (
@@ -648,7 +649,7 @@ export default function JudgePage() {
               <button
                 className="btn btn-sm"
                 style={{ background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.3)", color: "#fbbf24", fontSize: 11 }}
-                disabled={testMatchPending}
+                disabled={testMatchPending || !!activeMatch}
                 onClick={async () => {
                   setTestMatchPending(true);
                   setTestMatchMsg(null);
@@ -709,6 +710,7 @@ export default function JudgePage() {
           pickPending={pickResponderMutation.isPending}
         />
         </div>
+        </>
       )}
     </div>
   );

@@ -27,7 +27,8 @@ async function getInTeamPlayerIds(): Promise<Set<string>> {
 
 /**
  * Returns ALL eligible reserve players (no batch limit).
- * Sorted by joinTime asc (first in queue = highest priority).
+ * Primary sort: admin queuePosition from the most recently synced AdminTournament.
+ * Fallback sort: joinTime asc (for players without an admin queuePosition).
  *
  * Eligibility:
  * - SubstitutionPoolEntry.status === "Active"
@@ -46,7 +47,35 @@ export async function getAllEligiblePlayers(): Promise<SubstitutionPoolEntry[]> 
     orderBy: { joinTime: "asc" },
   });
 
-  return rawEntries.filter((e) => !inTeamIds.has(e.playerId)) as unknown as SubstitutionPoolEntry[];
+  const eligible = rawEntries.filter((e) => !inTeamIds.has(e.playerId));
+
+  // Overlay admin queue positions from the most recently synced tournament
+  const activeTournament = await prisma.adminTournament.findFirst({
+    where: { lastSyncedAt: { not: null } },
+    orderBy: { lastSyncedAt: "desc" },
+  });
+
+  if (activeTournament) {
+    const playerIds = eligible.map((e) => e.playerId);
+    const participations = await prisma.playerTournamentParticipation.findMany({
+      where: {
+        tournamentId: activeTournament.id,
+        playerId: { in: playerIds },
+        queuePosition: { not: null },
+      },
+      select: { playerId: true, queuePosition: true },
+    });
+    const queueMap = new Map(participations.map((p) => [p.playerId, p.queuePosition!]));
+
+    eligible.sort((a, b) => {
+      const posA = queueMap.get(a.playerId) ?? Infinity;
+      const posB = queueMap.get(b.playerId) ?? Infinity;
+      if (posA !== posB) return posA - posB;
+      return new Date(a.joinTime).getTime() - new Date(b.joinTime).getTime();
+    });
+  }
+
+  return eligible as unknown as SubstitutionPoolEntry[];
 }
 
 /**
