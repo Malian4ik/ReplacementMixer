@@ -182,10 +182,42 @@ export default function TeamsPage() {
   const [form, setForm] = useState({ ...EMPTY_TEAM });
   const [confirmState, setConfirmState] = useState<{ message: string; onConfirm: () => void } | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [showImport, setShowImport] = useState(false);
+  const [importTournamentId, setImportTournamentId] = useState("");
+  const [importResult, setImportResult] = useState<{ created: number; updated: number; failed: number; total: number; errors: string[] } | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
 
   const { data: teams = [], isLoading } = useQuery<Team[]>({
     queryKey: ["teams"],
     queryFn: () => fetch("/api/teams").then(r => r.json()),
+  });
+
+  const { data: syncedTournaments = [] } = useQuery<{ id: string; externalId: string; name: string; participantCount: number | null }[]>({
+    queryKey: ["synced-tournaments"],
+    queryFn: () => fetch("/api/admin/tournaments/synced").then(r => r.json()),
+    enabled: showImport,
+  });
+
+  const teamImportMutation = useMutation({
+    mutationFn: async (tournamentId: string) => {
+      const res = await fetch("/api/admin/tournaments/import/teams", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tournamentId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Ошибка импорта команд");
+      return data as { created: number; updated: number; failed: number; total: number; errors: string[] };
+    },
+    onSuccess: (data) => {
+      setImportResult(data);
+      setImportError(null);
+      qc.invalidateQueries({ queryKey: ["teams"] });
+    },
+    onError: (e: Error) => {
+      setImportError(e.message);
+      setImportResult(null);
+    },
   });
 
   const { data: stats } = useQuery<{ targetAvgMmr: number }>({
@@ -330,15 +362,84 @@ export default function TeamsPage() {
             </div>
           )}
           {canEdit && (
-            <button
-              className="btn btn-sm btn-success"
-              onClick={() => { setShowAdd(v => !v); setCreateError(null); }}
-            >
-              {showAdd ? "Отмена" : "+ Создать команду"}
-            </button>
+            <div style={{ display: "flex", gap: 6 }}>
+              <button
+                className="btn btn-sm btn-ghost"
+                onClick={() => { setShowImport(v => !v); setShowAdd(false); setImportResult(null); setImportError(null); }}
+              >
+                {showImport ? "Закрыть" : "⬇ Импорт из админки"}
+              </button>
+              <button
+                className="btn btn-sm btn-success"
+                onClick={() => { setShowAdd(v => !v); setShowImport(false); setCreateError(null); }}
+              >
+                {showAdd ? "Отмена" : "+ Создать команду"}
+              </button>
+            </div>
           )}
         </div>
       </div>
+
+      {/* Import panel */}
+      {canEdit && showImport && (
+        <div style={{ background: "var(--bg-panel)", borderBottom: "1px solid var(--border)", padding: "14px 24px" }}>
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>Импорт команд из админки</div>
+          {syncedTournaments.length === 0 ? (
+            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+              Нет синхронизированных турниров. Сначала импортируйте участников на странице <a href="/admin/import" style={{ color: "var(--accent)" }}>Импорт</a>.
+            </div>
+          ) : (
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <select
+                value={importTournamentId}
+                onChange={e => { setImportTournamentId(e.target.value); setImportResult(null); setImportError(null); }}
+                style={{ background: "var(--bg-card)", border: "1px solid var(--border)", color: "var(--text-primary)", borderRadius: 6, padding: "6px 10px", fontSize: 13, cursor: "pointer", minWidth: 220 }}
+              >
+                <option value="">— выберите турнир —</option>
+                {syncedTournaments.map(t => (
+                  <option key={t.externalId} value={t.externalId}>
+                    {t.name}{t.participantCount ? ` (${t.participantCount} уч.)` : ""}
+                  </option>
+                ))}
+              </select>
+              <button
+                className="btn btn-sm btn-accent"
+                disabled={!importTournamentId || teamImportMutation.isPending}
+                onClick={() => importTournamentId && teamImportMutation.mutate(importTournamentId)}
+              >
+                {teamImportMutation.isPending ? "Импорт..." : "🏆 Импортировать"}
+              </button>
+            </div>
+          )}
+
+          {teamImportMutation.isPending && (
+            <div style={{ marginTop: 10, fontSize: 12, color: "var(--accent)" }}>
+              Загружаю команды из внешней системы, может занять до 30 сек...
+            </div>
+          )}
+
+          {importResult && (
+            <div style={{ marginTop: 10, padding: "8px 12px", background: "rgba(16,185,129,0.07)", border: "1px solid rgba(16,185,129,0.25)", borderRadius: 6, fontSize: 12 }}>
+              <span style={{ color: "#34d399", fontWeight: 700 }}>✅ Готово</span>
+              {" · "}Всего: <b>{importResult.total}</b>
+              {" · "}<span style={{ color: "#34d399" }}>Создано: <b>{importResult.created}</b></span>
+              {" · "}<span style={{ color: "#60a5fa" }}>Обновлено: <b>{importResult.updated}</b></span>
+              {importResult.failed > 0 && <span style={{ color: "#f87171" }}>{" · "}Ошибок: <b>{importResult.failed}</b></span>}
+              {importResult.errors.length > 0 && (
+                <div style={{ marginTop: 6, color: "#f87171", fontSize: 11 }}>
+                  {importResult.errors.slice(0, 3).map((e, i) => <div key={i}>{e}</div>)}
+                </div>
+              )}
+            </div>
+          )}
+
+          {importError && (
+            <div style={{ marginTop: 10, padding: "8px 12px", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 6, fontSize: 12, color: "#f87171" }}>
+              ❌ {importError}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Create form */}
       {canEdit && showAdd && (
