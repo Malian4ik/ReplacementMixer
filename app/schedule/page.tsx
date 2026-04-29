@@ -141,6 +141,80 @@ function ActionModal({ match, onClose }: { match: TournamentMatch; onClose: () =
   );
 }
 
+function AddMatchModal({ onClose }: { onClose: () => void }) {
+  const qc = useQueryClient();
+  const [round, setRound] = useState("1");
+  const [homeTeam, setHomeTeam] = useState("");
+  const [awayTeam, setAwayTeam] = useState("");
+  const [scheduledAt, setScheduledAt] = useState("");
+
+  const { data: dbTeams = [] } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ["teams-list"],
+    queryFn: () => fetch("/api/teams").then(r => r.json()),
+  });
+
+  const teamNames = useMemo(() => dbTeams.map(t => t.name).sort(), [dbTeams]);
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/schedule/matches", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ round: parseInt(round), homeTeam, awayTeam, scheduledAt }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error);
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["schedule-matches"] });
+      onClose();
+    },
+  });
+
+  const canSubmit = round && parseInt(round) > 0 && homeTeam.trim() && awayTeam.trim() && scheduledAt && homeTeam.trim() !== awayTeam.trim();
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div style={{ background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 10, padding: 20, width: "100%", maxWidth: 380 }}>
+        <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>Добавить матч</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div>
+            <div className="lbl" style={{ marginBottom: 4 }}>Тур</div>
+            <input className="form-input" type="number" min="1" value={round} onChange={e => setRound(e.target.value)} placeholder="1" />
+          </div>
+          <div>
+            <div className="lbl" style={{ marginBottom: 4 }}>Команда 1 (дом)</div>
+            <input className="form-input" value={homeTeam} onChange={e => setHomeTeam(e.target.value)} list="add-match-home-teams" placeholder="Название команды" autoComplete="off" />
+            <datalist id="add-match-home-teams">{teamNames.map(t => <option key={t} value={t} />)}</datalist>
+          </div>
+          <div>
+            <div className="lbl" style={{ marginBottom: 4 }}>Команда 2 (гости)</div>
+            <input className="form-input" value={awayTeam} onChange={e => setAwayTeam(e.target.value)} list="add-match-away-teams" placeholder="Название команды" autoComplete="off" />
+            <datalist id="add-match-away-teams">{teamNames.map(t => <option key={t} value={t} />)}</datalist>
+          </div>
+          <div>
+            <div className="lbl" style={{ marginBottom: 4 }}>Начало (МСК)</div>
+            <input
+              type="datetime-local"
+              value={scheduledAt}
+              onChange={e => setScheduledAt(e.target.value)}
+              style={{ width: "100%", background: "rgba(0,0,0,0.4)", border: "1px solid var(--border-light)", color: "var(--text-primary)", borderRadius: 6, padding: "6px 10px", fontSize: 13, outline: "none" }}
+            />
+          </div>
+          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Матч длится 1.5 ч · конец считается автоматически</div>
+          {mutation.isError && <div style={{ fontSize: 12, color: "#f87171" }}>Ошибка: {(mutation.error as Error).message}</div>}
+          <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+            <button className="btn btn-ghost" style={{ flex: 1, justifyContent: "center" }} onClick={onClose}>Отмена</button>
+            <button className="btn btn-accent" style={{ flex: 2, justifyContent: "center" }} disabled={!canSubmit || mutation.isPending} onClick={() => mutation.mutate()}>
+              {mutation.isPending ? "Добавление..." : "Добавить"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function GenerateModal({ onClose, clearMode }: { onClose: () => void; clearMode?: boolean }) {
   const qc = useQueryClient();
   const [firstMatchTime, setFirstMatchTime] = useState("");
@@ -214,6 +288,7 @@ export default function SchedulePage() {
   const [activeMatch, setActiveMatch] = useState<TournamentMatch | null>(null);
   const [showGenerate, setShowGenerate] = useState(false);
   const [showClear, setShowClear] = useState(false);
+  const [showAdd, setShowAdd] = useState(false);
   const [filterTeam, setFilterTeam] = useState("");
   const clearScheduleMutation = useMutation({
     mutationFn: () => fetch("/api/schedule/matches", { method: "DELETE" }).then(r => r.json()),
@@ -263,6 +338,7 @@ export default function SchedulePage() {
       {activeMatch && <ActionModal match={activeMatch} onClose={() => setActiveMatch(null)} />}
       {showGenerate && <GenerateModal onClose={() => setShowGenerate(false)} />}
       {showClear && <GenerateModal clearMode onClose={() => setShowClear(false)} />}
+      {showAdd && <AddMatchModal onClose={() => setShowAdd(false)} />}
 
       {/* Header */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 20, gap: 12, flexWrap: "wrap" }}>
@@ -282,12 +358,20 @@ export default function SchedulePage() {
             <RefreshCw size={12} /> Обновить
           </button>
           {isOwner && totalMatches === 0 && (
-            <button className="btn btn-accent btn-sm" onClick={() => setShowGenerate(true)}>
-              + Создать расписание
-            </button>
+            <>
+              <button className="btn btn-accent btn-sm" onClick={() => setShowGenerate(true)}>
+                + Создать расписание
+              </button>
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowAdd(true)}>
+                + Матч вручную
+              </button>
+            </>
           )}
           {isOwner && totalMatches > 0 && (
             <>
+              <button className="btn btn-sm btn-accent" onClick={() => setShowAdd(true)}>
+                + Матч
+              </button>
               <button className="btn btn-sm btn-danger" disabled={clearScheduleMutation.isPending} onClick={() => clearScheduleMutation.mutate()}>
                 Очистить
               </button>

@@ -1,6 +1,42 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+const MATCH_MS = 1.5 * 60 * 60 * 1000;
+
+export async function POST(req: NextRequest) {
+  try {
+    const { round, homeTeam, awayTeam, scheduledAt } = await req.json() as {
+      round: number;
+      homeTeam: string;
+      awayTeam: string;
+      scheduledAt: string; // "YYYY-MM-DDTHH:mm" в МСК (UTC+3)
+    };
+
+    if (!round || !homeTeam?.trim() || !awayTeam?.trim() || !scheduledAt) {
+      return NextResponse.json({ error: "Нужны round, homeTeam, awayTeam, scheduledAt" }, { status: 400 });
+    }
+    if (homeTeam.trim() === awayTeam.trim()) {
+      return NextResponse.json({ error: "Команды не могут совпадать" }, { status: 400 });
+    }
+
+    const start = new Date(scheduledAt + ":00+03:00");
+    if (isNaN(start.getTime())) {
+      return NextResponse.json({ error: "Неверный формат времени" }, { status: 400 });
+    }
+
+    const end = new Date(start.getTime() + MATCH_MS);
+    const slot = await prisma.tournamentMatch.count({ where: { round } });
+
+    const match = await prisma.tournamentMatch.create({
+      data: { round, slot, homeTeam: homeTeam.trim(), awayTeam: awayTeam.trim(), scheduledAt: start, endsAt: end },
+    });
+
+    return NextResponse.json(match, { status: 201 });
+  } catch (e: unknown) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Error" }, { status: 500 });
+  }
+}
+
 export async function DELETE() {
   try {
     const result = await prisma.tournamentMatch.deleteMany({});

@@ -79,6 +79,9 @@ export async function importTournamentParticipants(
       const existing = await prisma.player.findUnique({ where: { nick: p.nick } });
       const playedBefore = existing != null;
 
+      // If tournamentStatus contains "disqualif" → mark as disqualified on our site
+      const isDisq = /disqualif/i.test(p.tournamentStatus ?? "");
+
       // Upsert player
       const player = await prisma.player.upsert({
         where: { nick: p.nick },
@@ -94,6 +97,8 @@ export async function importTournamentParticipants(
           adminParticipationCount: 1,
           lastImportedTournamentName: tournamentInfo.name,
           lastSyncedAt: new Date(),
+          isDisqualified: isDisq,
+          isActiveInDatabase: !isDisq,
         },
         update: {
           ...(p.mmr != null ? { mmr: p.mmr } : {}),
@@ -106,6 +111,7 @@ export async function importTournamentParticipants(
           adminParticipationCount: { increment: 1 },
           lastImportedTournamentName: tournamentInfo.name,
           lastSyncedAt: new Date(),
+          ...(isDisq ? { isDisqualified: true, isActiveInDatabase: false } : {}),
         },
       });
 
