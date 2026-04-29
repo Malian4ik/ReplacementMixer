@@ -3,6 +3,8 @@ import {
   adminLogin,
   fetchTournaments,
   fetchAllParticipants,
+  fetchTournamentTeams,
+  fetchTeamMemberNicks,
   type AdminTournamentInfo,
   type AdminParticipant,
 } from "./admin-source.service";
@@ -169,4 +171,101 @@ export async function importTournamentParticipants(
   });
 
   return { syncRunId: syncRun.id, created, updated, failed, total: participants.length, errors };
+}
+
+export interface TeamImportResult {
+  created: number;
+  updated: number;
+  failed: number;
+  total: number;
+  errors: string[];
+}
+
+export async function importTournamentTeams(
+  externalTournamentId: string
+): Promise<TeamImportResult> {
+  await adminLogin();
+
+  // Fetch all participants — they may carry a `team` field from the list view
+  const participants = await fetchAllParticipants(externalTournamentId);
+
+  // Build uuid→nick map (needed for team detail page scraping fallback)
+  // Note: uuid is not carried through fetchAllParticipants; we build from raw list via a separate call.
+  // For now: first try grouping by participant.team field
+  const teamMap = new Map<string, string[]>(); // teamName → [nick, ...]
+
+  for (const p of participants) {
+    if (!p.team || !p.nick) continue;
+    if (!teamMap.has(p.team)) teamMap.set(p.team, []);
+    teamMap.get(p.team)!.push(p.nick);
+  }
+
+  if (teamMap.size === 0) {
+    // Fallback: try scraping from /admin/tournaments/team/
+    const teamInfos = await fetchTournamentTeams(externalTournamentId);
+
+    if (teamInfos.length === 0) {
+      return {
+        created: 0, updated: 0, failed: 0, total: 0,
+        errors: ["Поле «команда» не найдено у участников, и раздел /admin/tournaments/team/ недоступен. Команды нужно создать вручную."],
+      };
+    }
+
+    // Build participant uuid→nick from the DB (players already imported)
+    const allPlayers = await prisma.player.findMany({ select: { id: true, nick: true } });
+    const nickSet = new Set(allPlayers.map(p => p.nick));
+
+    // Fetch member nicks for each team using participant UUID links on the team detail page.
+    // uuidToNick is empty here since we don't have UUIDs from the DB — fetchTeamMemberNicks
+    // relies on UUID→nick mapping built during participant list scraping.
+    // We pass an empty map; the function will return nicks only when UUIDs are found in the DB.
+    const uuidToNick = new Map<string, string>();
+
+    for (const info of teamInfos) {
+      const nicks = await fetchTeamMemberNicks(info.id, uuidToNick);
+      // Filter to players we know about
+      const known = nicks.filter(n => nickSet.has(n));
+      teamMap.set(info.name, known);
+    }
+  }
+
+  let created = 0, updated = 0, failed = 0;
+  const errors: string[] = [];
+
+  for (const [teamName, nicks] of teamMap) {
+    try {
+      const players = await prisma.player.findMany({ where: { nick: { in: nicks } } });
+      const playerMap = new Map(players.map(p => [p.nick, p.id]));
+      const ids = nicks.slice(0, 5).map(n => playerMap.get(n) ?? null);
+      while (ids.length < 5) ids.push(null);
+
+      const existing = await prisma.team.findUnique({ where: { name: teamName } });
+      await prisma.team.upsert({
+        where: { name: teamName },
+        create: {
+          name: teamName,
+          player1Id: ids[0],
+          player2Id: ids[1],
+          player3Id: ids[2],
+          player4Id: ids[3],
+          player5Id: ids[4],
+        },
+        update: {
+          player1Id: ids[0],
+          player2Id: ids[1],
+          player3Id: ids[2],
+          player4Id: ids[3],
+          player5Id: ids[4],
+        },
+      });
+
+      if (existing) updated++;
+      else created++;
+    } catch (err: unknown) {
+      failed++;
+      errors.push(`${teamName}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  return { created, updated, failed, total: teamMap.size, errors };
 }

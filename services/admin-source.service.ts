@@ -92,6 +92,12 @@ export interface AdminParticipant {
   qualifyRating?: number;
   bidSize?: number;
   balance?: number;
+  team?: string;
+}
+
+export interface AdminTeamInfo {
+  id: string;
+  name: string;
 }
 
 // ─── Tournament list ──────────────────────────────────────────────────────────
@@ -142,6 +148,7 @@ interface RawListParticipant {
   bidSize: number | undefined;
   balance: number | undefined;
   queuePosition: number | undefined;
+  team: string | undefined;
 }
 
 async function fetchParticipantPage(
@@ -173,6 +180,7 @@ async function fetchParticipantPage(
     const queueStr = fieldText(row, "queue_position");
     const bidStr = fieldText(row, "bid_size");
     const balStr = fieldText(row, "balance");
+    const teamText = fieldText(row, "team") || fieldText(row, "team_name") || fieldText(row, "team__name");
 
     items.push({
       nick,
@@ -181,6 +189,7 @@ async function fetchParticipantPage(
       bidSize: bidStr ? parseFloat(bidStr) : undefined,
       balance: balStr ? parseFloat(balStr) : undefined,
       queuePosition: queueStr && queueStr !== "-" ? parseInt(queueStr, 10) : undefined,
+      team: teamText || undefined,
     });
   }
 
@@ -325,6 +334,57 @@ export async function fetchAllParticipants(
       mainRole: user?.mainRole,
       telegramId: user?.telegramId,
       discordId: user?.discordId,
+      team: raw.team,
     };
   });
+}
+
+// ─── Team list ────────────────────────────────────────────────────────────────
+
+/** Scrape the team list for a tournament from the Django admin.
+ *  Falls back to an empty array if the URL doesn't exist. */
+export async function fetchTournamentTeams(
+  tournamentId: string | number
+): Promise<AdminTeamInfo[]> {
+  const url = `${BASE}/admin/tournaments/team/?tournament__id__exact=${tournamentId}`;
+  const res = await fetch(url, { headers: makeHeaders() });
+  if (!res.ok) return []; // 404 or no permission — not an error, just no teams section
+  const html = await res.text();
+  return parseTeamList(html);
+}
+
+function parseTeamList(html: string): AdminTeamInfo[] {
+  const listMatch = html.match(/id="result_list"[^>]*>([\s\S]*)/);
+  if (!listMatch) return [];
+
+  const teams: AdminTeamInfo[] = [];
+  for (const [, row] of [...listMatch[1].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)]) {
+    const idMatch = row.match(/\/admin\/tournaments\/team\/(\d+)\/change\//);
+    if (!idMatch) continue;
+    const name = fieldText(row, "name") || fieldText(row, "title") || fieldText(row, "team_name");
+    if (!name) continue;
+    teams.push({ id: idMatch[1], name });
+  }
+  return teams;
+}
+
+/** Scrape member nicks from a team's detail page (via inline participant UUID links). */
+export async function fetchTeamMemberNicks(
+  teamId: string,
+  uuidToNick: Map<string, string>
+): Promise<string[]> {
+  const res = await fetch(`${BASE}/admin/tournaments/team/${teamId}/change/`, { headers: makeHeaders() });
+  if (!res.ok) return [];
+  const html = await res.text();
+
+  // Collect participant UUIDs referenced in the page (inline links)
+  const nicks: string[] = [];
+  const seen = new Set<string>();
+  for (const [, uuid] of html.matchAll(/\/admin\/tournaments\/participant\/([0-9a-f-]{36})\//g)) {
+    if (seen.has(uuid)) continue;
+    seen.add(uuid);
+    const nick = uuidToNick.get(uuid);
+    if (nick) nicks.push(nick);
+  }
+  return nicks;
 }
