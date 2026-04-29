@@ -1,6 +1,40 @@
 import { prisma } from "@/lib/prisma";
 import { formatMoscow } from "@/lib/date";
 
+const ROLE_NAMES: Record<number, string> = { 1: "Carry", 2: "Mid", 3: "Off", 4: "SS", 5: "HS" };
+
+export async function buildMatchCompletionMessage(match: {
+  id: string;
+  round: number;
+  slot: number;
+  homeTeam: string;
+  awayTeam: string;
+}): Promise<string> {
+  const logs = await prisma.matchSubstitutionLog.findMany({
+    where: { matchId: match.id, actionType: "Assign" },
+    orderBy: { timestamp: "asc" },
+  });
+
+  const lines: string[] = [];
+  lines.push(`✅ Матч завершён | Тур ${match.round}`);
+  lines.push(`⚔️ <b>${esc(match.homeTeam)}</b> vs <b>${esc(match.awayTeam)}</b>`);
+
+  if (logs.length > 0) {
+    lines.push("");
+    lines.push(`<b>Замены (${logs.length}):</b>`);
+    for (const l of logs) {
+      const role = ROLE_NAMES[l.neededRole ?? 0] ?? `R${l.neededRole}`;
+      const sub = esc(l.replacementPlayerNick ?? "?");
+      const replaced = l.replacedPlayerNick ? ` вместо ${esc(l.replacedPlayerNick)}` : "";
+      lines.push(`• <b>${esc(l.teamName ?? "?")}</b> [${role}]: ${sub}${replaced}`);
+    }
+  } else {
+    lines.push("\nЗамен не было.");
+  }
+
+  return lines.join("\n");
+}
+
 function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }

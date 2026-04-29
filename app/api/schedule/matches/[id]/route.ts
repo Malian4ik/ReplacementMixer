@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sendTelegramMessage } from "@/lib/telegram";
+import { buildMatchCompletionMessage } from "@/lib/report";
 
 const MATCH_MS = 1.5 * 60 * 60 * 1000;
 
@@ -88,6 +89,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         where: { id },
         data: { status: "Completed", judgeName, comment, updatedAt: new Date() },
       });
+      const msg = await buildMatchCompletionMessage(match);
+      await sendTelegramMessage(msg).catch(() => {});
     } else {
       return NextResponse.json({ error: "Неизвестное действие" }, { status: 400 });
     }
