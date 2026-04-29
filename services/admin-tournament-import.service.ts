@@ -3,6 +3,7 @@ import {
   adminLogin,
   fetchTournaments,
   fetchAllParticipants,
+  fetchParticipantStatuses,
   fetchTournamentTeams,
   fetchTeamMemberNicks,
   type AdminTournamentInfo,
@@ -268,4 +269,52 @@ export async function importTournamentTeams(
   }
 
   return { created, updated, failed, total: teamMap.size, errors };
+}
+
+export interface DisqualifiedSyncResult {
+  found: number;
+  marked: number;
+  alreadyMarked: number;
+  errors: string[];
+}
+
+/** Sync disqualified status from the external admin without doing a full import.
+ *  Only reads participant list pages — fast (~5s for 100 participants). */
+export async function syncDisqualifiedPlayers(
+  externalTournamentId: string
+): Promise<DisqualifiedSyncResult> {
+  await adminLogin();
+
+  const statuses = await fetchParticipantStatuses(externalTournamentId);
+  const disqualified = statuses.filter((p) => /disqualif/i.test(p.tournamentStatus));
+
+  let marked = 0;
+  let alreadyMarked = 0;
+  const errors: string[] = [];
+
+  for (const p of disqualified) {
+    try {
+      const player = await prisma.player.findUnique({
+        where: { nick: p.nick },
+        select: { id: true, isDisqualified: true },
+      });
+      if (!player) {
+        errors.push(`${p.nick}: игрок не найден в базе — сначала импортируйте участников`);
+        continue;
+      }
+      if (player.isDisqualified) {
+        alreadyMarked++;
+        continue;
+      }
+      await prisma.player.update({
+        where: { id: player.id },
+        data: { isDisqualified: true, isActiveInDatabase: false },
+      });
+      marked++;
+    } catch (err: unknown) {
+      errors.push(`${p.nick}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  return { found: disqualified.length, marked, alreadyMarked, errors };
 }

@@ -339,6 +339,24 @@ export async function fetchAllParticipants(
   });
 }
 
+// ─── Participant statuses (lightweight — list pages only, no detail fetches) ──
+
+/** Returns nick + tournamentStatus for every participant in a tournament.
+ *  Much faster than fetchAllParticipants — only reads list pages. */
+export async function fetchParticipantStatuses(
+  tournamentId: string | number
+): Promise<{ nick: string; tournamentStatus: string }[]> {
+  const result: { nick: string; tournamentStatus: string }[] = [];
+  let page = 1;
+  while (true) {
+    const { items, hasMore } = await fetchParticipantPage(tournamentId, page);
+    result.push(...items.map((p) => ({ nick: p.nick, tournamentStatus: p.tournamentStatus })));
+    if (!hasMore || page >= 50) break;
+    page++;
+  }
+  return result;
+}
+
 // ─── Team list ────────────────────────────────────────────────────────────────
 
 /** Scrape the team list for a tournament from the Django admin.

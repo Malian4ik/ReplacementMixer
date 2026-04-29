@@ -25,11 +25,43 @@ export default function DisqualifiedPage() {
   const { user } = useUser();
   const canEdit = user?.role === "OWNER" || user?.role === "JUDGE";
   const [confirmState, setConfirmState] = useState<{ message: string; onConfirm: () => void } | null>(null);
+  const [showSync, setShowSync] = useState(false);
+  const [syncTournamentId, setSyncTournamentId] = useState("");
+  const [syncResult, setSyncResult] = useState<{ found: number; marked: number; alreadyMarked: number; errors: string[] } | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   const { data: players = [], isLoading } = useQuery<DisqualifiedPlayer[]>({
     queryKey: ["players-disqualified"],
     queryFn: () => fetch("/api/players?disqualified=true").then(r => r.json()),
     enabled: canEdit,
+  });
+
+  const { data: syncedTournaments = [] } = useQuery<{ id: string; externalId: string; name: string; participantCount: number | null }[]>({
+    queryKey: ["synced-tournaments"],
+    queryFn: () => fetch("/api/admin/tournaments/synced").then(r => r.json()),
+    enabled: showSync,
+  });
+
+  const syncMutation = useMutation({
+    mutationFn: async (tournamentId: string) => {
+      const res = await fetch("/api/admin/tournaments/sync-disqualified", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tournamentId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Ошибка синхронизации");
+      return data as { found: number; marked: number; alreadyMarked: number; errors: string[] };
+    },
+    onSuccess: (data) => {
+      setSyncResult(data);
+      setSyncError(null);
+      qc.invalidateQueries({ queryKey: ["players-disqualified"] });
+    },
+    onError: (e: Error) => {
+      setSyncError(e.message);
+      setSyncResult(null);
+    },
   });
 
   const undisqualifyMutation = useMutation({
@@ -57,12 +89,85 @@ export default function DisqualifiedPage() {
   return (
     <>
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
-      <div className="page-header">
+      <div className="page-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
           <div className="page-title">Дисквалифицированные</div>
           <div className="page-subtitle">Удалённые с платформы · {players.length} чел. · не сбрасываются при очистке турнира</div>
         </div>
+        {canEdit && (
+          <button
+            className="btn btn-sm btn-ghost"
+            onClick={() => { setShowSync(v => !v); setSyncResult(null); setSyncError(null); }}
+          >
+            {showSync ? "Закрыть" : "🔄 Синхронизировать с админкой"}
+          </button>
+        )}
       </div>
+
+      {/* Sync panel */}
+      {canEdit && showSync && (
+        <div style={{ background: "var(--bg-panel)", borderBottom: "1px solid var(--border)", padding: "14px 24px" }}>
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>Синхронизация дисквалифицированных из внешней админки</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 10 }}>
+            Читает статусы участников с платформы и помечает всех с «Disqualified» в нашей базе. Быстро — только список страниц.
+          </div>
+          {syncedTournaments.length === 0 ? (
+            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+              Нет синхронизированных турниров. Сначала импортируйте участников на странице{" "}
+              <a href="/admin/import" style={{ color: "var(--accent)" }}>Импорт</a>.
+            </div>
+          ) : (
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <select
+                value={syncTournamentId}
+                onChange={e => { setSyncTournamentId(e.target.value); setSyncResult(null); setSyncError(null); }}
+                style={{ background: "var(--bg-card)", border: "1px solid var(--border)", color: "var(--text-primary)", borderRadius: 6, padding: "6px 10px", fontSize: 13, cursor: "pointer", minWidth: 220 }}
+              >
+                <option value="">— выберите турнир —</option>
+                {syncedTournaments.map(t => (
+                  <option key={t.externalId} value={t.externalId}>
+                    {t.name}{t.participantCount ? ` (${t.participantCount} уч.)` : ""}
+                  </option>
+                ))}
+              </select>
+              <button
+                className="btn btn-sm btn-accent"
+                disabled={!syncTournamentId || syncMutation.isPending}
+                onClick={() => syncTournamentId && syncMutation.mutate(syncTournamentId)}
+              >
+                {syncMutation.isPending ? "Синхронизация..." : "Синхронизировать"}
+              </button>
+            </div>
+          )}
+
+          {syncMutation.isPending && (
+            <div style={{ marginTop: 10, fontSize: 12, color: "var(--accent)" }}>
+              Считываю статусы участников...
+            </div>
+          )}
+
+          {syncResult && (
+            <div style={{ marginTop: 10, padding: "8px 12px", background: "rgba(16,185,129,0.07)", border: "1px solid rgba(16,185,129,0.25)", borderRadius: 6, fontSize: 12 }}>
+              <span style={{ color: "#34d399", fontWeight: 700 }}>✅ Готово</span>
+              {" · "}Дисквал. на платформе: <b>{syncResult.found}</b>
+              {" · "}<span style={{ color: "#f87171" }}>Новых: <b>{syncResult.marked}</b></span>
+              {syncResult.alreadyMarked > 0 && <span style={{ color: "var(--text-muted)" }}>{" · "}Уже были: {syncResult.alreadyMarked}</span>}
+              {syncResult.errors.length > 0 && (
+                <div style={{ marginTop: 6, color: "#fbbf24", fontSize: 11 }}>
+                  {syncResult.errors.slice(0, 5).map((e, i) => <div key={i}>⚠ {e}</div>)}
+                  {syncResult.errors.length > 5 && <div>... и ещё {syncResult.errors.length - 5}</div>}
+                </div>
+              )}
+            </div>
+          )}
+
+          {syncError && (
+            <div style={{ marginTop: 10, padding: "8px 12px", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 6, fontSize: 12, color: "#f87171" }}>
+              ❌ {syncError}
+            </div>
+          )}
+        </div>
+      )}
 
       <div style={{ flex: 1, overflow: "auto", padding: "16px 24px" }}>
         {isLoading ? (
