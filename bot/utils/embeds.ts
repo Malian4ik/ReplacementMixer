@@ -36,12 +36,10 @@ export function buildSearchEmbed(opts: SearchEmbedOptions): EmbedBuilder {
     ? [
         { name: "Матч", value: `**${opts.teamName}** vs **${opts.awayTeamName}**`, inline: false },
         { name: "Нужно", value: slotsLabel, inline: true },
-        { name: "Роли", value: roleList, inline: true },
       ]
     : [
         { name: "Команда", value: opts.teamName, inline: true },
         { name: "Нужно", value: slotsLabel, inline: true },
-        { name: "Роли", value: roleList, inline: true },
       ];
 
   fields.push(
