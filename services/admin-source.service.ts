@@ -339,6 +339,23 @@ export async function fetchAllParticipants(
   });
 }
 
+// ─── Participant UUID→nick map (for team member resolution) ──────────────────
+
+/** Build a uuid→nick map from participant list pages (no detail fetches). */
+export async function buildParticipantUuidNickMap(
+  tournamentId: string | number
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  let page = 1;
+  while (true) {
+    const { items, hasMore } = await fetchParticipantPage(tournamentId, page);
+    for (const p of items) map.set(p.uuid, p.nick);
+    if (!hasMore || page >= 50) break;
+    page++;
+  }
+  return map;
+}
+
 // ─── Participant statuses (lightweight — list pages only, no detail fetches) ──
 
 /** Returns nick + tournamentStatus for every participant in a tournament.
@@ -405,4 +422,137 @@ export async function fetchTeamMemberNicks(
     if (nick) nicks.push(nick);
   }
   return nicks;
+}
+
+// ─── Match schedule ───────────────────────────────────────────────────────────
+
+export interface AdminMatchInfo {
+  round: number;
+  homeTeam: string;
+  awayTeam: string;
+  scheduledAt: Date | null;
+  endsAt: Date | null;
+}
+
+function parseRoundNumber(s: string): number {
+  if (!s) return 0;
+  const m = s.match(/\d+/);
+  return m ? parseInt(m[0], 10) : 0;
+}
+
+/** Parse a datetime string from Django admin display (multiple formats). */
+function parseAdminDateTime(s: string): Date | null {
+  if (!s || s === "-" || s.trim() === "") return null;
+  s = s.trim().replace(/\s+/g, " ");
+
+  // ISO-like: "2026-05-01 18:00:00" or "2026-05-01T18:00:00"
+  let d = new Date(s.replace(" ", "T"));
+  if (!isNaN(d.getTime())) return d;
+
+  // Russian format: "01.05.2026 18:00" or "01.05.2026, 18:00"
+  const ru = s.match(/(\d{2})\.(\d{2})\.(\d{4})[,\s]+(\d{2}):(\d{2})/);
+  if (ru) {
+    const [, dd, mm, yyyy, hh, min] = ru;
+    d = new Date(`${yyyy}-${mm}-${dd}T${hh}:${min}:00`);
+    if (!isNaN(d.getTime())) return d;
+  }
+
+  return null;
+}
+
+async function fetchMatchPage(
+  tournamentId: string | number,
+  page: number,
+  baseUrl: string
+): Promise<{ items: AdminMatchInfo[]; hasMore: boolean }> {
+  const url = `${baseUrl}?tournament__id__exact=${tournamentId}&p=${page}`;
+  const res = await fetch(url, { headers: makeHeaders() });
+  if (!res.ok) return { items: [], hasMore: false };
+  const html = await res.text();
+
+  const listMatch = html.match(/id="result_list"[^>]*>([\s\S]*)/);
+  if (!listMatch) return { items: [], hasMore: false };
+
+  const items: AdminMatchInfo[] = [];
+  for (const [, row] of [...listMatch[1].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)]) {
+    // Round number — try common field names
+    const roundStr =
+      fieldText(row, "round") ||
+      fieldText(row, "round__number") ||
+      fieldText(row, "round_number") ||
+      fieldText(row, "tour");
+    const round = parseRoundNumber(roundStr);
+
+    // Home team
+    const homeTeam =
+      fieldText(row, "home_team") ||
+      fieldText(row, "home_team__name") ||
+      fieldText(row, "team1") ||
+      fieldText(row, "team1__name") ||
+      fieldText(row, "home");
+
+    // Away team
+    const awayTeam =
+      fieldText(row, "away_team") ||
+      fieldText(row, "away_team__name") ||
+      fieldText(row, "team2") ||
+      fieldText(row, "team2__name") ||
+      fieldText(row, "away");
+
+    // Start time
+    const startStr =
+      fieldText(row, "start_time") ||
+      fieldText(row, "scheduled_at") ||
+      fieldText(row, "begin_time") ||
+      fieldText(row, "start");
+
+    // End time
+    const endStr =
+      fieldText(row, "end_time") ||
+      fieldText(row, "ends_at") ||
+      fieldText(row, "finish_time") ||
+      fieldText(row, "end");
+
+    if (!homeTeam && !awayTeam) continue; // skip header/empty rows
+
+    items.push({
+      round,
+      homeTeam,
+      awayTeam,
+      scheduledAt: parseAdminDateTime(startStr),
+      endsAt: parseAdminDateTime(endStr),
+    });
+  }
+
+  const nextPage = page + 1;
+  const hasMore =
+    new RegExp(`[?&]p=${nextPage}[&"]`).test(html) ||
+    new RegExp(`[?&]p=${nextPage}&amp;`).test(html);
+
+  return { items, hasMore };
+}
+
+/** Fetch all match schedule rows for a tournament.
+ *  Tries /admin/tournaments/match/ and /admin/tournaments/game/ as fallback. */
+export async function fetchTournamentScheduleData(
+  tournamentId: string | number
+): Promise<AdminMatchInfo[]> {
+  const candidates = [
+    `${BASE}/admin/tournaments/match/`,
+    `${BASE}/admin/tournaments/game/`,
+    `${BASE}/admin/tournaments/matchup/`,
+  ];
+
+  for (const baseUrl of candidates) {
+    const all: AdminMatchInfo[] = [];
+    let page = 1;
+    while (true) {
+      const { items, hasMore } = await fetchMatchPage(tournamentId, page, baseUrl);
+      all.push(...items);
+      if (!hasMore || page >= 100) break;
+      page++;
+    }
+    if (all.length > 0) return all;
+  }
+  return [];
 }

@@ -289,12 +289,45 @@ export default function SchedulePage() {
   const [showGenerate, setShowGenerate] = useState(false);
   const [showClear, setShowClear] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const [importTournamentId, setImportTournamentId] = useState("");
+  const [importClear, setImportClear] = useState(false);
+  const [importResult, setImportResult] = useState<{ imported: number; skipped: number; errors: string[] } | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
   const [filterTeam, setFilterTeam] = useState("");
   const clearScheduleMutation = useMutation({
     mutationFn: () => fetch("/api/schedule/matches", { method: "DELETE" }).then(r => r.json()),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["schedule-matches"] }),
   });
   const [expandedRound, setExpandedRound] = useState<number | null>(null);
+
+  const { data: syncedTournaments = [] } = useQuery<{ id: string; externalId: string; name: string; participantCount: number | null }[]>({
+    queryKey: ["synced-tournaments"],
+    queryFn: () => fetch("/api/admin/tournaments/synced").then(r => r.json()),
+    enabled: showImport,
+  });
+
+  const scheduleImportMutation = useMutation({
+    mutationFn: async ({ tournamentId, clearExisting }: { tournamentId: string; clearExisting: boolean }) => {
+      const res = await fetch("/api/admin/tournaments/import/schedule", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tournamentId, clearExisting }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Ошибка импорта расписания");
+      return data as { imported: number; skipped: number; errors: string[] };
+    },
+    onSuccess: (data) => {
+      setImportResult(data);
+      setImportError(null);
+      qc.invalidateQueries({ queryKey: ["schedule-matches"] });
+    },
+    onError: (e: Error) => {
+      setImportError(e.message);
+      setImportResult(null);
+    },
+  });
 
   const { data: matches = [], isLoading } = useQuery<TournamentMatch[]>({
     queryKey: ["schedule-matches"],
@@ -340,6 +373,84 @@ export default function SchedulePage() {
       {showClear && <GenerateModal clearMode onClose={() => setShowClear(false)} />}
       {showAdd && <AddMatchModal onClose={() => setShowAdd(false)} />}
 
+      {/* Import panel */}
+      {isOwner && showImport && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div style={{ background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 10, padding: 20, width: "100%", maxWidth: 440 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>Импорт расписания из админки</div>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14 }}>
+              Считывает матчи из внешней системы и добавляет в расписание.
+            </div>
+            {syncedTournaments.length === 0 ? (
+              <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
+                Нет синхронизированных турниров. Сначала выполните импорт участников.
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <div>
+                  <div className="lbl" style={{ marginBottom: 4 }}>Турнир</div>
+                  <select
+                    value={importTournamentId}
+                    onChange={e => { setImportTournamentId(e.target.value); setImportResult(null); setImportError(null); }}
+                    style={{ width: "100%", background: "var(--bg-panel)", border: "1px solid var(--border)", color: "var(--text-primary)", borderRadius: 6, padding: "6px 10px", fontSize: 13, cursor: "pointer" }}
+                  >
+                    <option value="">— выберите турнир —</option>
+                    {syncedTournaments.map(t => (
+                      <option key={t.externalId} value={t.externalId}>
+                        {t.name}{t.participantCount ? ` (${t.participantCount} уч.)` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, cursor: "pointer" }}>
+                  <input type="checkbox" checked={importClear} onChange={e => setImportClear(e.target.checked)} />
+                  <span>Очистить текущее расписание перед импортом</span>
+                </label>
+              </div>
+            )}
+
+            {scheduleImportMutation.isPending && (
+              <div style={{ marginTop: 10, fontSize: 12, color: "var(--accent)" }}>
+                Импортирую расписание из внешней системы...
+              </div>
+            )}
+
+            {importResult && (
+              <div style={{ marginTop: 10, padding: "8px 12px", background: "rgba(16,185,129,0.07)", border: "1px solid rgba(16,185,129,0.25)", borderRadius: 6, fontSize: 12 }}>
+                <span style={{ color: "#34d399", fontWeight: 700 }}>✅ Готово</span>
+                {" · "}Импортировано: <b>{importResult.imported}</b>
+                {importResult.skipped > 0 && <span style={{ color: "var(--text-muted)" }}>{" · "}Пропущено: {importResult.skipped}</span>}
+                {importResult.errors.length > 0 && (
+                  <div style={{ marginTop: 6, color: "#fbbf24", fontSize: 11 }}>
+                    {importResult.errors.slice(0, 5).map((e, i) => <div key={i}>⚠ {e}</div>)}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {importError && (
+              <div style={{ marginTop: 10, padding: "8px 12px", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 6, fontSize: 12, color: "#f87171" }}>
+                ❌ {importError}
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+              <button className="btn btn-ghost" style={{ flex: 1, justifyContent: "center" }} onClick={() => { setShowImport(false); setImportResult(null); setImportError(null); }}>
+                Закрыть
+              </button>
+              <button
+                className="btn btn-accent"
+                style={{ flex: 2, justifyContent: "center" }}
+                disabled={!importTournamentId || scheduleImportMutation.isPending}
+                onClick={() => importTournamentId && scheduleImportMutation.mutate({ tournamentId: importTournamentId, clearExisting: importClear })}
+              >
+                {scheduleImportMutation.isPending ? "Импорт..." : "Импортировать"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 20, gap: 12, flexWrap: "wrap" }}>
         <div>
@@ -357,6 +468,11 @@ export default function SchedulePage() {
           <button className="btn btn-ghost btn-sm" onClick={() => qc.invalidateQueries({ queryKey: ["schedule-matches"] })}>
             <RefreshCw size={12} /> Обновить
           </button>
+          {isOwner && (
+            <button className="btn btn-ghost btn-sm" onClick={() => setShowImport(true)}>
+              ⬇ Из админки
+            </button>
+          )}
           {isOwner && totalMatches === 0 && (
             <>
               <button className="btn btn-accent btn-sm" onClick={() => setShowGenerate(true)}>

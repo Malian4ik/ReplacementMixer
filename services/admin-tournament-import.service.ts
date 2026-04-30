@@ -4,8 +4,10 @@ import {
   fetchTournaments,
   fetchAllParticipants,
   fetchParticipantStatuses,
+  buildParticipantUuidNickMap,
   fetchTournamentTeams,
   fetchTeamMemberNicks,
+  fetchTournamentScheduleData,
   type AdminTournamentInfo,
   type AdminParticipant,
 } from "./admin-source.service";
@@ -212,19 +214,12 @@ export async function importTournamentTeams(
       };
     }
 
-    // Build participant uuid→nick from the DB (players already imported)
-    const allPlayers = await prisma.player.findMany({ select: { id: true, nick: true } });
-    const nickSet = new Set(allPlayers.map(p => p.nick));
-
-    // Fetch member nicks for each team using participant UUID links on the team detail page.
-    // uuidToNick is empty here since we don't have UUIDs from the DB — fetchTeamMemberNicks
-    // relies on UUID→nick mapping built during participant list scraping.
-    // We pass an empty map; the function will return nicks only when UUIDs are found in the DB.
-    const uuidToNick = new Map<string, string>();
+    // Build uuid→nick map from participant list pages (needed for team detail scraping)
+    const uuidToNick = await buildParticipantUuidNickMap(externalTournamentId);
+    const nickSet = new Set(uuidToNick.values());
 
     for (const info of teamInfos) {
       const nicks = await fetchTeamMemberNicks(info.id, uuidToNick);
-      // Filter to players we know about
       const known = nicks.filter(n => nickSet.has(n));
       teamMap.set(info.name, known);
     }
@@ -317,4 +312,72 @@ export async function syncDisqualifiedPlayers(
   }
 
   return { found: disqualified.length, marked, alreadyMarked, errors };
+}
+
+export interface ScheduleImportResult {
+  imported: number;
+  skipped: number;
+  errors: string[];
+}
+
+const MATCH_MS = 1.5 * 60 * 60 * 1000;
+
+export async function importTournamentSchedule(
+  externalTournamentId: string,
+  clearExisting = false
+): Promise<ScheduleImportResult> {
+  await adminLogin();
+
+  const matches = await fetchTournamentScheduleData(externalTournamentId);
+  if (matches.length === 0) {
+    return {
+      imported: 0,
+      skipped: 0,
+      errors: ["Расписание не найдено в admin. Проверьте URL /admin/tournaments/match/ или /admin/tournaments/game/"],
+    };
+  }
+
+  if (clearExisting) {
+    await prisma.tournamentMatch.deleteMany({});
+  }
+
+  let imported = 0;
+  let skipped = 0;
+  const errors: string[] = [];
+
+  for (let i = 0; i < matches.length; i++) {
+    const m = matches[i];
+    if (!m.homeTeam || !m.awayTeam) {
+      skipped++;
+      continue;
+    }
+
+    const scheduledAt = m.scheduledAt;
+    if (!scheduledAt) {
+      errors.push(`Матч ${m.homeTeam} vs ${m.awayTeam}: не удалось распарсить время начала`);
+      skipped++;
+      continue;
+    }
+
+    const endsAt = m.endsAt ?? new Date(scheduledAt.getTime() + MATCH_MS);
+
+    try {
+      await prisma.tournamentMatch.create({
+        data: {
+          round: m.round || 1,
+          slot: i,
+          homeTeam: m.homeTeam,
+          awayTeam: m.awayTeam,
+          scheduledAt,
+          endsAt,
+        },
+      });
+      imported++;
+    } catch (err: unknown) {
+      errors.push(`${m.homeTeam} vs ${m.awayTeam}: ${err instanceof Error ? err.message : String(err)}`);
+      skipped++;
+    }
+  }
+
+  return { imported, skipped, errors };
 }
