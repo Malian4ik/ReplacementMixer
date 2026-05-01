@@ -225,7 +225,20 @@ async function processWaveCompletion(waveId: string, client: Client): Promise<vo
     if (session.status === "Completed" && session.selectedPlayerId) {
       const winner = await prisma.player.findUnique({ where: { id: session.selectedPlayerId } });
       if (winner) {
-        await postSingleWinnerMessage(session, {
+        // Use the actual assigned team name from the pool entry — the judge may have
+        // assigned to the away team, but session.teamName always holds the home team.
+        let actualTeamName = session.teamName;
+        if (session.selectedPoolEntryId) {
+          const poolEntry = await prisma.substitutionPoolEntry.findUnique({
+            where: { id: session.selectedPoolEntryId },
+            include: { assignedTeam: { select: { name: true } } },
+          });
+          if (poolEntry?.assignedTeam?.name) {
+            actualTeamName = poolEntry.assignedTeam.name;
+          }
+        }
+
+        await postSingleWinnerMessage({ ...session, teamName: actualTeamName }, {
           nick: winner.nick,
           mmr: winner.mmr,
           subScore: 0,
