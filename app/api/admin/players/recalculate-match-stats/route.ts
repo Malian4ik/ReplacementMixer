@@ -9,8 +9,10 @@ import { prisma } from "@/lib/prisma";
  * so players who left a team retain their match count.
  */
 export async function POST() {
-  // 1. Count matches per team name
+  // 1. Count matches per team name — only from the current tournament (from 2026-05-01)
+  const TOURNAMENT_START = new Date("2026-05-01T00:00:00.000Z");
   const allMatches = await prisma.tournamentMatch.findMany({
+    where: { scheduledAt: { gte: TOURNAMENT_START } },
     select: { homeTeam: true, awayTeam: true },
   });
 
@@ -36,15 +38,23 @@ export async function POST() {
     }
   }
 
-  // 3. Update only players whose count would increase
+  // 3. Update all players with the recalculated value (reset if needed)
   let updated = 0;
   for (const [playerId, count] of playerNewCount.entries()) {
     const result = await prisma.player.updateMany({
-      where: { id: playerId, matchesPlayed: { lt: count } },
+      where: { id: playerId },
       data: { matchesPlayed: count },
     });
     updated += result.count;
   }
+
+  // Zero out players not in any match (those not in playerNewCount)
+  const updatedIds = [...playerNewCount.keys()];
+  const zeroed = await prisma.player.updateMany({
+    where: { matchesPlayed: { gt: 0 }, id: { notIn: updatedIds } },
+    data: { matchesPlayed: 0 },
+  });
+  updated += zeroed.count;
 
   return NextResponse.json({
     ok: true,
