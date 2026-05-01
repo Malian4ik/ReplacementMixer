@@ -9,10 +9,9 @@ import { prisma } from "@/lib/prisma";
  * so players who left a team retain their match count.
  */
 export async function POST() {
-  // 1. Count matches per team name — only from the current tournament (from 2026-05-01)
-  const TOURNAMENT_START = new Date("2026-05-01T00:00:00.000Z");
+  // 1. Count only completed matches (not scheduled/future ones)
   const allMatches = await prisma.tournamentMatch.findMany({
-    where: { scheduledAt: { gte: TOURNAMENT_START } },
+    where: { status: "Completed" },
     select: { homeTeam: true, awayTeam: true },
   });
 
