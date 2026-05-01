@@ -613,40 +613,64 @@ export default function JudgePage() {
                         {" · до "}
                         {new Date(activeWave.endsAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
                       </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                        {activeWave.responses.map((r) => {
+                      {/* Scrollable responses list, sorted best→worst by subScore */}
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 320, overflowY: "auto", paddingRight: 2 }}>
+                        {[...activeWave.responses]
+                          .sort((a, b) => (b.subScore ?? 0) - (a.subScore ?? 0))
+                          .map((r, idx) => {
                           const currentSlotId = slotPickMap[r.player.id] ?? (openSlots[0]?.id ?? "");
+                          // Best slot for this player
+                          const bestSlot = openSlots.length > 0
+                            ? [...openSlots].sort((a, b) =>
+                                roleFitScore(r.player.mainRole, r.player.flexRole, b.neededRole) -
+                                roleFitScore(r.player.mainRole, r.player.flexRole, a.neededRole)
+                              )[0]
+                            : null;
+                          const isRecommended = bestSlot && currentSlotId === bestSlot.id;
+                          const scoreColor = idx === 0 ? "#34d399" : idx === 1 ? "#fbbf24" : "var(--text-secondary)";
                           return (
-                            <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 8px", borderRadius: 4, background: "rgba(0,0,0,0.25)", border: "1px solid rgba(88,101,242,0.15)" }}>
+                            <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 8px", borderRadius: 4, background: idx === 0 ? "rgba(16,185,129,0.06)" : "rgba(0,0,0,0.25)", border: `1px solid ${idx === 0 ? "rgba(16,185,129,0.2)" : "rgba(88,101,242,0.15)"}` }}>
+                              {/* Rank + score */}
+                              <span style={{ fontSize: 10, color: "var(--text-muted)", flexShrink: 0, width: 14, textAlign: "center" }}>{idx + 1}</span>
+                              {r.subScore != null && (
+                                <span style={{ fontSize: 11, fontWeight: 700, color: scoreColor, fontFamily: "monospace", flexShrink: 0, minWidth: 38 }}>
+                                  {r.subScore.toFixed(3)}
+                                </span>
+                              )}
                               {/* Player info */}
-                              <span style={{ fontSize: 12, flex: 1, minWidth: 0 }}>
+                              <span style={{ fontSize: 12, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                                 <b>{r.player.nick}</b>
                                 <span style={{ fontSize: 10, color: "var(--text-muted)", marginLeft: 6 }}>
                                   {r.player.mmr.toLocaleString()} · {roleLabel(r.player.mainRole)}
                                   {r.player.flexRole != null ? `/${roleLabel(r.player.flexRole)}` : ""}
-                                  {r.subScore != null ? ` · ${r.subScore.toFixed(3)}` : ""}
                                 </span>
                               </span>
-                              {/* Slot selector (only for multi-slot sessions) */}
-                              {isMatchSession && openSlots.length > 0 && (
+                              {/* Slot selector */}
+                              {openSlots.length > 0 && (
                                 <select
                                   value={currentSlotId}
                                   onChange={(e) => setSlotPickMap((m) => ({ ...m, [r.player.id]: e.target.value }))}
                                   style={{
-                                    fontSize: 10, padding: "2px 4px", borderRadius: 4,
-                                    background: "rgba(0,0,0,0.4)", border: "1px solid var(--border)",
-                                    color: "var(--text-primary)", maxWidth: 160,
+                                    fontSize: 10, padding: "2px 4px", borderRadius: 4, flexShrink: 0,
+                                    background: isRecommended ? "rgba(16,185,129,0.15)" : "rgba(0,0,0,0.4)",
+                                    border: `1px solid ${isRecommended ? "rgba(16,185,129,0.4)" : "var(--border)"}`,
+                                    color: "var(--text-primary)", maxWidth: 170,
                                   }}
                                 >
-                                  {openSlots.map((slot) => {
-                                    const fit = roleFitScore(r.player.mainRole, r.player.flexRole, slot.neededRole);
-                                    return (
-                                      <option key={slot.id} value={slot.id}>
-                                        {slotFitLabel(fit)} {slot.slotTeamName ?? session.teamName} · {roleLabel(slot.neededRole)}
-                                        {slot.replacedPlayerNick ? ` (${slot.replacedPlayerNick})` : ""}
-                                      </option>
-                                    );
-                                  })}
+                                  {[...openSlots]
+                                    .sort((a, b) =>
+                                      roleFitScore(r.player.mainRole, r.player.flexRole, b.neededRole) -
+                                      roleFitScore(r.player.mainRole, r.player.flexRole, a.neededRole)
+                                    )
+                                    .map((slot) => {
+                                      const fit = roleFitScore(r.player.mainRole, r.player.flexRole, slot.neededRole);
+                                      return (
+                                        <option key={slot.id} value={slot.id}>
+                                          {slotFitLabel(fit)} {slot.slotTeamName ?? session.teamName} · {roleLabel(slot.neededRole)}
+                                          {slot.replacedPlayerNick ? ` (${slot.replacedPlayerNick})` : ""}
+                                        </option>
+                                      );
+                                    })}
                                 </select>
                               )}
                               {/* Assign button */}
@@ -656,7 +680,7 @@ export default function JudgePage() {
                                 onClick={() => pickResponderMutation.mutate({
                                   sessionId: session.id,
                                   playerId: r.player.id,
-                                  slotId: isMatchSession ? (currentSlotId || undefined) : undefined,
+                                  slotId: currentSlotId || undefined,
                                 })}
                               >
                                 Выбрать
