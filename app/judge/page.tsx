@@ -39,6 +39,7 @@ interface ActiveSessionSlot {
   slotIndex: number;
   neededRole: number;
   replacedPlayerNick: string | null;
+  replacedPlayerMmr?: number | null;
   slotTeamId: string | null;
   slotTeamName: string | null;
   assignedPlayerId: string | null;
@@ -664,10 +665,12 @@ export default function JudgePage() {
                                     )
                                     .map((slot) => {
                                       const fit = roleFitScore(r.player.mainRole, r.player.flexRole, slot.neededRole);
+                                      const replacedInfo = slot.replacedPlayerNick
+                                        ? ` (${slot.replacedPlayerNick}${slot.replacedPlayerMmr != null ? ` · ${slot.replacedPlayerMmr}` : ""})`
+                                        : "";
                                       return (
-                                        <option key={slot.id} value={slot.id}>
-                                          {slotFitLabel(fit)} {slot.slotTeamName ?? session.teamName} · {roleLabel(slot.neededRole)}
-                                          {slot.replacedPlayerNick ? ` (${slot.replacedPlayerNick})` : ""}
+                                        <option key={slot.id} value={slot.id} style={{ color: "#111", background: "#f5f5f5" }}>
+                                          {slotFitLabel(fit)} {slot.slotTeamName ?? session.teamName} · {roleLabel(slot.neededRole)}{replacedInfo}
                                         </option>
                                       );
                                     })}

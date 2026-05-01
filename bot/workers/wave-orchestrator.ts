@@ -27,7 +27,9 @@ import {
 import { resolveToNumericId } from "@/bot/utils/discord-resolve";
 import { PING_INTERVAL_MS } from "@/lib/substitution-config";
 import { calculateTeamMMRAfter, calculateBalanceFactor } from "@/services/subscore.service";
+import { scoreCandidates } from "@/services/queue.service";
 import type { SelectionResult } from "@/services/wave.service";
+import type { SubstitutionPoolEntry, RoleNumber } from "@/types";
 
 // ── Timer registries ──────────────────────────────────────────────────────────
 
@@ -222,31 +224,68 @@ async function processWaveCompletion(waveId: string, client: Client): Promise<vo
 
   // Session may have been manually completed via website
   if (session.status !== "Active") {
-    if (session.status === "Completed" && session.selectedPlayerId) {
-      const winner = await prisma.player.findUnique({ where: { id: session.selectedPlayerId } });
-      if (winner) {
-        // Use the actual assigned team name from the pool entry — the judge may have
-        // assigned to the away team, but session.teamName always holds the home team.
-        let actualTeamName = session.teamName;
-        if (session.selectedPoolEntryId) {
-          const poolEntry = await prisma.substitutionPoolEntry.findUnique({
-            where: { id: session.selectedPoolEntryId },
-            include: { assignedTeam: { select: { name: true } } },
-          });
-          if (poolEntry?.assignedTeam?.name) {
-            actualTeamName = poolEntry.assignedTeam.name;
+    if (session.status === "Completed") {
+      // Post ALL assigned slots (not just session.selectedPlayerId which is only the last one)
+      const sessionSlots = await prisma.substitutionSlot.findMany({
+        where: { sessionId: session.id, assignedPlayerId: { not: null } },
+        orderBy: { slotIndex: "asc" },
+      });
+
+      const queuePositions = new Map(
+        wave.candidates.map((c) => [c.playerId, c.queuePosition + 1])
+      );
+
+      const completionWinners: CompletionWinner[] = [];
+      for (const slot of sessionSlots) {
+        const player = await prisma.player.findUnique({ where: { id: slot.assignedPlayerId! } });
+        if (!player) continue;
+
+        let computedSubScore = 0;
+        try {
+          if (slot.assignedPoolEntryId) {
+            const entry = await prisma.substitutionPoolEntry.findUnique({
+              where: { id: slot.assignedPoolEntryId },
+              include: { player: true },
+            });
+            if (entry) {
+              const scored = scoreCandidates(
+                [entry] as unknown as SubstitutionPoolEntry[],
+                {
+                  neededRole: slot.neededRole as RoleNumber,
+                  currentTeamAvgMmr: session.currentTeamAvgMmr,
+                  replacedPlayerMmr: session.replacedPlayerMmr,
+                  currentPlayerCount: session.currentPlayerCount,
+                  targetAvgMmr: session.targetAvgMmr,
+                  maxDeviation: session.maxDeviation,
+                },
+                queuePositions
+              );
+              computedSubScore = scored[0]?.subScore ?? 0;
+            }
           }
+        } catch (err) {
+          log.warn("Could not compute subScore for slot winner", err);
         }
 
-        await postSingleWinnerMessage({ ...session, teamName: actualTeamName }, {
-          nick: winner.nick,
-          mmr: winner.mmr,
-          subScore: 0,
-          roleFit: 0,
-          poolEntryId: session.selectedPoolEntryId ?? "",
-          playerId: winner.id,
-          discordId: winner.discordId ?? null,
-        }, client);
+        const resolved = player.discordId
+          ? await resolveToNumericId(player.discordId, player.id, client)
+          : null;
+
+        const slotTeamName =
+          (slot as typeof slot & { slotTeamName?: string | null }).slotTeamName ?? session.teamName;
+
+        completionWinners.push({
+          nick: player.nick,
+          mmr: player.mmr,
+          subScore: computedSubScore,
+          discordId: player.discordId ?? null,
+          resolvedMention: resolved ? `<@${resolved}>` : `**${player.nick}**`,
+          teamName: slotTeamName,
+        });
+      }
+
+      if (completionWinners.length > 0) {
+        await postCompletionMessage(session, completionWinners, client);
       }
       await deleteWaveMessage(wave, client);
     }

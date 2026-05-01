@@ -168,6 +168,14 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Enrich slots with replacedPlayerMmr for display in judge panel
+  for (const slot of session.slots) {
+    if (slot.replacedPlayerId) {
+      const rp = await prisma.player.findUnique({ where: { id: slot.replacedPlayerId }, select: { mmr: true } });
+      (slot as typeof slot & { replacedPlayerMmr?: number | null }).replacedPlayerMmr = rp?.mmr ?? null;
+    }
+  }
+
   return NextResponse.json({ session });
 }
 
