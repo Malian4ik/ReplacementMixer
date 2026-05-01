@@ -69,6 +69,18 @@ export async function POST(req: NextRequest) {
       ? Math.round(homePlayers.reduce((s, p) => s + p.mmr, 0) / homePlayerCount)
       : 0;
 
+    // Calculate away team MMR
+    const awayTeam = await prisma.team.findUnique({ where: { id: awayTeamId } });
+    const awayPlayerIds = awayTeam
+      ? [awayTeam.player1Id, awayTeam.player2Id, awayTeam.player3Id, awayTeam.player4Id, awayTeam.player5Id].filter((id): id is string => !!id)
+      : [];
+    const awayPlayers = awayPlayerIds.length > 0
+      ? await prisma.player.findMany({ where: { id: { in: awayPlayerIds } }, select: { mmr: true } })
+      : [];
+    const awayAvgMmr = awayPlayers.length > 0
+      ? Math.round(awayPlayers.reduce((s, p) => s + p.mmr, 0) / awayPlayers.length)
+      : 0;
+
     // Build slots with slotTeamId/slotTeamName from per-slot teamId field
     const rawSlots = parsed.data.slots ?? [];
     if (rawSlots.length === 0) {
@@ -78,9 +90,11 @@ export async function POST(req: NextRequest) {
     const enrichedSlots = await Promise.all(
       rawSlots.map(async (s, i) => {
         let nick = s.replacedPlayerNick;
-        if (!nick && s.replacedPlayerId) {
-          const p = await prisma.player.findUnique({ where: { id: s.replacedPlayerId }, select: { nick: true } });
-          nick = p?.nick;
+        let mmr = 0;
+        if (s.replacedPlayerId) {
+          const p = await prisma.player.findUnique({ where: { id: s.replacedPlayerId }, select: { nick: true, mmr: true } });
+          if (!nick && p?.nick) nick = p.nick;
+          mmr = p?.mmr ?? 0;
         }
         return {
           slotIndex: i,
@@ -88,14 +102,29 @@ export async function POST(req: NextRequest) {
           teamSlot: s.teamSlot,
           replacedPlayerId: s.replacedPlayerId,
           replacedPlayerNick: nick,
+          replacedPlayerMmr: mmr,
           slotTeamId: s.teamId ?? homeTeamId,
           slotTeamName: s.teamName ?? (homeTeamName ?? homeTeam.name),
         };
       })
     );
 
+    // Scoring context: use average MMR of replaced players (not 0) so balance factor is correct.
+    // For currentTeamAvgMmr: weighted average of home/away by how many slots each team has.
+    const replacedMmrs = enrichedSlots.map((s) => s.replacedPlayerMmr).filter((m) => m > 0);
+    const avgReplacedMmr = replacedMmrs.length > 0
+      ? Math.round(replacedMmrs.reduce((a, b) => a + b, 0) / replacedMmrs.length)
+      : 0;
+
+    const homeSlotCount = enrichedSlots.filter((s) => s.slotTeamId === homeTeamId).length;
+    const awaySlotCount = enrichedSlots.filter((s) => s.slotTeamId === awayTeamId).length;
+    const totalSlots = homeSlotCount + awaySlotCount || 1;
+    const weightedAvgMmr = Math.round(
+      (homeAvgMmr * homeSlotCount + awayAvgMmr * awaySlotCount) / totalSlots
+    );
+
     const resolvedHomeName = homeTeamName ?? homeTeam.name;
-    const resolvedAwayName = awayTeamName ?? awayTeamId;
+    const resolvedAwayName = awayTeamName ?? (awayTeam?.name ?? awayTeamId);
 
     try {
       const session = await createSearchSession({
@@ -106,9 +135,9 @@ export async function POST(req: NextRequest) {
         neededRole: enrichedSlots[0].neededRole,
         replacedPlayerId: enrichedSlots[0].replacedPlayerId,
         replacedPlayerNick: enrichedSlots[0].replacedPlayerNick,
-        replacedPlayerMmr: 0,
-        currentPlayerCount: homePlayerCount,
-        currentTeamAvgMmr: homeAvgMmr,
+        replacedPlayerMmr: avgReplacedMmr,
+        currentPlayerCount: 5,
+        currentTeamAvgMmr: weightedAvgMmr,
         targetAvgMmr,
         maxDeviation,
         triggeredBy: `web:${judgeName}`,
