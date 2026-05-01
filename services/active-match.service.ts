@@ -79,7 +79,8 @@ interface RawGame {
 }
 
 function parseRowToGame(row: string): RawGame | null {
-  const idMatch = row.match(/\/admin\/tournaments\/game\/(\d+)\/change\//);
+  // Match both numeric IDs and UUID-style IDs
+  const idMatch = row.match(/\/admin\/tournaments\/game\/([\w-]+)\/change\//);
   if (!idMatch) return null;
   const homeTeamName =
     extractField(row, "team_1_name") ||
@@ -104,7 +105,8 @@ function isAdminStatusActive(row: string): boolean {
     extractField(row, "colored_status") ||
     extractField(row, "status") ||
     extractField(row, "get_status_display") || "";
-  return /activ|идёт|live|in.prog/i.test(status);
+  // Match both Latin ("active", "live") and Cyrillic ("Активный", "Идёт")
+  return /activ|Актив|идёт|live|in.prog/i.test(status);
 }
 
 async function fetchRawGameFromAdmin(): Promise<RawGame | null> {
@@ -117,12 +119,15 @@ async function fetchRawGameFromAdmin(): Promise<RawGame | null> {
     try { await adminLogin(); } catch { return null; }
   }
 
-  // Try with known status filter values (Django choice field), then unfiltered
+  // Unfiltered list sorted by status ascending (column 4) — "Активный" sorts first in Russian alphabet
+  // Also try first 3 pages in case the active match is not on page 1
   const candidates = [
-    `${BASE}/admin/tournaments/game/?status=active`,
-    `${BASE}/admin/tournaments/game/?status=Active`,
-    `${BASE}/admin/tournaments/game/?status=in_progress`,
-    `${BASE}/admin/tournaments/game/`,  // fallback: all, checked by field-status
+    `${BASE}/admin/tournaments/game/?o=4`,      // sort by status asc → Активный first
+    `${BASE}/admin/tournaments/game/?o=4&p=2`,
+    `${BASE}/admin/tournaments/game/?o=4&p=3`,
+    `${BASE}/admin/tournaments/game/`,           // fallback: default ordering
+    `${BASE}/admin/tournaments/game/?p=2`,
+    `${BASE}/admin/tournaments/game/?p=3`,
   ];
 
   for (const url of candidates) {
@@ -135,11 +140,8 @@ async function fetchRawGameFromAdmin(): Promise<RawGame | null> {
     const listMatch = html.match(/id="result_list"[^>]*>([\s\S]*)/);
     if (!listMatch) continue;
 
-    const isFiltered = url.includes("status=");
-
     for (const [, row] of [...listMatch[1].matchAll(/<tr[^>]*class="[^"]*row[^"]*"[^>]*>([\s\S]*?)<\/tr>/g)]) {
-      // For unfiltered URL, verify the status field contains an active indicator
-      if (!isFiltered && !isAdminStatusActive(row)) continue;
+      if (!isAdminStatusActive(row)) continue;
       const game = parseRowToGame(row);
       if (game) return game;
     }
