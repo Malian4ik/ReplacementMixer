@@ -251,7 +251,7 @@ export default function LogsPage() {
             <table className="tbl">
               <thead>
                 <tr>
-                  {["ВРЕМЯ", "ДЕЙСТВИЕ", "MATCH ID", "КОМАНДА", "ЗАМЕНЁН", "ЗАМЕНА", "СУДЬЯ", "СТАТУС"].map(h => (
+                  {["ВРЕМЯ", "ДЕЙСТВИЕ", "MATCH ID", "КОМАНДА", "ЗАМЕНЁН", "ЗАМЕНА", "СУДЬЯ", "ПРИЧИНА", "СТАТУС"].map(h => (
                     <th key={h}>{h}</th>
                   ))}
                 </tr>
@@ -286,6 +286,9 @@ export default function LogsPage() {
                       ) : "—"}
                     </td>
                     <td style={{ color: "var(--text-secondary)", fontSize: 12 }}>{l.judgeName ?? "—"}</td>
+                    <td style={{ fontSize: 12, maxWidth: 200, color: l.comment ? "var(--text-primary)" : "var(--text-muted)" }}>
+                      {l.comment ?? "—"}
+                    </td>
                     <td>
                       <span style={{
                         fontSize: 11, fontWeight: 600,
