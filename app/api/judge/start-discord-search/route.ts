@@ -87,6 +87,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Не указаны слоты для матч-сессии" }, { status: 400 });
     }
 
+    // enrichedSlots includes replacedPlayerMmr for scoring only — stripped before DB insert
     const enrichedSlots = await Promise.all(
       rawSlots.map(async (s, i) => {
         let nick = s.replacedPlayerNick;
@@ -102,7 +103,7 @@ export async function POST(req: NextRequest) {
           teamSlot: s.teamSlot,
           replacedPlayerId: s.replacedPlayerId,
           replacedPlayerNick: nick,
-          replacedPlayerMmr: mmr,
+          _replacedPlayerMmr: mmr,      // underscore = not saved to DB
           slotTeamId: s.teamId ?? homeTeamId,
           slotTeamName: s.teamName ?? (homeTeamName ?? homeTeam.name),
         };
@@ -111,7 +112,7 @@ export async function POST(req: NextRequest) {
 
     // Scoring context: use average MMR of replaced players (not 0) so balance factor is correct.
     // For currentTeamAvgMmr: weighted average of home/away by how many slots each team has.
-    const replacedMmrs = enrichedSlots.map((s) => s.replacedPlayerMmr).filter((m) => m > 0);
+    const replacedMmrs = enrichedSlots.map((s) => s._replacedPlayerMmr).filter((m) => m > 0);
     const avgReplacedMmr = replacedMmrs.length > 0
       ? Math.round(replacedMmrs.reduce((a, b) => a + b, 0) / replacedMmrs.length)
       : 0;
@@ -144,7 +145,7 @@ export async function POST(req: NextRequest) {
         guildId,
         channelId,
         activeMatchId,
-        slots: enrichedSlots,
+        slots: enrichedSlots.map(({ _replacedPlayerMmr: _omit, ...rest }) => rest),
       });
       return NextResponse.json({
         sessionId: session.id,
