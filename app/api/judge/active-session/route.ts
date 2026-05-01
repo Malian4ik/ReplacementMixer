@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { scoreCandidates } from "@/services/queue.service";
+import type { SubstitutionPoolEntry, RoleNumber } from "@/types";
 
 /** GET /api/judge/active-session?teamId=X
  *  Возвращает активную сессию поиска для команды (по teamId или awayTeamId).
+ *  subScore для каждого откликнувшегося рассчитывается на лету (в БД хранится null во время волны).
  */
 export async function GET(req: NextRequest) {
   const teamId = req.nextUrl.searchParams.get("teamId");
@@ -34,6 +37,43 @@ export async function GET(req: NextRequest) {
       slots: { orderBy: { slotIndex: "asc" } },
     },
   });
+
+  if (!session) return NextResponse.json({ session: null });
+
+  // Enrich active wave responses with live-computed subScores
+  const activeWave = session.waves[0];
+  if (activeWave && activeWave.responses.length > 0) {
+    const responderIds = activeWave.responses.map((r) => r.playerId);
+
+    const poolEntries = await prisma.substitutionPoolEntry.findMany({
+      where: { playerId: { in: responderIds }, status: "Active" },
+      include: { player: true },
+    });
+
+    const queuePositions = new Map(
+      activeWave.candidates.map((c) => [c.playerId, c.queuePosition + 1])
+    );
+
+    const scored = scoreCandidates(
+      poolEntries as unknown as SubstitutionPoolEntry[],
+      {
+        neededRole: session.neededRole as RoleNumber,
+        currentTeamAvgMmr: session.currentTeamAvgMmr,
+        replacedPlayerMmr: session.replacedPlayerMmr,
+        currentPlayerCount: session.currentPlayerCount,
+        targetAvgMmr: session.targetAvgMmr,
+        maxDeviation: session.maxDeviation,
+      },
+      queuePositions
+    );
+
+    const scoreMap = new Map(scored.map((s) => [s.playerId, s.subScore]));
+
+    // Mutate responses in place before serialisation
+    for (const r of activeWave.responses) {
+      (r as typeof r & { subScore: number | null }).subScore = scoreMap.get(r.playerId) ?? null;
+    }
+  }
 
   return NextResponse.json({ session });
 }
