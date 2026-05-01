@@ -242,6 +242,7 @@ interface UserDetail {
   mainRole: number | undefined;
   telegramId: string | undefined;
   discordId: string | undefined;
+  wallet: string | undefined;
 }
 
 async function fetchUserDetail(userUuid: string): Promise<UserDetail> {
@@ -249,7 +250,7 @@ async function fetchUserDetail(userUuid: string): Promise<UserDetail> {
     `${BASE}/admin/users/user/${userUuid}/change/`,
     { headers: makeHeaders() }
   );
-  if (!res.ok) return { mmr: undefined, mainRole: undefined, telegramId: undefined, discordId: undefined };
+  if (!res.ok) return { mmr: undefined, mainRole: undefined, telegramId: undefined, discordId: undefined, wallet: undefined };
   const html = await res.text();
 
   const ratingMatch = html.match(/name="rating"[^>]*value="([^"]*)"/);
@@ -261,11 +262,18 @@ async function fetchUserDetail(userUuid: string): Promise<UserDetail> {
   const telegramMatch = html.match(/name="telegram"\s+[^>]*value="([^"]*)"/);
   const discordMatch = html.match(/name="discord_id"[^>]*value="([^"]*)"/);
 
+  // wallet field — try common Django field names
+  const walletMatch =
+    html.match(/name="wallet"[^>]*value="([^"]+)"/) ??
+    html.match(/name="wallet_address"[^>]*value="([^"]+)"/) ??
+    html.match(/name="crypto_wallet"[^>]*value="([^"]+)"/);
+
   return {
     mmr: ratingMatch?.[1] ? parseInt(ratingMatch[1], 10) : undefined,
     mainRole: checkedRoleMatch?.[1] ? ROLE_MAP[checkedRoleMatch[1]] : undefined,
     telegramId: telegramMatch?.[1]?.trim() || undefined,
     discordId: discordMatch?.[1]?.trim() || undefined,
+    wallet: walletMatch?.[1]?.trim() || undefined,
   };
 }
 
@@ -335,6 +343,7 @@ export async function fetchAllParticipants(
       mainRole: user?.mainRole,
       telegramId: user?.telegramId,
       discordId: user?.discordId,
+      wallet: user?.wallet,
       team: raw.team,
     };
   });
