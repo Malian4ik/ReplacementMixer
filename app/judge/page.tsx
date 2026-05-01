@@ -306,6 +306,27 @@ export default function JudgePage() {
     },
   });
 
+  const directAssignMutation = useMutation({
+    mutationFn: ({ poolEntryId, teamId, teamName, replacedPlayerId, neededRole }: {
+      poolEntryId: string; teamId: string; teamName: string;
+      replacedPlayerId?: string; neededRole: number;
+    }) =>
+      fetch("/api/judge/direct-assign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ poolEntryId, teamId, teamName, replacedPlayerId, neededRole, judgeName: judgeName.trim(), targetAvgMmr, maxDeviation: MAX_DEVIATION }),
+      }).then(async (r) => {
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error ?? "Ошибка");
+        return d;
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pool"] });
+      qc.invalidateQueries({ queryKey: ["teams"] });
+      refetchActiveSession();
+    },
+  });
+
   // ── Guards ────────────────────────────────────────────────────────────────
 
   if (!canEdit) {
@@ -754,6 +775,11 @@ export default function JudgePage() {
           refetchActiveSession={refetchActiveSession}
           onPickResponder={(sessionId, playerId) => pickResponderMutation.mutate({ sessionId, playerId })}
           pickPending={pickResponderMutation.isPending}
+          onDirectAssign={(poolEntryId, teamId, teamName, replacedPlayerId, neededRole) =>
+            directAssignMutation.mutate({ poolEntryId, teamId, teamName, replacedPlayerId, neededRole })
+          }
+          directAssignPending={directAssignMutation.isPending}
+          directAssignError={directAssignMutation.error instanceof Error ? directAssignMutation.error.message : null}
         />
         </div>
         </>
@@ -772,6 +798,7 @@ function ManualFallback({
   manualSearch, handleDiscordSearch,
   activeSession, cancelPending, setCancelPending,
   refetchActiveSession, onPickResponder, pickPending,
+  onDirectAssign, directAssignPending, directAssignError,
 }: {
   teams: Team[];
   poolEntries: SubstitutionPoolEntry[];
@@ -791,6 +818,9 @@ function ManualFallback({
   refetchActiveSession: () => void;
   onPickResponder: (sessionId: string, playerId: string) => void;
   pickPending: boolean;
+  onDirectAssign: (poolEntryId: string, teamId: string, teamName: string, replacedPlayerId: string | undefined, neededRole: number) => void;
+  directAssignPending: boolean;
+  directAssignError: string | null;
 }) {
   const selectedTeam = teams.find((t) => t.id === teamId);
   const teamPlayers = selectedTeam?.players ?? [];
@@ -962,31 +992,71 @@ function ManualFallback({
 
       {/* Right: Pool list */}
       <div style={col}>
-        <div style={{ padding: "8px 14px", borderBottom: "1px solid var(--border)", fontSize: 11, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.07em", color: "var(--text-secondary)" }}>
-          Пул замен · {poolEntries.length}
+        <div style={{ padding: "8px 14px", borderBottom: "1px solid var(--border)", fontSize: 11, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.07em", color: "var(--text-secondary)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span>Пул замен · {poolEntries.length}</span>
+          {teamId && replacedPlayerId && (
+            <span style={{ fontSize: 10, fontWeight: 400, color: "var(--accent)", textTransform: "none" }}>
+              ← нажмите «Назначить» рядом с игроком
+            </span>
+          )}
         </div>
+        {directAssignError && (
+          <div style={{ padding: "5px 14px", background: "rgba(239,68,68,0.08)", borderBottom: "1px solid rgba(239,68,68,0.2)", fontSize: 11, color: "#f87171" }}>
+            ❌ {directAssignError}
+          </div>
+        )}
         <div style={{ flex: 1, overflow: "auto", padding: "10px 14px" }}>
           {poolEntries.length === 0 ? (
             <div style={{ color: "var(--text-muted)", textAlign: "center", paddingTop: 40, fontSize: 13 }}>Пул пуст</div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-              {poolEntries.map((e, i) => (
-                <div key={e.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 8px", borderRadius: 4, background: i === 0 ? "rgba(16,185,129,0.06)" : "rgba(0,0,0,0.15)", border: `1px solid ${i === 0 ? "rgba(16,185,129,0.2)" : "var(--border)"}`, fontSize: 11 }}>
-                  <span style={{ fontWeight: 500 }}>
-                    <span style={{ color: "var(--text-muted)", marginRight: 6, fontSize: 10 }}>{i + 1}</span>
-                    {e.player.nick}
-                  </span>
-                  <span style={{ display: "flex", alignItems: "center", gap: 6, fontFamily: "monospace" }}>
-                    <span style={{ color: "var(--text-secondary)" }}>{e.player.mmr.toLocaleString()} · R{e.player.mainRole}</span>
-                    {poolSubScores && (
-                      <span style={{ color: "var(--accent)", fontSize: 10, fontWeight: 700 }}>
-                        {(poolSubScores.get(e.id) ?? 0).toFixed(3)}
-                      </span>
+              {poolEntries.map((e, i) => {
+                const canAssign = !!(teamId && replacedPlayerId && judgeName.trim());
+                const selectedTeamObj = teams.find((t) => t.id === teamId);
+                const isEmptySlotLocal = replacedPlayerId === EMPTY_SLOT;
+                const replacedPlayerObj = selectedTeamObj?.players?.find((p) => p?.id === replacedPlayerId) ?? null;
+                const neededRoleForAssign = isEmptySlotLocal ? emptySlotRole : (replacedPlayerObj?.mainRole ?? 1);
+                return (
+                  <div key={e.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 8px", borderRadius: 4, background: i === 0 ? "rgba(16,185,129,0.06)" : "rgba(0,0,0,0.15)", border: `1px solid ${i === 0 ? "rgba(16,185,129,0.2)" : "var(--border)"}`, fontSize: 11, gap: 6 }}>
+                    <span style={{ fontWeight: 500, minWidth: 0, flex: 1 }}>
+                      <span style={{ color: "var(--text-muted)", marginRight: 6, fontSize: 10 }}>{i + 1}</span>
+                      {e.player.nick}
+                    </span>
+                    <span style={{ display: "flex", alignItems: "center", gap: 6, fontFamily: "monospace", flexShrink: 0 }}>
+                      <span style={{ color: "var(--text-secondary)" }}>{e.player.mmr.toLocaleString()} · R{e.player.mainRole}</span>
+                      {poolSubScores && (
+                        <span style={{ color: "var(--accent)", fontSize: 10, fontWeight: 700 }}>
+                          {(poolSubScores.get(e.id) ?? 0).toFixed(3)}
+                        </span>
+                      )}
+                      <MatchBadge count={(e.player as typeof e.player & { matchesPlayed?: number }).matchesPlayed ?? 0} />
+                    </span>
+                    {canAssign && (
+                      <button
+                        style={{
+                          fontSize: 10, padding: "2px 8px", borderRadius: 4, flexShrink: 0,
+                          border: "1px solid rgba(16,185,129,0.45)",
+                          background: "rgba(16,185,129,0.1)",
+                          color: "#34d399",
+                          cursor: directAssignPending ? "not-allowed" : "pointer",
+                          opacity: directAssignPending ? 0.5 : 1,
+                          fontWeight: 600,
+                        }}
+                        disabled={directAssignPending}
+                        onClick={() => onDirectAssign(
+                          e.id,
+                          teamId,
+                          selectedTeamObj?.name ?? "",
+                          isEmptySlotLocal ? undefined : replacedPlayerId,
+                          neededRoleForAssign,
+                        )}
+                      >
+                        Назначить
+                      </button>
                     )}
-                    <MatchBadge count={(e.player as typeof e.player & { matchesPlayed?: number }).matchesPlayed ?? 0} />
-                  </span>
-                </div>
-              ))}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
