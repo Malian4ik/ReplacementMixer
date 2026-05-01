@@ -270,19 +270,15 @@ async function fetchUserDetail(userUuid: string): Promise<UserDetail> {
   );
   const telegramMatch = html.match(/name="telegram"\s+[^>]*value="([^"]*)"/);
   const discordMatch = html.match(/name="discord_id"[^>]*value="([^"]*)"/);
-
-  // wallet field — try common Django field names
-  const walletMatch =
-    html.match(/name="wallet"[^>]*value="([^"]+)"/) ??
-    html.match(/name="wallet_address"[^>]*value="([^"]+)"/) ??
-    html.match(/name="crypto_wallet"[^>]*value="([^"]+)"/);
+  // eos_account is used as the player wallet in this platform
+  const eosMatch = html.match(/name="eos_account"[^>]*value="([^"]+)"/);
 
   return {
     mmr: ratingMatch?.[1] ? parseInt(ratingMatch[1], 10) : undefined,
     mainRole: checkedRoleMatch?.[1] ? ROLE_MAP[checkedRoleMatch[1]] : undefined,
     telegramId: telegramMatch?.[1]?.trim() || undefined,
     discordId: discordMatch?.[1]?.trim() || undefined,
-    wallet: walletMatch?.[1]?.trim() || undefined,
+    wallet: eosMatch?.[1]?.trim() || undefined,
   };
 }
 
