@@ -20,6 +20,7 @@ export interface ActiveGamePlayer {
   role: number;
   mmr: number;
   discordId: string | null;
+  wallet: string | null;
 }
 
 export interface ActiveGameTeam {
@@ -200,7 +201,7 @@ async function buildTeam(teamName: string): Promise<ActiveGameTeam | null> {
     nonNull.length > 0
       ? await prisma.player.findMany({
           where: { id: { in: nonNull } },
-          select: { id: true, nick: true, mainRole: true, discordId: true, mmr: true },
+          select: { id: true, nick: true, mainRole: true, discordId: true, mmr: true, wallet: true },
         })
       : [];
 
@@ -210,7 +211,7 @@ async function buildTeam(teamName: string): Promise<ActiveGameTeam | null> {
     if (!id) return null;
     const p = playerMap.get(id);
     if (!p) return null;
-    return { id: p.id, nick: p.nick, role: p.mainRole, discordId: p.discordId ?? null, mmr: p.mmr };
+    return { id: p.id, nick: p.nick, role: p.mainRole, discordId: p.discordId ?? null, mmr: p.mmr, wallet: p.wallet ?? null };
   });
 
   const nonNullSlots = slots.filter((p): p is ActiveGamePlayer => !!p);

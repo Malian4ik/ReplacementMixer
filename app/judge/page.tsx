@@ -13,6 +13,7 @@ interface ActiveGamePlayer {
   role: number;
   mmr: number;
   discordId: string | null;
+  wallet: string | null;
 }
 
 interface ActiveGameTeam {
@@ -111,6 +112,7 @@ export default function JudgePage() {
   const canEdit = user?.role === "OWNER" || user?.role === "JUDGE";
 
   const [judgeName, setJudgeName] = useState("");
+  const [comment, setComment] = useState("");
 
   // ── Active match mode state ───────────────────────────────────────────────
   const [selectedHome, setSelectedHome] = useState<Set<string>>(new Set());
@@ -292,7 +294,7 @@ export default function JudgePage() {
       fetch("/api/judge/pick-responder", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, playerId, slotId, judgeName: judgeName.trim() }),
+        body: JSON.stringify({ sessionId, playerId, slotId, judgeName: judgeName.trim(), comment: comment.trim() || undefined }),
       }).then(async (r) => {
         const d = await r.json();
         if (!r.ok) throw new Error(d.error ?? "Ошибка");
@@ -314,7 +316,7 @@ export default function JudgePage() {
       fetch("/api/judge/direct-assign", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ poolEntryId, teamId, teamName, replacedPlayerId, neededRole, judgeName: judgeName.trim(), targetAvgMmr, maxDeviation: MAX_DEVIATION }),
+        body: JSON.stringify({ poolEntryId, teamId, teamName, replacedPlayerId, neededRole, judgeName: judgeName.trim(), targetAvgMmr, maxDeviation: MAX_DEVIATION, comment: comment.trim() || undefined }),
       }).then(async (r) => {
         const d = await r.json();
         if (!r.ok) throw new Error(d.error ?? "Ошибка");
@@ -428,8 +430,8 @@ export default function JudgePage() {
                     </span>
                     <span style={{ fontWeight: 600 }}>{player.nick}</span>
                   </span>
-                  <span style={{ fontSize: 11, color: "var(--text-secondary)", fontFamily: "monospace" }}>
-                    {roleLabel(player.role)}
+                  <span style={{ fontSize: 11, color: player.wallet ? "var(--accent)" : "var(--text-muted)", fontFamily: "monospace", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {player.wallet ?? "—"}
                   </span>
                 </button>
               );
@@ -470,6 +472,17 @@ export default function JudgePage() {
               placeholder="Имя судьи *"
               className="form-input"
               style={{ width: 130, fontSize: 13, padding: "2px 8px", height: 28, borderColor: judgeName.trim() ? undefined : "rgba(239,68,68,0.5)" }}
+            />
+          </div>
+          <div style={{ width: 1, height: 30, background: "var(--border)" }} />
+          <div>
+            <div style={{ fontSize: 10, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Причина замены</div>
+            <input
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              placeholder="Описание (необязательно)"
+              className="form-input"
+              style={{ width: 220, fontSize: 13, padding: "2px 8px", height: 28 }}
             />
           </div>
         </div>
