@@ -208,6 +208,7 @@ async function fetchParticipantPage(
 interface ParticipantDetail {
   qualifyRating: number | undefined;
   userUuid: string | undefined;
+  wallet: string | undefined;
 }
 
 async function fetchParticipantDetail(uuid: string): Promise<ParticipantDetail> {
@@ -215,15 +216,23 @@ async function fetchParticipantDetail(uuid: string): Promise<ParticipantDetail> 
     `${BASE}/admin/tournaments/participant/${uuid}/change/`,
     { headers: makeHeaders() }
   );
-  if (!res.ok) return { qualifyRating: undefined, userUuid: undefined };
+  if (!res.ok) return { qualifyRating: undefined, userUuid: undefined, wallet: undefined };
   const html = await res.text();
 
   const qrMatch = html.match(/name="qualify_rating"[^>]*value="([^"]*)"/);
   const userMatch = html.match(/href="\/admin\/users\/user\/([0-9a-f-]{36})\/change\/"/);
 
+  // Try to find wallet on participant page
+  const walletMatch =
+    html.match(/name="wallet"[^>]*value="([^"]+)"/) ??
+    html.match(/name="wallet_address"[^>]*value="([^"]+)"/) ??
+    html.match(/name="ton_wallet"[^>]*value="([^"]+)"/) ??
+    html.match(/name="crypto_wallet"[^>]*value="([^"]+)"/);
+
   return {
     qualifyRating: qrMatch?.[1] ? parseFloat(qrMatch[1]) : undefined,
     userUuid: userMatch?.[1],
+    wallet: walletMatch?.[1]?.trim() || undefined,
   };
 }
 
@@ -343,7 +352,7 @@ export async function fetchAllParticipants(
       mainRole: user?.mainRole,
       telegramId: user?.telegramId,
       discordId: user?.discordId,
-      wallet: user?.wallet,
+      wallet: user?.wallet || detail?.wallet,
       team: raw.team,
     };
   });
