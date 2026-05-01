@@ -36,26 +36,58 @@ export async function GET() {
     if (!listMatch) { results.push({ url, error: "no result_list found", htmlSnippet: html.slice(0, 300) }); continue; }
 
     const rows = [...listMatch[1].matchAll(/<tr[^>]*class="[^"]*row[^"]*"[^>]*>([\s\S]*?)<\/tr>/g)];
-    const rowData = rows.slice(0, 10).map(([, row]) => {
-      const idMatch = row.match(/\/admin\/tournaments\/game\/(\d+)\/change\//);
-      // Collect ALL field-* classes in this row
+
+    // Collect all unique statuses across all rows
+    const allStatuses = new Set<string>();
+    const nonPendingRows: object[] = [];
+
+    for (const [, row] of rows) {
+      const idMatch = row.match(/\/admin\/tournaments\/game\/(\w[\w-]*)\/change\//);
+      // All href patterns in this row
+      const hrefs = [...row.matchAll(/href="([^"]+)"/g)].map(m => m[1]).filter(h => h.includes("game"));
       const fieldMatches = [...row.matchAll(/class="field-([^"\s]+)/g)].map(m => m[1]);
+      const status = extractField(row, "status");
+      const coloredStatus = extractField(row, "colored_status");
+      const displayStatus = extractField(row, "get_status_display");
+      const anyStatus = coloredStatus || status || displayStatus;
+      if (anyStatus) allStatuses.add(anyStatus);
+
+      // Keep any row that is NOT Pending / not empty
+      if (anyStatus && !/^pending$/i.test(anyStatus)) {
+        nonPendingRows.push({
+          gameId: idMatch?.[1] ?? null,
+          hrefs,
+          fields: fieldMatches,
+          colored_status: coloredStatus,
+          status,
+          get_status_display: displayStatus,
+          team_1_name: extractField(row, "team_1_name"),
+          team_2_name: extractField(row, "team_2_name"),
+          round: extractField(row, "round"),
+          slot: extractField(row, "slot"),
+        });
+      }
+    }
+
+    // Also first 3 rows for field structure reference
+    const sampleRows = rows.slice(0, 3).map(([, row]) => {
+      const idMatch = row.match(/\/admin\/tournaments\/game\/(\w[\w-]*)\/change\//);
+      const hrefs = [...row.matchAll(/href="([^"]+)"/g)].map(m => m[1]).filter(h => h.includes("game"));
       return {
         gameId: idMatch?.[1] ?? null,
-        fields: fieldMatches,
-        colored_status: extractField(row, "colored_status"),
+        hrefs,
         status: extractField(row, "status"),
-        get_status_display: extractField(row, "get_status_display"),
         team_1_name: extractField(row, "team_1_name"),
         team_2_name: extractField(row, "team_2_name"),
-        home_team: extractField(row, "home_team"),
-        away_team: extractField(row, "away_team"),
-        round: extractField(row, "round"),
-        slot: extractField(row, "slot"),
       };
     });
 
-    results.push({ url, httpStatus: res.status, rowCount: rows.length, rows: rowData });
+    results.push({
+      url, httpStatus: res.status, rowCount: rows.length,
+      allStatuses: [...allStatuses],
+      nonPendingRows,
+      sampleRows,
+    });
 
     // Stop after first URL that returns rows
     if (rows.length > 0) break;
