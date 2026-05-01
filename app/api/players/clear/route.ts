@@ -11,6 +11,7 @@ export async function POST() {
   await prisma.waveResponse.deleteMany();
   await prisma.waveCandidate.deleteMany();
   await prisma.substitutionWave.deleteMany();
+  await prisma.substitutionSlot.deleteMany();
   await prisma.substitutionSearchSession.deleteMany();
   await prisma.substitutionPoolEntry.deleteMany();
   await prisma.playerTournamentParticipation.deleteMany();

@@ -57,16 +57,17 @@ model Team {
 }
 
 model SubstitutionPoolEntry {
-  id               String     @id @default(cuid())
-  playerId         String
-  status           String     @default("Active")
-  joinTime         DateTime   @default(now())
-  assignedTeamId   String?
-  replacedPlayerId String?
-  pickedTime       DateTime?
-  source           String
-  createdAt        DateTime   @default(now())
-  updatedAt        DateTime   @updatedAt
+  id                  String     @id @default(cuid())
+  playerId            String
+  status              String     @default("Active")
+  joinTime            DateTime   @default(now())
+  assignedTeamId      String?
+  replacedPlayerId    String?
+  pickedTime          DateTime?
+  source              String
+  adminQueuePosition  Int?
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
 
   player       Player  @relation(fields: [playerId], references: [id])
   assignedTeam Team?   @relation(fields: [assignedTeamId], references: [id])

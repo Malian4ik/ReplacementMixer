@@ -78,57 +78,93 @@ interface RawGame {
   awayTeamName: string;
 }
 
-async function fetchRawGameFromAdmin(): Promise<RawGame | null> {
-  if (!BASE) return null;
-
-  // Ensure auth. If admin returns login page, re-login.
-  try {
-    const probe = await fetch(`${BASE}/admin/`, { headers: getAdminHeaders(), redirect: "manual" });
-    if (probe.status === 302 || probe.url?.includes("/login/")) {
-      await adminLogin();
-    }
-  } catch {
-    try { await adminLogin(); } catch { return null; }
-  }
-
-  // Try to get active games from the game list.
-  // NOTE: URL and field names must match the actual Django admin structure.
-  // Adjust the URL and field selectors if they differ in production.
-  const url = `${BASE}/admin/tournaments/game/?status=active&o=-1`;
-  let res: Response;
-  try {
-    res = await fetch(url, { headers: getAdminHeaders() });
-  } catch {
-    return null;
-  }
-  if (!res.ok) return null;
-
-  const html = await res.text();
-  const listMatch = html.match(/id="result_list"[^>]*>([\s\S]*)/);
-  if (!listMatch) return null;
-
-  const rowMatch = listMatch[1].match(/<tr[^>]*class="[^"]*row[^"]*"[^>]*>([\s\S]*?)<\/tr>/);
-  if (!rowMatch) return null;
-
-  const row = rowMatch[1];
+function parseRowToGame(row: string): RawGame | null {
   const idMatch = row.match(/\/admin\/tournaments\/game\/(\d+)\/change\//);
   if (!idMatch) return null;
-
+  const homeTeamName =
+    extractField(row, "team_1_name") ||
+    extractField(row, "home_team") ||
+    extractField(row, "home");
+  const awayTeamName =
+    extractField(row, "team_2_name") ||
+    extractField(row, "away_team") ||
+    extractField(row, "away");
+  if (!homeTeamName || !awayTeamName) return null;
   return {
     id: idMatch[1],
     round: parseInt(extractField(row, "round"), 10) || 0,
     slot: parseInt(extractField(row, "slot"), 10) || 0,
-    homeTeamName: extractField(row, "home_team") || extractField(row, "home"),
-    awayTeamName: extractField(row, "away_team") || extractField(row, "away"),
+    homeTeamName,
+    awayTeamName,
   };
+}
+
+function isAdminStatusActive(row: string): boolean {
+  const status =
+    extractField(row, "colored_status") ||
+    extractField(row, "status") ||
+    extractField(row, "get_status_display") || "";
+  return /activ|идёт|live|in.prog/i.test(status);
+}
+
+async function fetchRawGameFromAdmin(): Promise<RawGame | null> {
+  if (!BASE) return null;
+
+  try {
+    const probe = await fetch(`${BASE}/admin/`, { headers: getAdminHeaders(), redirect: "manual" });
+    if (probe.status === 302 || probe.url?.includes("/login/")) await adminLogin();
+  } catch {
+    try { await adminLogin(); } catch { return null; }
+  }
+
+  // Try with known status filter values (Django choice field), then unfiltered
+  const candidates = [
+    `${BASE}/admin/tournaments/game/?status=active`,
+    `${BASE}/admin/tournaments/game/?status=Active`,
+    `${BASE}/admin/tournaments/game/?status=in_progress`,
+    `${BASE}/admin/tournaments/game/`,  // fallback: all, checked by field-status
+  ];
+
+  for (const url of candidates) {
+    let res: Response;
+    try { res = await fetch(url, { headers: getAdminHeaders() }); }
+    catch { continue; }
+    if (!res.ok) continue;
+
+    const html = await res.text();
+    const listMatch = html.match(/id="result_list"[^>]*>([\s\S]*)/);
+    if (!listMatch) continue;
+
+    const isFiltered = url.includes("status=");
+
+    for (const [, row] of [...listMatch[1].matchAll(/<tr[^>]*class="[^"]*row[^"]*"[^>]*>([\s\S]*?)<\/tr>/g)]) {
+      // For unfiltered URL, verify the status field contains an active indicator
+      if (!isFiltered && !isAdminStatusActive(row)) continue;
+      const game = parseRowToGame(row);
+      if (game) return game;
+    }
+  }
+
+  return null;
 }
 
 // ── DB fallback ────────────────────────────────────────────────────────────────
 
 async function fetchRawGameFromDB(): Promise<RawGame | null> {
+  const now = new Date();
+  // Priority: explicitly marked "Live", then time-based live (within window and Scheduled)
   const match = await prisma.tournamentMatch.findFirst({
-    where: { status: "Active" },
-    orderBy: { scheduledAt: "desc" },
+    where: {
+      OR: [
+        { status: "Live" },
+        {
+          status: "Scheduled",
+          scheduledAt: { lte: now },
+          endsAt: { gte: now },
+        },
+      ],
+    },
+    orderBy: { scheduledAt: "asc" },
   });
   if (!match) return null;
 

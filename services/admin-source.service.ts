@@ -98,6 +98,7 @@ export interface AdminParticipant {
 export interface AdminTeamInfo {
   id: string;
   name: string;
+  modelSlug?: string;
 }
 
 // ─── Tournament list ──────────────────────────────────────────────────────────
@@ -374,47 +375,221 @@ export async function fetchParticipantStatuses(
   return result;
 }
 
-// ─── Team list ────────────────────────────────────────────────────────────────
+// ─── Waiting list (Bid participants ordered by queue position) ────────────────
 
-/** Scrape the team list for a tournament from the Django admin.
- *  Falls back to an empty array if the URL doesn't exist. */
-export async function fetchTournamentTeams(
+/** Returns nick + queuePosition for all "Bid" status participants, sorted by queue position. */
+export async function fetchWaitingList(
   tournamentId: string | number
-): Promise<AdminTeamInfo[]> {
-  const url = `${BASE}/admin/tournaments/team/?tournament__id__exact=${tournamentId}`;
-  const res = await fetch(url, { headers: makeHeaders() });
-  if (!res.ok) return []; // 404 or no permission — not an error, just no teams section
-  const html = await res.text();
-  return parseTeamList(html);
+): Promise<{ nick: string; queuePosition: number | null }[]> {
+  const all: RawListParticipant[] = [];
+  let page = 1;
+  while (true) {
+    const { items, hasMore } = await fetchParticipantPage(tournamentId, page);
+    all.push(...items);
+    if (!hasMore || page >= 50) break;
+    page++;
+  }
+  return all
+    .filter(p => /bid/i.test(p.tournamentStatus ?? ""))
+    .sort((a, b) => (a.queuePosition ?? 999999) - (b.queuePosition ?? 999999))
+    .map(p => ({ nick: p.nick, queuePosition: p.queuePosition ?? null }));
 }
 
-function parseTeamList(html: string): AdminTeamInfo[] {
+// ─── Team list ────────────────────────────────────────────────────────────────
+
+// Known URL patterns for team model in Django admin (tried in order)
+const TEAM_URL_CANDIDATES = [
+  "tournaments/team",           // confirmed URL
+  "tournaments/tournamentteam",
+  "tournament/team",
+  "teams/team",
+];
+
+/** Discover all model URLs on the Django admin home page, looking for team-related entries. */
+async function discoverTeamUrl(): Promise<string | null> {
+  const res = await fetch(`${BASE}/admin/`, { headers: makeHeaders() });
+  if (!res.ok) return null;
+  const html = await res.text();
+
+  // Django admin home lists models as <a href="/admin/app/model/">Name</a>
+  // Find any link whose text or path contains "team" or "команд" (case-insensitive)
+  const linkRe = /<a\s+href="(\/admin\/[^"]+\/)"[^>]*>([^<]*)<\/a>/gi;
+  for (const [, href, label] of html.matchAll(linkRe)) {
+    const lo = label.toLowerCase();
+    const hlo = href.toLowerCase();
+    if (
+      lo.includes("команд") || lo.includes("team") ||
+      hlo.includes("team") || lo.includes("group") || hlo.includes("group")
+    ) {
+      // Strip trailing slash + extract path without /admin/ prefix
+      return href.replace(/^\/admin\//, "").replace(/\/$/, "");
+    }
+  }
+  return null;
+}
+
+/** Scrape teams from the Django admin for a specific tournament.
+ *  Step 1: fetch page 1 without filter to discover the Django tournament ID from row links.
+ *  Step 2: re-fetch with ?tournament__id__exact={djangoId} to get only that tournament's teams.
+ *  Fallback: filter client-side by tournament name if Django ID can't be determined. */
+export async function fetchTournamentTeams(
+  _tournamentId: string | number,
+  tournamentName?: string
+): Promise<AdminTeamInfo[]> {
+  const discovered = await discoverTeamUrl();
+  const candidates = discovered
+    ? [discovered, ...TEAM_URL_CANDIDATES.filter(c => c !== discovered)]
+    : TEAM_URL_CANDIDATES;
+
+  for (const path of candidates) {
+    const modelSlug = path.split("/").pop()!;
+    const baseUrl = `${BASE}/admin/${path}/`;
+
+    // Step 1: fetch first page to discover Django tournament ID from field-tournament link
+    const firstRes = await fetch(baseUrl, { headers: makeHeaders() });
+    if (!firstRes.ok) continue;
+    const firstHtml = await firstRes.text();
+
+    // Extract Django tournament ID from a row whose tournament name matches
+    let djangoTournamentId: string | null = null;
+    const listMatch = firstHtml.match(/id="result_list"[^>]*>([\s\S]*)/);
+    if (listMatch && tournamentName) {
+      for (const [, row] of [...listMatch[1].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)]) {
+        const rowTournamentText = fieldText(row, "tournament");
+        if (tournamentName && !rowTournamentText.toLowerCase().includes(tournamentName.toLowerCase().slice(0, 15))) continue;
+        // Extract Django tournament ID from the href in field-tournament cell
+        const cellMatch = row.match(/class="field-tournament[^"]*"[^>]*>([\s\S]*?)<\/td>/);
+        const idFromLink = cellMatch?.[1]?.match(/\/admin\/[^/]+\/tournament\/(\d+)\/change\//)?.[1];
+        if (idFromLink) { djangoTournamentId = idFromLink; break; }
+      }
+    }
+
+    const fetchAllPages = async (qsBase: string) => {
+      const allTeams: AdminTeamInfo[] = [];
+      let page = 1;
+      while (true) {
+        const url = `${baseUrl}${qsBase}${qsBase ? "&" : "?"}p=${page}`;
+        const res = page === 1 && !qsBase ? firstRes : await fetch(
+          page === 1 ? `${baseUrl}${qsBase}` : url, { headers: makeHeaders() }
+        );
+        const html = page === 1 && !qsBase ? firstHtml : (res.ok ? await res.text() : "");
+        if (!html) break;
+        const pageTeams = parseTeamList(html, modelSlug);
+        allTeams.push(...pageTeams);
+        const hasMore = new RegExp(`[?&]p=${page + 1}[&"]`).test(html) ||
+          new RegExp(`[?&]p=${page + 1}&amp;`).test(html);
+        if (!hasMore || page >= 20) break;
+        page++;
+      }
+      return allTeams;
+    };
+
+    let allTeams: AdminTeamInfo[];
+
+    if (djangoTournamentId) {
+      // Use exact Django tournament filter
+      allTeams = await fetchAllPages(`?tournament__id__exact=${djangoTournamentId}`);
+    } else {
+      // Fetch all and filter client-side by tournament name
+      allTeams = await fetchAllPages("");
+      if (tournamentName) {
+        // We need tournament text per team — re-parse with tournament field
+        allTeams = filterTeamsByTournamentName(firstHtml, modelSlug, tournamentName);
+        // TODO: handle multiple pages if needed
+      }
+    }
+
+    if (allTeams.length > 0) return allTeams;
+  }
+  return [];
+}
+
+function filterTeamsByTournamentName(html: string, modelSlug: string, tournamentName: string): AdminTeamInfo[] {
   const listMatch = html.match(/id="result_list"[^>]*>([\s\S]*)/);
   if (!listMatch) return [];
-
+  const HEADER_LABELS = new Set(["name of the team", "название", "name", "команда"]);
+  const needle = tournamentName.toLowerCase().slice(0, 20);
   const teams: AdminTeamInfo[] = [];
+  let idx = 0;
   for (const [, row] of [...listMatch[1].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)]) {
-    const idMatch = row.match(/\/admin\/tournaments\/team\/(\d+)\/change\//);
-    if (!idMatch) continue;
+    const rowTournament = fieldText(row, "tournament").toLowerCase();
+    if (!rowTournament.includes(needle)) continue;
     const name = fieldText(row, "name") || fieldText(row, "title") || fieldText(row, "team_name");
-    if (!name) continue;
-    teams.push({ id: idMatch[1], name });
+    if (!name || HEADER_LABELS.has(name.toLowerCase())) continue;
+    const slugPattern = new RegExp(`/admin/[^/]+/${modelSlug}/([0-9a-f-]{8,}|\\d+)/change/`);
+    const idMatch = row.match(slugPattern) ?? row.match(ADMIN_ID_RE);
+    const id = idMatch?.[1] ?? `__idx_${idx++}`;
+    teams.push({ id, name, modelSlug });
   }
   return teams;
 }
 
-/** Scrape member nicks from a team's detail page (via inline participant UUID links). */
+// Matches both numeric IDs and UUIDs in Django admin URLs
+const ADMIN_ID_RE = /\/admin\/[^/]+\/[^/]+\/([0-9a-f-]{8,}|\d+)\/change\//;
+
+function parseTeamList(html: string, modelSlug: string): AdminTeamInfo[] {
+  const listMatch = html.match(/id="result_list"[^>]*>([\s\S]*)/);
+  if (!listMatch) return [];
+
+  const HEADER_LABELS = new Set(["name of the team", "название", "name", "команда"]);
+
+  const teams: AdminTeamInfo[] = [];
+  let idx = 0;
+  for (const [, row] of [...listMatch[1].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)]) {
+    // Team name comes from field-name cell (confirmed by probe)
+    const name = fieldText(row, "name") || fieldText(row, "title") || fieldText(row, "team_name");
+    if (!name) continue;
+    // Skip column-header rows
+    if (HEADER_LABELS.has(name.toLowerCase())) continue;
+
+    // Try to get ID from a change link (may not exist if Django admin has no list_display_links)
+    const slugPattern = new RegExp(`/admin/[^/]+/${modelSlug}/([0-9a-f-]{8,}|\\d+)/change/`);
+    const idMatch = row.match(slugPattern) ?? row.match(ADMIN_ID_RE);
+    // Use extracted ID or fall back to an index (members won't be fetched but name will be saved)
+    const id = idMatch?.[1] ?? `__idx_${idx++}`;
+
+    teams.push({ id, name, modelSlug });
+  }
+  return teams;
+}
+
+/** Scrape member nicks from a team's detail page.
+ *  Tries two methods:
+ *  1. Inline text "Участник {nick} in «...»" (Russian Django admin inline)
+ *  2. Participant UUID links resolved via uuidToNick map */
 export async function fetchTeamMemberNicks(
   teamId: string,
-  uuidToNick: Map<string, string>
+  uuidToNick: Map<string, string>,
+  modelSlug = "team"
 ): Promise<string[]> {
-  const res = await fetch(`${BASE}/admin/tournaments/team/${teamId}/change/`, { headers: makeHeaders() });
-  if (!res.ok) return [];
-  const html = await res.text();
+  // Try candidate detail URLs
+  const urlCandidates = [
+    `${BASE}/admin/tournaments/${modelSlug}/${teamId}/change/`,
+    `${BASE}/admin/tournaments/tournamentteam/${teamId}/change/`,
+    `${BASE}/admin/tournaments/team/${teamId}/change/`,
+  ];
 
-  // Collect participant UUIDs referenced in the page (inline links)
+  // Deduplicate candidates
+  const seenUrls = new Set<string>();
+  const uniqueCandidates = urlCandidates.filter(u => seenUrls.has(u) ? false : (seenUrls.add(u), true));
+
+  let html = "";
+  for (const url of uniqueCandidates) {
+    const res = await fetch(url, { headers: makeHeaders() });
+    if (res.ok) { html = await res.text(); break; }
+  }
+  if (!html) return [];
+
   const nicks: string[] = [];
   const seen = new Set<string>();
+
+  // Method 1: inline Russian text "Участник {nick} in «…»"
+  for (const [, nick] of html.matchAll(/Участник\s+(\S+)\s+in\s+/g)) {
+    if (!seen.has(nick)) { seen.add(nick); nicks.push(nick); }
+  }
+  if (nicks.length > 0) return nicks;
+
+  // Method 2: participant UUID href links → resolve via map
   for (const [, uuid] of html.matchAll(/\/admin\/tournaments\/participant\/([0-9a-f-]{36})\//g)) {
     if (seen.has(uuid)) continue;
     seen.add(uuid);
@@ -432,6 +607,7 @@ export interface AdminMatchInfo {
   awayTeam: string;
   scheduledAt: Date | null;
   endsAt: Date | null;
+  adminStatus?: string;
 }
 
 function parseRoundNumber(s: string): number {
@@ -439,6 +615,11 @@ function parseRoundNumber(s: string): number {
   const m = s.match(/\d+/);
   return m ? parseInt(m[0], 10) : 0;
 }
+
+const EN_MONTHS: Record<string, number> = {
+  January: 0, February: 1, March: 2, April: 3, May: 4, June: 5,
+  July: 6, August: 7, September: 8, October: 9, November: 10, December: 11,
+};
 
 /** Parse a datetime string from Django admin display (multiple formats). */
 function parseAdminDateTime(s: string): Date | null {
@@ -449,11 +630,30 @@ function parseAdminDateTime(s: string): Date | null {
   let d = new Date(s.replace(" ", "T"));
   if (!isNaN(d.getTime())) return d;
 
+  // English Django format: "May 1, 2026, 2 p.m." or "May 1, 2026, 2:30 p.m."
+  // Admin timezone is MSK (UTC+3), so subtract 3h when storing as UTC
+  const en = s.match(/(\w+)\s+(\d+),\s*(\d{4}),?\s+([\d]+)(?::(\d+))?\s*(a\.m\.|p\.m\.)/i);
+  if (en) {
+    const month = EN_MONTHS[en[1]];
+    if (month !== undefined) {
+      const day = parseInt(en[2]);
+      const year = parseInt(en[3]);
+      let hour = parseInt(en[4]);
+      const min = parseInt(en[5] ?? "0");
+      const isPM = en[6].toLowerCase().startsWith("p");
+      if (isPM && hour !== 12) hour += 12;
+      if (!isPM && hour === 12) hour = 0;
+      // Store as UTC: MSK is UTC+3, so subtract 3 hours
+      d = new Date(Date.UTC(year, month, day, hour - 3, min));
+      if (!isNaN(d.getTime())) return d;
+    }
+  }
+
   // Russian format: "01.05.2026 18:00" or "01.05.2026, 18:00"
   const ru = s.match(/(\d{2})\.(\d{2})\.(\d{4})[,\s]+(\d{2}):(\d{2})/);
   if (ru) {
-    const [, dd, mm, yyyy, hh, min] = ru;
-    d = new Date(`${yyyy}-${mm}-${dd}T${hh}:${min}:00`);
+    const [, dd, mm, yyyy, hh, mmin] = ru;
+    d = new Date(`${yyyy}-${mm}-${dd}T${hh}:${mmin}:00`);
     if (!isNaN(d.getTime())) return d;
   }
 
@@ -461,11 +661,12 @@ function parseAdminDateTime(s: string): Date | null {
 }
 
 async function fetchMatchPage(
-  tournamentId: string | number,
+  _tournamentId: string | number,
   page: number,
   baseUrl: string
 ): Promise<{ items: AdminMatchInfo[]; hasMore: boolean }> {
-  const url = `${baseUrl}?tournament__id__exact=${tournamentId}&p=${page}`;
+  // No tournament filter — filter param names vary and the stored externalId may differ from Django's PK
+  const url = page === 1 ? baseUrl : `${baseUrl}?p=${page}`;
   const res = await fetch(url, { headers: makeHeaders() });
   if (!res.ok) return { items: [], hasMore: false };
   const html = await res.text();
@@ -483,24 +684,27 @@ async function fetchMatchPage(
       fieldText(row, "tour");
     const round = parseRoundNumber(roundStr);
 
-    // Home team
+    // Home team — confirmed: field-team_1_name; also try legacy names
     const homeTeam =
+      fieldText(row, "team_1_name") ||
       fieldText(row, "home_team") ||
       fieldText(row, "home_team__name") ||
       fieldText(row, "team1") ||
       fieldText(row, "team1__name") ||
       fieldText(row, "home");
 
-    // Away team
+    // Away team — confirmed: field-team_2_name
     const awayTeam =
+      fieldText(row, "team_2_name") ||
       fieldText(row, "away_team") ||
       fieldText(row, "away_team__name") ||
       fieldText(row, "team2") ||
       fieldText(row, "team2__name") ||
       fieldText(row, "away");
 
-    // Start time
+    // Start time — confirmed: field-planned_time
     const startStr =
+      fieldText(row, "planned_time") ||
       fieldText(row, "start_time") ||
       fieldText(row, "scheduled_at") ||
       fieldText(row, "begin_time") ||
@@ -515,12 +719,15 @@ async function fetchMatchPage(
 
     if (!homeTeam && !awayTeam) continue; // skip header/empty rows
 
+    const adminStatus = fieldText(row, "status") || fieldText(row, "colored_status") || "";
+
     items.push({
       round,
       homeTeam,
       awayTeam,
       scheduledAt: parseAdminDateTime(startStr),
       endsAt: parseAdminDateTime(endStr),
+      adminStatus,
     });
   }
 
@@ -532,16 +739,43 @@ async function fetchMatchPage(
   return { items, hasMore };
 }
 
+const SCHEDULE_URL_CANDIDATES = [
+  `${BASE}/admin/tournaments/game/`,      // confirmed URL
+  `${BASE}/admin/tournaments/match/`,
+  `${BASE}/admin/tournaments/matchup/`,
+  `${BASE}/admin/tournaments/round/`,
+  `${BASE}/admin/tournaments/schedule/`,
+];
+
+/** Discover schedule/match model URL from the Django admin home page. */
+async function discoverScheduleUrl(): Promise<string | null> {
+  const res = await fetch(`${BASE}/admin/`, { headers: makeHeaders() });
+  if (!res.ok) return null;
+  const html = await res.text();
+  const linkRe = /<a\s+href="(\/admin\/[^"]+\/)"[^>]*>([^<]*)<\/a>/gi;
+  for (const [, href, label] of html.matchAll(linkRe)) {
+    const lo = label.toLowerCase();
+    const hlo = href.toLowerCase();
+    if (
+      lo.includes("матч") || lo.includes("match") || lo.includes("расписан") ||
+      lo.includes("schedule") || lo.includes("игр") || lo.includes("game") ||
+      hlo.includes("match") || hlo.includes("game") || hlo.includes("schedule")
+    ) {
+      return `${BASE}${href}`;
+    }
+  }
+  return null;
+}
+
 /** Fetch all match schedule rows for a tournament.
- *  Tries /admin/tournaments/match/ and /admin/tournaments/game/ as fallback. */
+ *  Auto-discovers the URL from /admin/ home, then tries known patterns. */
 export async function fetchTournamentScheduleData(
   tournamentId: string | number
 ): Promise<AdminMatchInfo[]> {
-  const candidates = [
-    `${BASE}/admin/tournaments/match/`,
-    `${BASE}/admin/tournaments/game/`,
-    `${BASE}/admin/tournaments/matchup/`,
-  ];
+  const discovered = await discoverScheduleUrl();
+  const candidates = discovered
+    ? [discovered, ...SCHEDULE_URL_CANDIDATES.filter(u => u !== discovered)]
+    : SCHEDULE_URL_CANDIDATES;
 
   for (const baseUrl of candidates) {
     const all: AdminMatchInfo[] = [];

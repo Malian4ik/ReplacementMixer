@@ -4,6 +4,7 @@ import {
   fetchTournaments,
   fetchAllParticipants,
   fetchParticipantStatuses,
+  fetchWaitingList,
   buildParticipantUuidNickMap,
   fetchTournamentTeams,
   fetchTeamMemberNicks,
@@ -205,12 +206,17 @@ export async function importTournamentTeams(
 
   if (teamMap.size === 0) {
     // Fallback: try scraping from /admin/tournaments/team/
-    const teamInfos = await fetchTournamentTeams(externalTournamentId);
+    // Pass tournament name so we can filter only teams from this tournament
+    const adminTournament = await prisma.adminTournament.findUnique({
+      where: { externalId: String(externalTournamentId) },
+      select: { name: true },
+    });
+    const teamInfos = await fetchTournamentTeams(externalTournamentId, adminTournament?.name);
 
     if (teamInfos.length === 0) {
       return {
         created: 0, updated: 0, failed: 0, total: 0,
-        errors: ["Поле «команда» не найдено у участников, и раздел /admin/tournaments/team/ недоступен. Команды нужно создать вручную."],
+        errors: ["Поле «команда» не найдено у участников, и ни один из разделов /admin/tournaments/team/, /admin/tournaments/tournamentteam/ и аналогов недоступен. Проверьте URL в Django-админке."],
       };
     }
 
@@ -219,7 +225,10 @@ export async function importTournamentTeams(
     const nickSet = new Set(uuidToNick.values());
 
     for (const info of teamInfos) {
-      const nicks = await fetchTeamMemberNicks(info.id, uuidToNick);
+      // __idx_ prefix means no change-link was found — skip member fetch, create empty team
+      const nicks = info.id.startsWith("__idx_")
+        ? []
+        : await fetchTeamMemberNicks(info.id, uuidToNick, info.modelSlug);
       const known = nicks.filter(n => nickSet.has(n));
       teamMap.set(info.name, known);
     }
@@ -314,6 +323,57 @@ export async function syncDisqualifiedPlayers(
   return { found: disqualified.length, marked, alreadyMarked, errors };
 }
 
+export interface PoolSyncResult {
+  added: number;
+  updated: number;
+  notFound: number;
+  errors: string[];
+}
+
+export async function syncPoolFromAdminWaitingList(
+  externalTournamentId: string
+): Promise<PoolSyncResult> {
+  await adminLogin();
+  const waitingList = await fetchWaitingList(externalTournamentId);
+
+  let added = 0, updated = 0, notFound = 0;
+  const errors: string[] = [];
+
+  for (const item of waitingList) {
+    if (!item.nick) continue;
+    try {
+      const player = await prisma.player.findUnique({ where: { nick: item.nick } });
+      if (!player) { notFound++; continue; }
+
+      const existing = await prisma.substitutionPoolEntry.findFirst({
+        where: { playerId: player.id, status: "Active" },
+      });
+
+      if (existing) {
+        await prisma.substitutionPoolEntry.update({
+          where: { id: existing.id },
+          data: { adminQueuePosition: item.queuePosition },
+        });
+        updated++;
+      } else {
+        await prisma.substitutionPoolEntry.create({
+          data: {
+            playerId: player.id,
+            source: "admin_queue",
+            adminQueuePosition: item.queuePosition,
+            status: "Active",
+          },
+        });
+        added++;
+      }
+    } catch (err: unknown) {
+      errors.push(`${item.nick}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  return { added, updated, notFound, errors };
+}
+
 export interface ScheduleImportResult {
   imported: number;
   skipped: number;
@@ -338,15 +398,22 @@ export async function importTournamentSchedule(
   }
 
   if (clearExisting) {
-    await prisma.tournamentMatch.deleteMany({});
+    // Only delete non-completed matches when clearing
+    await prisma.tournamentMatch.deleteMany({ where: { status: { not: "Completed" } } });
   }
+
+  // Only import matches with "Pending" status from admin (skip completed/other)
+  const pendingMatches = matches.filter(m => {
+    const s = (m.adminStatus ?? "").toLowerCase();
+    return !s || s === "pending" || s === "scheduled" || s === "запланирован";
+  });
 
   let imported = 0;
   let skipped = 0;
   const errors: string[] = [];
 
-  for (let i = 0; i < matches.length; i++) {
-    const m = matches[i];
+  for (let i = 0; i < pendingMatches.length; i++) {
+    const m = pendingMatches[i];
     if (!m.homeTeam || !m.awayTeam) {
       skipped++;
       continue;
@@ -360,6 +427,24 @@ export async function importTournamentSchedule(
     }
 
     const endsAt = m.endsAt ?? new Date(scheduledAt.getTime() + MATCH_MS);
+
+    // Skip if this exact match already exists in DB (avoid duplicates on re-import)
+    const existing = await prisma.tournamentMatch.findFirst({
+      where: { homeTeam: m.homeTeam, awayTeam: m.awayTeam, scheduledAt },
+    });
+    if (existing) {
+      skipped++;
+      continue;
+    }
+
+    // Also skip if already completed in our DB
+    const completedVersion = await prisma.tournamentMatch.findFirst({
+      where: { homeTeam: m.homeTeam, awayTeam: m.awayTeam, status: "Completed" },
+    });
+    if (completedVersion) {
+      skipped++;
+      continue;
+    }
 
     try {
       await prisma.tournamentMatch.create({

@@ -45,7 +45,8 @@ export interface SubstitutionPoolEntry {
   assignedTeamId: string | null;
   replacedPlayerId: string | null;
   pickedTime: string | null;
-  source: "reduction" | "manual_add" | "returned" | "transferred_from_main_pool";
+  source: "reduction" | "manual_add" | "returned" | "transferred_from_main_pool" | "admin_queue";
+  adminQueuePosition: number | null;
   inTeam?: boolean;
   createdAt: string;
   updatedAt: string;

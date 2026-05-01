@@ -48,6 +48,8 @@ export default function ImportPage() {
   const [importError, setImportError] = useState<string | null>(null);
   const [teamResult, setTeamResult] = useState<TeamImportResult | null>(null);
   const [teamError, setTeamError] = useState<string | null>(null);
+  const [poolResult, setPoolResult] = useState<{ added: number; updated: number; notFound: number; errors: string[] } | null>(null);
+  const [poolError, setPoolError] = useState<string | null>(null);
 
   const { data: tournaments = [], isLoading: loadingTournaments, error: tournamentError, refetch } = useQuery<TournamentInfo[]>({
     queryKey: ["admin-tournaments"],
@@ -83,6 +85,27 @@ export default function ImportPage() {
     onError: (e: Error) => {
       setImportError(e.message);
       setLastResult(null);
+    },
+  });
+
+  const poolSyncMutation = useMutation({
+    mutationFn: async (tournamentId: string) => {
+      const res = await fetch("/api/admin/tournaments/import/pool", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tournamentId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Ошибка синхронизации пула");
+      return data as { added: number; updated: number; notFound: number; errors: string[] };
+    },
+    onSuccess: (data) => {
+      setPoolResult(data);
+      setPoolError(null);
+    },
+    onError: (e: Error) => {
+      setPoolError(e.message);
+      setPoolResult(null);
     },
   });
 
@@ -266,6 +289,55 @@ export default function ImportPage() {
           {teamError && (
             <div style={{ marginTop: 12, padding: "8px 12px", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 6, fontSize: 12, color: "#f87171" }}>
               ❌ {teamError}
+            </div>
+          )}
+        </div>
+
+        {/* Step 4 — синхронизация пула замен из списка ожидания */}
+        <div className="card" style={{ padding: "16px 20px" }}>
+          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6, color: "var(--text-primary)" }}>
+            Шаг 4 — синхронизировать список ожидания (пул замен)
+          </div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 10 }}>
+            Читает игроков со статусом Bid и их номер в очереди из списка ожидания. Участники должны быть импортированы на шаге 2 заранее.
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <button
+              className="btn btn-sm btn-success"
+              disabled={!selectedId || poolSyncMutation.isPending}
+              onClick={() => selectedId && poolSyncMutation.mutate(selectedId)}
+            >
+              {poolSyncMutation.isPending ? "Синхронизация..." : "⏳ Синхронизировать пул"}
+            </button>
+            {!selectedId && <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Выберите турнир выше</span>}
+          </div>
+
+          {poolSyncMutation.isPending && (
+            <div style={{ marginTop: 12, padding: "8px 12px", background: "rgba(0,212,232,0.06)", border: "1px solid rgba(0,212,232,0.2)", borderRadius: 6, fontSize: 12, color: "var(--accent)" }}>
+              Загружаю список ожидания...
+            </div>
+          )}
+
+          {poolResult && (
+            <div style={{ marginTop: 12, padding: "10px 14px", background: "rgba(16,185,129,0.07)", border: "1px solid rgba(16,185,129,0.25)", borderRadius: 6, fontSize: 12 }}>
+              <div style={{ fontWeight: 700, color: "#34d399", marginBottom: 6 }}>✅ Синхронизация пула завершена</div>
+              <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                <span style={{ color: "#34d399" }}>Добавлено: <b>{poolResult.added}</b></span>
+                <span style={{ color: "#60a5fa" }}>Обновлено: <b>{poolResult.updated}</b></span>
+                {poolResult.notFound > 0 && <span style={{ color: "#fbbf24" }}>Не найдено: <b>{poolResult.notFound}</b></span>}
+              </div>
+              {poolResult.errors.length > 0 && (
+                <div style={{ marginTop: 8, color: "#f87171", fontSize: 11 }}>
+                  {poolResult.errors.slice(0, 5).map((e, i) => <div key={i}>{e}</div>)}
+                  {poolResult.errors.length > 5 && <div>... и ещё {poolResult.errors.length - 5}</div>}
+                </div>
+              )}
+            </div>
+          )}
+
+          {poolError && (
+            <div style={{ marginTop: 12, padding: "8px 12px", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 6, fontSize: 12, color: "#f87171" }}>
+              ❌ {poolError}
             </div>
           )}
         </div>

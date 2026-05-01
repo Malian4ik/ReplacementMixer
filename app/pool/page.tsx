@@ -18,6 +18,7 @@ const SOURCE_LABELS: Record<string, string> = {
   manual_add: "Ручное",
   returned: "Возврат",
   transferred_from_main_pool: "Перенос",
+  admin_queue: "Список ожидания",
 };
 
 export default function PoolPage() {
@@ -197,7 +198,7 @@ export default function PoolPage() {
             <table className="tbl">
               <thead>
                 <tr>
-                  {[...["#", "НИК", "MMR", "STAKE", "РОЛЬ", "КОШЕЛЁК", "МАТЧИ", "СТАТУС", "ИСТОЧНИК"], ...(canEdit ? ["ДЕЙСТВИЯ"] : [])].map(h => (
+                  {[...["#", "№ОЧ", "НИК", "MMR", "STAKE", "РОЛЬ", "КОШЕЛЁК", "МАТЧИ", "СТАТУС", "ИСТОЧНИК"], ...(canEdit ? ["ДЕЙСТВИЯ"] : [])].map(h => (
                     <th key={h}>{h}</th>
                   ))}
                 </tr>
@@ -207,6 +208,9 @@ export default function PoolPage() {
                   <tr key={e.id}>
                     <td style={{ color: "var(--text-muted)", fontSize: 12, fontWeight: 700, minWidth: 28 }}>
                       {visibleEntries.indexOf(e) + 1}
+                    </td>
+                    <td style={{ color: "var(--text-muted)", fontSize: 12, fontFamily: "monospace", minWidth: 40 }}>
+                      {e.adminQueuePosition ?? "—"}
                     </td>
                     <td style={{ fontWeight: 600 }}>{e.player.nick}</td>
                     <td>{e.player.mmr.toLocaleString()}</td>
@@ -249,7 +253,7 @@ export default function PoolPage() {
                 ))}
                 {visibleEntries.length === 0 && (
                   <tr>
-                    <td colSpan={9} style={{ textAlign: "center", color: "var(--text-muted)", padding: 32 }}>
+                    <td colSpan={10} style={{ textAlign: "center", color: "var(--text-muted)", padding: 32 }}>
                       Нет записей
                     </td>
                   </tr>

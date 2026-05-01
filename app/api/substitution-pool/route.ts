@@ -5,7 +5,7 @@ import { z } from "zod";
 
 const AddToPoolSchema = z.object({
   playerId: z.string(),
-  source: z.enum(["reduction", "manual_add", "returned", "transferred_from_main_pool"]),
+  source: z.enum(["reduction", "manual_add", "returned", "transferred_from_main_pool", "admin_queue"]),
   judgeName: z.string().optional(),
 });
 
@@ -17,6 +17,12 @@ export async function GET(req: NextRequest) {
     where,
     include: { player: true },
     orderBy: [{ joinTime: "asc" }],
+  });
+
+  entries.sort((a, b) => {
+    const aq = a.adminQueuePosition ?? 999999;
+    const bq = b.adminQueuePosition ?? 999999;
+    return aq !== bq ? aq - bq : a.joinTime.getTime() - b.joinTime.getTime();
   });
 
   const allTeams = await prisma.team.findMany({
