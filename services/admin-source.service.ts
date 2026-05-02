@@ -256,6 +256,16 @@ async function fetchParticipantDetail(uuid: string): Promise<ParticipantDetail> 
   }
 
   const userUuid = userMatch?.[1];
+
+  // Debug: log all field names on participant page (first 3 only)
+  if (_debugRoleMissCount < 3) {
+    if (!roleValue) {
+      _debugRoleMissCount++;
+      const fieldNames = [...new Set([...html.matchAll(/name="([^"]+)"/g)].map(m => m[1]).filter(n => !n.startsWith("csrfmiddleware")))];
+      console.log(`[fetchParticipantDetail] miss #${_debugRoleMissCount} fields:`, JSON.stringify(fieldNames.slice(0, 40)));
+    }
+  }
+
   return {
     qualifyRating: qrMatch?.[1] ? parseFloat(qrMatch[1]) : undefined,
     userUuid,
