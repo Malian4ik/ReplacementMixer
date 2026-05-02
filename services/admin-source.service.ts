@@ -265,9 +265,16 @@ async function fetchUserDetail(userUuid: string): Promise<UserDetail> {
   const ratingMatch = html.match(/name="rating"[^>]*value="([^"]*)"/);
 
   // preferred_roles is a checkbox group — find the first checked one
-  const checkedRoleMatch = html.match(
-    /name="preferred_roles"\s+value="([^"]*)"\s+[^>]*checked/
-  );
+  // Robust parsing: scan all <input> tags, check both attribute orderings
+  let checkedRoleValue: string | undefined;
+  for (const m of html.matchAll(/<input[^>]*>/gi)) {
+    const tag = m[0];
+    if (/name="preferred_roles"/i.test(tag) && /\bchecked\b/i.test(tag)) {
+      checkedRoleValue = tag.match(/value="([^"]*)"/i)?.[1];
+      if (checkedRoleValue) break;
+    }
+  }
+  const checkedRoleMatch = checkedRoleValue ? [null, checkedRoleValue] : null;
   const telegramMatch = html.match(/name="telegram"\s+[^>]*value="([^"]*)"/);
   const discordMatch = html.match(/name="discord_id"[^>]*value="([^"]*)"/);
   // eos_account is used as the player wallet in this platform
