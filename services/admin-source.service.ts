@@ -84,6 +84,7 @@ export interface AdminParticipant {
   nick: string;
   mmr?: number;
   mainRole?: number;
+  flexRole?: number;
   wallet?: string;
   telegramId?: string;
   discordId?: string;
@@ -288,6 +289,7 @@ const ROLE_MAP: Record<string, number> = {
 interface UserDetail {
   mmr: number | undefined;
   mainRole: number | undefined;
+  flexRole: number | undefined;
   telegramId: string | undefined;
   discordId: string | undefined;
   wallet: string | undefined;
@@ -337,46 +339,44 @@ async function fetchUserDetail(userUuid: string): Promise<UserDetail> {
   }
 
   // Try 4: readonly display — <div class="field-preferred_roles">...<div class="readonly">CARRY</div>
+  let rawRoleText: string | undefined;
   if (!checkedRoleValue) {
     const fieldBlock = html.match(/class="[^"]*field-preferred_roles[^"]*"[\s\S]{0,400}?(?:<div[^>]*class="[^"]*readonly[^"]*"[^>]*>([\s\S]*?)<\/div>|<p[^>]*>([\s\S]*?)<\/p>)/i);
     if (fieldBlock) {
-      const raw = (fieldBlock[1] ?? fieldBlock[2] ?? "").replace(/<[^>]+>/g, "").trim();
-      checkedRoleValue = raw.split(/[,\s]+/)[0].toUpperCase() || undefined;
+      rawRoleText = (fieldBlock[1] ?? fieldBlock[2] ?? "").replace(/<[^>]+>/g, "").trim();
+      checkedRoleValue = rawRoleText.split(/[^A-Z_]+/i)[0].toUpperCase() || undefined;
     }
   }
 
   // Try 5: role value appears anywhere in HTML as standalone word
   if (!checkedRoleValue) {
     for (const roleKey of Object.keys(ROLE_MAP)) {
-      const ctx = html.match(new RegExp(`.{0,80}\\b${roleKey}\\b.{0,80}`, "i"))?.[0]?.replace(/\s+/g, " ");
-      if (ctx) {
+      if (new RegExp(`\\b${roleKey}\\b`, "i").test(html)) {
         checkedRoleValue = roleKey;
+        // Collect all role keys found for flex extraction
+        rawRoleText = Object.keys(ROLE_MAP)
+          .filter(k => new RegExp(`\\b${k}\\b`, "i").test(html))
+          .join(" ");
         break;
       }
     }
   }
 
-  // Debug: first 1 user miss — log where each ROLE_MAP key appears in HTML
-  if (!checkedRoleValue && _debugUserFieldsCount < 1) {
-    _debugUserFieldsCount++;
-    for (const roleKey of Object.keys(ROLE_MAP)) {
-      const ctx = html.match(new RegExp(`.{0,80}\\b${roleKey}\\b.{0,80}`, "i"))?.[0]?.replace(/\s+/g, " ");
-      if (ctx) { console.log(`[fetchUserDetail] found "${roleKey}" in HTML:`, ctx); }
-    }
-    if (!Object.keys(ROLE_MAP).some(k => new RegExp(`\\b${k}\\b`, "i").test(html))) {
-      console.log(`[fetchUserDetail] NONE of ROLE_MAP keys found in HTML`);
-    }
+  // Extract flex role: second role key found after main role
+  let checkedFlexValue: string | undefined;
+  if (rawRoleText) {
+    const tokens = rawRoleText.toUpperCase().split(/[^A-Z_]+/).filter(t => ROLE_MAP[t]);
+    if (tokens.length >= 2) checkedFlexValue = tokens[1];
   }
 
-  const checkedRoleMatch = checkedRoleValue ? [null, checkedRoleValue] : null;
   const telegramMatch = html.match(/name="telegram"\s+[^>]*value="([^"]*)"/);
   const discordMatch = html.match(/name="discord_id"[^>]*value="([^"]*)"/);
-  // eos_account is used as the player wallet in this platform
   const eosMatch = html.match(/name="eos_account"[^>]*value="([^"]+)"/);
 
   return {
     mmr: ratingMatch?.[1] ? parseInt(ratingMatch[1], 10) : undefined,
-    mainRole: checkedRoleMatch?.[1] ? ROLE_MAP[checkedRoleMatch[1]] : undefined,
+    mainRole: checkedRoleValue ? ROLE_MAP[checkedRoleValue] : undefined,
+    flexRole: checkedFlexValue ? ROLE_MAP[checkedFlexValue] : undefined,
     telegramId: telegramMatch?.[1]?.trim() || undefined,
     discordId: discordMatch?.[1]?.trim() || undefined,
     wallet: eosMatch?.[1]?.trim() || undefined,
@@ -457,6 +457,7 @@ export async function fetchAllParticipants(
       qualifyRating: detail?.qualifyRating,
       mmr: user?.mmr ?? detail?.qualifyRating, // fallback: use qualifyRating as mmr
       mainRole: user?.mainRole ?? detail?.mainRole,
+      flexRole: user?.flexRole,
       telegramId: user?.telegramId,
       discordId: user?.discordId,
       wallet: user?.wallet || detail?.wallet,
