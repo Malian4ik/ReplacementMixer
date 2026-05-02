@@ -245,6 +245,8 @@ async function fetchParticipantDetail(uuid: string): Promise<ParticipantDetail> 
 
 // ─── User detail (mmr, role, telegram, discord) ───────────────────────────────
 
+let _debugRoleMissCount = 0;
+
 const ROLE_MAP: Record<string, number> = {
   CARRY: 1,
   MIDLANER: 2,
@@ -274,18 +276,43 @@ async function fetchUserDetail(userUuid: string): Promise<UserDetail> {
   // preferred_roles is a checkbox group — find the first checked one
   // Robust parsing: scan all <input> tags, check both attribute orderings
   let checkedRoleValue: string | undefined;
-  const allRoleInputs: string[] = [];
+
+  // Try 1: <input type="checkbox" name="preferred_roles" value="X" checked>
   for (const m of html.matchAll(/<input[^>]*>/gi)) {
     const tag = m[0];
-    if (/name="preferred_roles"/i.test(tag)) {
-      allRoleInputs.push(tag);
-      if (/\bchecked\b/i.test(tag)) {
-        checkedRoleValue = tag.match(/value="([^"]*)"/i)?.[1];
-        if (checkedRoleValue) break;
-      }
+    if (/name="preferred_roles"/i.test(tag) && /\bchecked\b/i.test(tag)) {
+      checkedRoleValue = tag.match(/value="([^"]*)"/i)?.[1];
+      if (checkedRoleValue) break;
     }
   }
-  console.log("[fetchUserDetail] preferred_roles inputs:", JSON.stringify(allRoleInputs), "checkedValue:", checkedRoleValue);
+
+  // Try 2: <select name="preferred_roles"><option value="X" selected>
+  if (!checkedRoleValue) {
+    const selectMatch = html.match(/<select[^>]*name="preferred_roles"[^>]*>([\s\S]*?)<\/select>/i);
+    if (selectMatch) {
+      const optMatch =
+        selectMatch[1].match(/<option[^>]*value="([^"]*)"[^>]*\bselected\b/i) ??
+        selectMatch[1].match(/<option[^>]*\bselected\b[^>]*value="([^"]*)"/i);
+      checkedRoleValue = optMatch?.[1];
+    }
+  }
+
+  // Try 3: Django FilteredSelectMultiple — selected values appear in the "_to" select
+  if (!checkedRoleValue) {
+    const toSelectMatch = html.match(/<select[^>]*name="preferred_roles_to"[^>]*>([\s\S]*?)<\/select>/i);
+    if (toSelectMatch) {
+      const firstOption = toSelectMatch[1].match(/<option[^>]*value="([^"]*)"/i);
+      checkedRoleValue = firstOption?.[1];
+    }
+  }
+
+  // Debug: log one snippet per import invocation when role not found
+  if (!checkedRoleValue && _debugRoleMissCount < 3) {
+    _debugRoleMissCount++;
+    const snippet = html.match(/.{0,30}preferred_roles.{0,250}/i)?.[0]?.replace(/\s+/g, " ");
+    console.log(`[fetchUserDetail] role miss #${_debugRoleMissCount}, snippet:`, snippet ?? "preferred_roles NOT IN PAGE");
+  }
+
   const checkedRoleMatch = checkedRoleValue ? [null, checkedRoleValue] : null;
   const telegramMatch = html.match(/name="telegram"\s+[^>]*value="([^"]*)"/);
   const discordMatch = html.match(/name="discord_id"[^>]*value="([^"]*)"/);
@@ -326,6 +353,7 @@ async function batchMap<T, R>(
 export async function fetchAllParticipants(
   tournamentId: string | number
 ): Promise<AdminParticipant[]> {
+  _debugRoleMissCount = 0; // reset per-import
   // 1. Collect all pages of participant list
   const rawList: RawListParticipant[] = [];
   let page = 1;
