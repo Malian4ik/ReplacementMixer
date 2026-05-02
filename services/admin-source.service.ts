@@ -291,7 +291,7 @@ async function fetchUserDetail(userUuid: string): Promise<UserDetail> {
     `${BASE}/admin/users/user/${userUuid}/change/`,
     { headers: makeHeaders() }
   );
-  if (!res.ok) return { mmr: undefined, mainRole: undefined, telegramId: undefined, discordId: undefined, wallet: undefined };
+  if (!res.ok) return { mmr: undefined, mainRole: undefined, flexRole: undefined, telegramId: undefined, discordId: undefined, wallet: undefined };
   const html = await res.text();
 
   const ratingMatch = html.match(/name="rating"[^>]*value="([^"]*)"/);
