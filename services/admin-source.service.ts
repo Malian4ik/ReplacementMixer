@@ -229,9 +229,16 @@ async function fetchParticipantDetail(uuid: string): Promise<ParticipantDetail> 
     html.match(/name="ton_wallet"[^>]*value="([^"]+)"/) ??
     html.match(/name="crypto_wallet"[^>]*value="([^"]+)"/);
 
+  const userUuid = userMatch?.[1];
+  if (!userUuid) {
+    // Log first few chars of html to help diagnose link pattern
+    const snippet = html.slice(0, 2000).replace(/\s+/g, " ");
+    const userLinks = [...html.matchAll(/href="\/admin\/[^"]*user[^"]*"/gi)].map(m => m[0]).slice(0, 5);
+    console.warn("[fetchParticipantDetail] userUuid not found. user-links found:", JSON.stringify(userLinks), "html snippet:", snippet.slice(0, 500));
+  }
   return {
     qualifyRating: qrMatch?.[1] ? parseFloat(qrMatch[1]) : undefined,
-    userUuid: userMatch?.[1],
+    userUuid,
     wallet: walletMatch?.[1]?.trim() || undefined,
   };
 }
@@ -267,13 +274,18 @@ async function fetchUserDetail(userUuid: string): Promise<UserDetail> {
   // preferred_roles is a checkbox group — find the first checked one
   // Robust parsing: scan all <input> tags, check both attribute orderings
   let checkedRoleValue: string | undefined;
+  const allRoleInputs: string[] = [];
   for (const m of html.matchAll(/<input[^>]*>/gi)) {
     const tag = m[0];
-    if (/name="preferred_roles"/i.test(tag) && /\bchecked\b/i.test(tag)) {
-      checkedRoleValue = tag.match(/value="([^"]*)"/i)?.[1];
-      if (checkedRoleValue) break;
+    if (/name="preferred_roles"/i.test(tag)) {
+      allRoleInputs.push(tag);
+      if (/\bchecked\b/i.test(tag)) {
+        checkedRoleValue = tag.match(/value="([^"]*)"/i)?.[1];
+        if (checkedRoleValue) break;
+      }
     }
   }
+  console.log("[fetchUserDetail] preferred_roles inputs:", JSON.stringify(allRoleInputs), "checkedValue:", checkedRoleValue);
   const checkedRoleMatch = checkedRoleValue ? [null, checkedRoleValue] : null;
   const telegramMatch = html.match(/name="telegram"\s+[^>]*value="([^"]*)"/);
   const discordMatch = html.match(/name="discord_id"[^>]*value="([^"]*)"/);
@@ -339,6 +351,12 @@ export async function fetchAllParticipants(
   }
 
   // 4. Merge everything
+  const withRole = rawList.filter((_, i) => {
+    const userUuid = details[i]?.userUuid;
+    return userUuid ? userDetailMap.get(userUuid)?.mainRole != null : false;
+  }).length;
+  console.log(`[fetchAllParticipants] total=${rawList.length} withUserUuid=${userUuids.filter(Boolean).length} withRole=${withRole}`);
+
   return rawList.map((raw, i) => {
     const detail = details[i];
     const userUuid = detail?.userUuid;
