@@ -26,6 +26,10 @@ export async function recalculateMatchStats(): Promise<{ totalMatches: number; p
     }
   }
 
+  console.log("[recalc] totalMatches:", allMatches.length);
+  console.log("[recalc] teamCounts:", JSON.stringify(Object.fromEntries(matchCountByTeam)));
+  console.log("[recalc] playerCounts:", JSON.stringify(Object.fromEntries(playerNewCount)));
+
   let updated = 0;
   for (const [playerId, count] of playerNewCount.entries()) {
     const r = await prisma.player.updateMany({ where: { id: playerId }, data: { matchesPlayed: count } });
