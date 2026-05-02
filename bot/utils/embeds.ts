@@ -247,3 +247,12 @@ export function buildCancelledEmbed(teamName: string): EmbedBuilder {
     .setDescription(`Поиск замены для команды **${teamName}** был отменён администратором.`)
     .setTimestamp();
 }
+
+export function buildNotNeededEmbed(teamName: string, awayTeamName?: string | null): EmbedBuilder {
+  const teams = awayTeamName ? `**${teamName}** vs **${awayTeamName}**` : `**${teamName}**`;
+  return new EmbedBuilder()
+    .setColor(0x546e7a as ColorResolvable)
+    .setTitle("✅ Замена не понадобилась")
+    .setDescription(`Поиск замены отменён. Составы команд ${teams} остались прежними.`)
+    .setTimestamp();
+}

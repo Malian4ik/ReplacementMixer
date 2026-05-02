@@ -82,6 +82,19 @@ client.once(Events.ClientReady, async (readyClient) => {
         log.info(`Detected manually-completed session with active wave ${wave.id} — processing immediately.`);
         await forceProcessWave(wave.id, readyClient);
       }
+
+      // 3. Clean up Discord for cancelled sessions
+      const cancelledWaves = await prisma.substitutionWave.findMany({
+        where: {
+          status: "Active",
+          session: { status: "Cancelled" },
+        },
+        select: { id: true },
+      });
+      for (const wave of cancelledWaves) {
+        log.info(`Detected cancelled session with active wave ${wave.id} — cleaning up Discord.`);
+        await forceProcessWave(wave.id, readyClient);
+      }
     } catch (err) {
       log.error("Session polling error", err);
     }

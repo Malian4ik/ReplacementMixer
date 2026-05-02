@@ -22,6 +22,7 @@ import {
   buildRePingEmbed,
   buildCompletionEmbed,
   buildExhaustedEmbed,
+  buildNotNeededEmbed,
   type CompletionWinner,
 } from "@/bot/utils/embeds";
 import { resolveToNumericId } from "@/bot/utils/discord-resolve";
@@ -38,6 +39,9 @@ const completionTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 /** waveId → array of re-ping setTimeout handles (fires at t=5/10/15 min). */
 const rePingTimers = new Map<string, ReturnType<typeof setTimeout>[]>();
+
+/** waveId → list of sent re-ping message IDs (for cleanup on completion/cancel). */
+const rePingMessageIds = new Map<string, string[]>();
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
@@ -195,7 +199,10 @@ async function sendRePing(
   });
 
   try {
-    await channel.send({ content: mentions || undefined, embeds: [embed] });
+    const msg = await channel.send({ content: mentions || undefined, embeds: [embed] });
+    const existing = rePingMessageIds.get(waveId) ?? [];
+    existing.push(msg.id);
+    rePingMessageIds.set(waveId, existing);
   } catch (err) {
     log.error("Failed to send re-ping message", err);
   }
@@ -222,8 +229,15 @@ async function processWaveCompletion(waveId: string, client: Client): Promise<vo
 
   const { session } = wave;
 
-  // Session may have been manually completed via website
+  // Session may have been manually completed or cancelled via website
   if (session.status !== "Active") {
+    if (session.status === "Cancelled") {
+      const awayTeamName = (session as typeof session & { awayTeamName?: string | null }).awayTeamName;
+      await postNotNeededMessage({ channelId: session.channelId, teamName: session.teamName, awayTeamName }, client);
+      await deleteWaveMessage(wave, client);
+      await deleteRePingMessages(waveId, session.channelId, client);
+    }
+
     if (session.status === "Completed") {
       // Post ALL assigned slots (not just session.selectedPlayerId which is only the last one)
       const sessionSlots = await prisma.substitutionSlot.findMany({
@@ -288,6 +302,7 @@ async function processWaveCompletion(waveId: string, client: Client): Promise<vo
         await postCompletionMessage(session, completionWinners, client);
       }
       await deleteWaveMessage(wave, client);
+      await deleteRePingMessages(waveId, session.channelId, client);
     }
     return;
   }
@@ -477,6 +492,7 @@ async function processWaveCompletion(waveId: string, client: Client): Promise<vo
   await markSessionCompleted(session.id, firstWinner.playerId, firstWinner.poolEntryId);
 
   await deleteWaveMessage(wave, client);
+  await deleteRePingMessages(waveId, session.channelId, client);
   await postCompletionMessage(session, assignedWinners, client);
 
   log.info(
@@ -616,6 +632,19 @@ async function postSingleWinnerMessage(
   }
 }
 
+async function postNotNeededMessage(
+  session: { channelId: string; teamName: string; awayTeamName?: string | null },
+  client: Client
+): Promise<void> {
+  const channel = await getTextChannel(session.channelId, client);
+  if (!channel) return;
+  try {
+    await channel.send({ embeds: [buildNotNeededEmbed(session.teamName, session.awayTeamName)] });
+  } catch (err) {
+    log.error("Failed to send not-needed message", err);
+  }
+}
+
 async function postExhaustedMessage(
   session: { channelId: string; teamName: string },
   client: Client
@@ -664,6 +693,22 @@ function cancelRePingTimers(waveId: string): void {
   if (timers) {
     for (const t of timers) clearTimeout(t);
     rePingTimers.delete(waveId);
+  }
+}
+
+async function deleteRePingMessages(waveId: string, channelId: string, client: Client): Promise<void> {
+  const ids = rePingMessageIds.get(waveId);
+  if (!ids || ids.length === 0) return;
+  rePingMessageIds.delete(waveId);
+  const channel = await getTextChannel(channelId, client);
+  if (!channel) return;
+  for (const msgId of ids) {
+    try {
+      const msg = await channel.messages.fetch(msgId);
+      await msg.delete();
+    } catch {
+      log.debug(`Could not delete re-ping message ${msgId}`);
+    }
   }
 }
 
