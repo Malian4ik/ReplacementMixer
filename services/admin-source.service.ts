@@ -336,6 +336,15 @@ async function fetchUserDetail(userUuid: string): Promise<UserDetail> {
     }
   }
 
+  // Try 4: readonly display — <div class="field-preferred_roles">...<div class="readonly">CARRY</div>
+  if (!checkedRoleValue) {
+    const fieldBlock = html.match(/class="[^"]*field-preferred_roles[^"]*"[\s\S]{0,400}?(?:<div[^>]*class="[^"]*readonly[^"]*"[^>]*>([\s\S]*?)<\/div>|<p[^>]*>([\s\S]*?)<\/p>)/i);
+    if (fieldBlock) {
+      const raw = (fieldBlock[1] ?? fieldBlock[2] ?? "").replace(/<[^>]+>/g, "").trim();
+      checkedRoleValue = raw.split(/[,\s]+/)[0].toUpperCase() || undefined;
+    }
+  }
+
   // Debug: log all field-* CSS classes (covers readonly fields too) for first 1 user
   if (!checkedRoleValue && _debugUserFieldsCount < 1) {
     _debugUserFieldsCount++;
