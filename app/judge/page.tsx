@@ -447,7 +447,7 @@ export default function JudgePage() {
                       {isSel ? "✓" : ""}
                     </span>
                     <span style={{ fontWeight: 600 }}>{player.nick}</span>
-                    <span style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 400 }}>{player.mmr.toLocaleString()}</span>
+                    <span style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 400 }}>R{player.role} · {player.mmr.toLocaleString()}</span>
                   </span>
                   <span style={{ fontSize: 11, color: player.wallet ? "var(--accent)" : "var(--text-muted)", fontFamily: "monospace", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {player.wallet ?? "—"}
