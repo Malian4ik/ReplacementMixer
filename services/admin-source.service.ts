@@ -345,11 +345,27 @@ async function fetchUserDetail(userUuid: string): Promise<UserDetail> {
     }
   }
 
-  // Debug: log all field-* CSS classes (covers readonly fields too) for first 1 user
+  // Try 5: role value appears anywhere in HTML as standalone word
+  if (!checkedRoleValue) {
+    for (const roleKey of Object.keys(ROLE_MAP)) {
+      const ctx = html.match(new RegExp(`.{0,80}\\b${roleKey}\\b.{0,80}`, "i"))?.[0]?.replace(/\s+/g, " ");
+      if (ctx) {
+        checkedRoleValue = roleKey;
+        break;
+      }
+    }
+  }
+
+  // Debug: first 1 user miss — log where each ROLE_MAP key appears in HTML
   if (!checkedRoleValue && _debugUserFieldsCount < 1) {
     _debugUserFieldsCount++;
-    const fieldClasses = [...new Set([...html.matchAll(/class="[^"]*field-([a-z0-9_]+)[^"]*"/gi)].map(m => m[1]))];
-    console.log(`[fetchUserDetail] field-* classes:`, JSON.stringify(fieldClasses.slice(0, 60)));
+    for (const roleKey of Object.keys(ROLE_MAP)) {
+      const ctx = html.match(new RegExp(`.{0,80}\\b${roleKey}\\b.{0,80}`, "i"))?.[0]?.replace(/\s+/g, " ");
+      if (ctx) { console.log(`[fetchUserDetail] found "${roleKey}" in HTML:`, ctx); }
+    }
+    if (!Object.keys(ROLE_MAP).some(k => new RegExp(`\\b${k}\\b`, "i").test(html))) {
+      console.log(`[fetchUserDetail] NONE of ROLE_MAP keys found in HTML`);
+    }
   }
 
   const checkedRoleMatch = checkedRoleValue ? [null, checkedRoleValue] : null;
