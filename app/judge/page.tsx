@@ -309,6 +309,23 @@ export default function JudgePage() {
     },
   });
 
+  const cancelSlotMutation = useMutation({
+    mutationFn: ({ slotId }: { slotId: string }) =>
+      fetch("/api/judge/cancel-slot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slotId, judgeName: judgeName.trim() }),
+      }).then(async (r) => {
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error ?? "Ошибка");
+        return d;
+      }),
+    onSuccess: () => {
+      refetchMatchSession();
+      refetchActiveSession();
+    },
+  });
+
   const directAssignMutation = useMutation({
     mutationFn: ({ poolEntryId, teamId, teamName, replacedPlayerId, neededRole }: {
       poolEntryId: string; teamId: string; teamName: string;
@@ -591,16 +608,38 @@ export default function JudgePage() {
                         const teamLabel = isMatchSession ? (slot.slotTeamName ?? session.teamName) : null;
                         const filled = !!slot.assignedPlayerId;
                         return (
-                          <div key={slot.id} style={{
-                            padding: "2px 8px", borderRadius: 4, fontSize: 10, fontWeight: 600,
-                            background: filled ? "rgba(16,185,129,0.12)" : "rgba(239,68,68,0.08)",
-                            border: `1px solid ${filled ? "rgba(16,185,129,0.35)" : "rgba(239,68,68,0.3)"}`,
-                            color: filled ? "#34d399" : "#f87171",
-                          }}>
-                            {filled ? "✓" : "○"}{" "}
-                            {teamLabel && <span style={{ color: "var(--text-muted)", marginRight: 3 }}>{teamLabel} ·</span>}
-                            {roleLabel(slot.neededRole)}
-                            {slot.replacedPlayerNick && <span style={{ color: "var(--text-muted)", marginLeft: 3 }}>({slot.replacedPlayerNick})</span>}
+                          <div key={slot.id} style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                            <div style={{
+                              padding: "2px 8px", borderRadius: 4, fontSize: 10, fontWeight: 600,
+                              background: filled ? "rgba(16,185,129,0.12)" : "rgba(239,68,68,0.08)",
+                              border: `1px solid ${filled ? "rgba(16,185,129,0.35)" : "rgba(239,68,68,0.3)"}`,
+                              color: filled ? "#34d399" : "#f87171",
+                            }}>
+                              {filled ? "✓" : "○"}{" "}
+                              {teamLabel && <span style={{ color: "var(--text-muted)", marginRight: 3 }}>{teamLabel} ·</span>}
+                              {roleLabel(slot.neededRole)}
+                              {slot.replacedPlayerNick && <span style={{ color: "var(--text-muted)", marginLeft: 3 }}>({slot.replacedPlayerNick})</span>}
+                            </div>
+                            {!filled && judgeName.trim() && session.slots.length > 1 && (
+                              <button
+                                title="Закрыть слот — замена не нужна"
+                                disabled={cancelSlotMutation.isPending}
+                                onClick={() => {
+                                  const label = `${teamLabel ? teamLabel + " · " : ""}${roleLabel(slot.neededRole)}${slot.replacedPlayerNick ? ` (${slot.replacedPlayerNick})` : ""}`;
+                                  if (confirm(`Закрыть слот "${label}"? Замена для него не потребуется.`)) {
+                                    cancelSlotMutation.mutate({ slotId: slot.id });
+                                  }
+                                }}
+                                style={{
+                                  fontSize: 10, padding: "1px 5px", borderRadius: 3, lineHeight: 1,
+                                  border: "1px solid rgba(239,68,68,0.35)",
+                                  background: "rgba(239,68,68,0.08)",
+                                  color: "#f87171", cursor: "pointer",
+                                }}
+                              >
+                                ✕
+                              </button>
+                            )}
                           </div>
                         );
                       })}
