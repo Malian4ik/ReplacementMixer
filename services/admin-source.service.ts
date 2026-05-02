@@ -257,13 +257,11 @@ async function fetchParticipantDetail(uuid: string): Promise<ParticipantDetail> 
 
   const userUuid = userMatch?.[1];
 
-  // Debug: log all field names on participant page (first 3 only)
-  if (_debugRoleMissCount < 3) {
-    if (!roleValue) {
-      _debugRoleMissCount++;
-      const fieldNames = [...new Set([...html.matchAll(/name="([^"]+)"/g)].map(m => m[1]).filter(n => !n.startsWith("csrfmiddleware")))];
-      console.log(`[fetchParticipantDetail] miss #${_debugRoleMissCount} fields:`, JSON.stringify(fieldNames.slice(0, 40)));
-    }
+  // Debug: log all field-* CSS classes for first 1 participant miss
+  if (!roleValue && _debugRoleMissCount < 1) {
+    _debugRoleMissCount++;
+    const fieldClasses = [...new Set([...html.matchAll(/class="[^"]*field-([a-z0-9_]+)[^"]*"/gi)].map(m => m[1]))];
+    console.log(`[fetchParticipantDetail] field-* classes:`, JSON.stringify(fieldClasses.slice(0, 60)));
   }
 
   return {
@@ -338,14 +336,11 @@ async function fetchUserDetail(userUuid: string): Promise<UserDetail> {
     }
   }
 
-  // Debug: log all field names on user page when role not found (first 2 users only)
-  if (!checkedRoleValue && _debugUserFieldsCount < 2) {
+  // Debug: log all field-* CSS classes (covers readonly fields too) for first 1 user
+  if (!checkedRoleValue && _debugUserFieldsCount < 1) {
     _debugUserFieldsCount++;
-    const fieldNames = [...new Set([...html.matchAll(/name="([^"]+)"/g)].map(m => m[1]).filter(n => !n.startsWith("csrfmiddleware")))];
-    console.log(`[fetchUserDetail] miss #${_debugUserFieldsCount} fields:`, JSON.stringify(fieldNames.slice(0, 50)));
-    // Also look for any role-like text
-    const roleSnippet = html.match(/.{0,30}(role|carry|midlaner|offlaner|support|position|роль).{0,100}/i)?.[0]?.replace(/\s+/g, " ");
-    if (roleSnippet) console.log(`[fetchUserDetail] role-text snippet:`, roleSnippet);
+    const fieldClasses = [...new Set([...html.matchAll(/class="[^"]*field-([a-z0-9_]+)[^"]*"/gi)].map(m => m[1]))];
+    console.log(`[fetchUserDetail] field-* classes:`, JSON.stringify(fieldClasses.slice(0, 60)));
   }
 
   const checkedRoleMatch = checkedRoleValue ? [null, checkedRoleValue] : null;
