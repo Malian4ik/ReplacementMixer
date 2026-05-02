@@ -254,6 +254,15 @@ async function processWaveCompletion(waveId: string, client: Client): Promise<vo
         const player = await prisma.player.findUnique({ where: { id: slot.assignedPlayerId! } });
         if (!player) continue;
 
+        let slotReplacedMmr: number = session.replacedPlayerMmr ?? 0;
+        if (slot.replacedPlayerId) {
+          const replacedPlayer = await prisma.player.findUnique({
+            where: { id: slot.replacedPlayerId },
+            select: { mmr: true },
+          });
+          if (replacedPlayer) slotReplacedMmr = replacedPlayer.mmr;
+        }
+
         let computedSubScore = 0;
         try {
           if (slot.assignedPoolEntryId) {
@@ -267,7 +276,7 @@ async function processWaveCompletion(waveId: string, client: Client): Promise<vo
                 {
                   neededRole: slot.neededRole as RoleNumber,
                   currentTeamAvgMmr: session.currentTeamAvgMmr,
-                  replacedPlayerMmr: session.replacedPlayerMmr,
+                  replacedPlayerMmr: slotReplacedMmr,
                   currentPlayerCount: session.currentPlayerCount,
                   targetAvgMmr: session.targetAvgMmr,
                   maxDeviation: session.maxDeviation,

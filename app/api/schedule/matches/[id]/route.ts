@@ -30,7 +30,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       await sendTelegramMessage(
         `❌ Тех. поражение | Тур ${match.round}\n${match.homeTeam} vs ${match.awayTeam}\nТех. луз: ${techLossTeam} | Победитель: ${winner}${judgeName ? `\nСудья: ${judgeName}` : ""}${comment ? `\nКомментарий: ${comment}` : ""}`
       );
-      recalculateMatchStats().catch(() => {});
+      await recalculateMatchStats().catch(() => {});
 
     } else if (action === "postpone") {
       // Mark current match as Postponed
@@ -93,7 +93,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       });
       const msg = await buildMatchCompletionMessage(match);
       await sendTelegramMessage(msg).catch(() => {});
-      recalculateMatchStats().catch(() => {});
+      await recalculateMatchStats().catch(() => {});
     } else {
       return NextResponse.json({ error: "Неизвестное действие" }, { status: 400 });
     }
