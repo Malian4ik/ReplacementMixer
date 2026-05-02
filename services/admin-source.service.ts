@@ -258,13 +258,6 @@ async function fetchParticipantDetail(uuid: string): Promise<ParticipantDetail> 
 
   const userUuid = userMatch?.[1];
 
-  // Debug: log all field-* CSS classes for first 1 participant miss
-  if (!roleValue && _debugRoleMissCount < 1) {
-    _debugRoleMissCount++;
-    const fieldClasses = [...new Set([...html.matchAll(/class="[^"]*field-([a-z0-9_]+)[^"]*"/gi)].map(m => m[1]))];
-    console.log(`[fetchParticipantDetail] field-* classes:`, JSON.stringify(fieldClasses.slice(0, 60)));
-  }
-
   return {
     qualifyRating: qrMatch?.[1] ? parseFloat(qrMatch[1]) : undefined,
     userUuid,
@@ -275,8 +268,6 @@ async function fetchParticipantDetail(uuid: string): Promise<ParticipantDetail> 
 
 // ─── User detail (mmr, role, telegram, discord) ───────────────────────────────
 
-let _debugRoleMissCount = 0;
-let _debugUserFieldsCount = 0;
 
 const ROLE_MAP: Record<string, number> = {
   CARRY: 1,
@@ -408,8 +399,6 @@ async function batchMap<T, R>(
 export async function fetchAllParticipants(
   tournamentId: string | number
 ): Promise<AdminParticipant[]> {
-  _debugRoleMissCount = 0; // reset per-import
-  _debugUserFieldsCount = 0;
   // 1. Collect all pages of participant list
   const rawList: RawListParticipant[] = [];
   let page = 1;
@@ -435,14 +424,6 @@ export async function fetchAllParticipants(
   }
 
   // 4. Merge everything
-  const withRole = rawList.filter((_, i) => {
-    const detail = details[i];
-    const userUuid = detail?.userUuid;
-    return (userUuid ? userDetailMap.get(userUuid)?.mainRole : undefined) != null
-      || detail?.mainRole != null;
-  }).length;
-  console.log(`[fetchAllParticipants] total=${rawList.length} withUserUuid=${userUuids.filter(Boolean).length} withRole=${withRole}`);
-
   return rawList.map((raw, i) => {
     const detail = details[i];
     const userUuid = detail?.userUuid;
