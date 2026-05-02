@@ -209,6 +209,7 @@ interface ParticipantDetail {
   qualifyRating: number | undefined;
   userUuid: string | undefined;
   wallet: string | undefined;
+  mainRole: number | undefined;
 }
 
 async function fetchParticipantDetail(uuid: string): Promise<ParticipantDetail> {
@@ -216,7 +217,7 @@ async function fetchParticipantDetail(uuid: string): Promise<ParticipantDetail> 
     `${BASE}/admin/tournaments/participant/${uuid}/change/`,
     { headers: makeHeaders() }
   );
-  if (!res.ok) return { qualifyRating: undefined, userUuid: undefined, wallet: undefined };
+  if (!res.ok) return { qualifyRating: undefined, userUuid: undefined, wallet: undefined, mainRole: undefined };
   const html = await res.text();
 
   const qrMatch = html.match(/name="qualify_rating"[^>]*value="([^"]*)"/);
@@ -229,17 +230,37 @@ async function fetchParticipantDetail(uuid: string): Promise<ParticipantDetail> 
     html.match(/name="ton_wallet"[^>]*value="([^"]+)"/) ??
     html.match(/name="crypto_wallet"[^>]*value="([^"]+)"/);
 
-  const userUuid = userMatch?.[1];
-  if (!userUuid) {
-    // Log first few chars of html to help diagnose link pattern
-    const snippet = html.slice(0, 2000).replace(/\s+/g, " ");
-    const userLinks = [...html.matchAll(/href="\/admin\/[^"]*user[^"]*"/gi)].map(m => m[0]).slice(0, 5);
-    console.warn("[fetchParticipantDetail] userUuid not found. user-links found:", JSON.stringify(userLinks), "html snippet:", snippet.slice(0, 500));
+  // Extract preferred_roles from participant page (checkbox, select, or FilteredSelectMultiple)
+  let roleValue: string | undefined;
+  for (const m of html.matchAll(/<input[^>]*>/gi)) {
+    const tag = m[0];
+    if (/name="preferred_roles"/i.test(tag) && /\bchecked\b/i.test(tag)) {
+      roleValue = tag.match(/value="([^"]*)"/i)?.[1];
+      if (roleValue) break;
+    }
   }
+  if (!roleValue) {
+    const selectMatch = html.match(/<select[^>]*name="preferred_roles"[^>]*>([\s\S]*?)<\/select>/i);
+    if (selectMatch) {
+      const optMatch =
+        selectMatch[1].match(/<option[^>]*value="([^"]*)"[^>]*\bselected\b/i) ??
+        selectMatch[1].match(/<option[^>]*\bselected\b[^>]*value="([^"]*)"/i);
+      roleValue = optMatch?.[1];
+    }
+  }
+  if (!roleValue) {
+    const toSelectMatch = html.match(/<select[^>]*name="preferred_roles_to"[^>]*>([\s\S]*?)<\/select>/i);
+    if (toSelectMatch) {
+      roleValue = toSelectMatch[1].match(/<option[^>]*value="([^"]*)"/i)?.[1];
+    }
+  }
+
+  const userUuid = userMatch?.[1];
   return {
     qualifyRating: qrMatch?.[1] ? parseFloat(qrMatch[1]) : undefined,
     userUuid,
     wallet: walletMatch?.[1]?.trim() || undefined,
+    mainRole: roleValue ? ROLE_MAP[roleValue] : undefined,
   };
 }
 
@@ -306,12 +327,7 @@ async function fetchUserDetail(userUuid: string): Promise<UserDetail> {
     }
   }
 
-  // Debug: log one snippet per import invocation when role not found
-  if (!checkedRoleValue && _debugRoleMissCount < 3) {
-    _debugRoleMissCount++;
-    const snippet = html.match(/.{0,30}preferred_roles.{0,250}/i)?.[0]?.replace(/\s+/g, " ");
-    console.log(`[fetchUserDetail] role miss #${_debugRoleMissCount}, snippet:`, snippet ?? "preferred_roles NOT IN PAGE");
-  }
+  // (role is now read from participant page; user page may not have it)
 
   const checkedRoleMatch = checkedRoleValue ? [null, checkedRoleValue] : null;
   const telegramMatch = html.match(/name="telegram"\s+[^>]*value="([^"]*)"/);
@@ -380,8 +396,10 @@ export async function fetchAllParticipants(
 
   // 4. Merge everything
   const withRole = rawList.filter((_, i) => {
-    const userUuid = details[i]?.userUuid;
-    return userUuid ? userDetailMap.get(userUuid)?.mainRole != null : false;
+    const detail = details[i];
+    const userUuid = detail?.userUuid;
+    return (userUuid ? userDetailMap.get(userUuid)?.mainRole : undefined) != null
+      || detail?.mainRole != null;
   }).length;
   console.log(`[fetchAllParticipants] total=${rawList.length} withUserUuid=${userUuids.filter(Boolean).length} withRole=${withRole}`);
 
@@ -398,7 +416,7 @@ export async function fetchAllParticipants(
       queuePosition: raw.queuePosition,
       qualifyRating: detail?.qualifyRating,
       mmr: user?.mmr ?? detail?.qualifyRating, // fallback: use qualifyRating as mmr
-      mainRole: user?.mainRole,
+      mainRole: user?.mainRole ?? detail?.mainRole,
       telegramId: user?.telegramId,
       discordId: user?.discordId,
       wallet: user?.wallet || detail?.wallet,
