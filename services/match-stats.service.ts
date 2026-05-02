@@ -14,11 +14,15 @@ export async function recalculateMatchStats(): Promise<{ totalMatches: number; p
     try {
       await adminLogin();
       const matches = await fetchTournamentScheduleData(adminTournament.externalId);
+      // Use tournament startDate as cutoff, fallback to 2026-05-01 for current season
+      const cutoff = adminTournament.startDate ?? new Date("2026-05-01T00:00:00Z");
       const completedMatches = matches.filter(m => {
         const s = (m.adminStatus ?? "").toLowerCase();
-        return s && s !== "pending" && s !== "scheduled" && s !== "запланирован";
+        if (!s || s === "pending" || s === "scheduled" || s === "запланирован") return false;
+        if (!m.scheduledAt || m.scheduledAt < cutoff) return false;
+        return true;
       });
-      console.log("[recalc] admin matches total:", matches.length, "non-pending:", completedMatches.length,
+      console.log("[recalc] admin matches total:", matches.length, "non-pending after", cutoff.toISOString(), ":", completedMatches.length,
         "statuses:", [...new Set(completedMatches.map(m => m.adminStatus))]);
       for (const m of completedMatches) {
         if (!m.homeTeam || !m.awayTeam) continue;
