@@ -68,8 +68,6 @@ export async function importTournamentParticipants(
   });
 
   const participants = await fetchAllParticipants(externalTournamentId);
-  const withFlex = participants.filter(p => p.flexRole != null).length;
-  console.log(`[import] participants=${participants.length} withFlex=${withFlex} sample flexRoles:`, participants.slice(0, 5).map(p => `${p.nick}:main=${p.mainRole}:flex=${p.flexRole}`));
 
   let created = 0;
   let updated = 0;
