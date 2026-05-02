@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { recalculateMatchStats } from "./match-stats.service";
 import {
   adminLogin,
   fetchTournaments,
@@ -397,6 +398,42 @@ export async function importTournamentSchedule(
     };
   }
 
+  // Sync completed matches from admin: mark/create them locally before any deleteMany
+  const completedInAdmin = matches.filter(m => {
+    const s = (m.adminStatus ?? "").toLowerCase();
+    return s && s !== "pending" && s !== "scheduled" && s !== "запланирован";
+  });
+  console.log(
+    "[schedule-import] non-pending in admin:", completedInAdmin.length,
+    "statuses:", [...new Set(completedInAdmin.map(m => m.adminStatus))]
+  );
+  for (const m of completedInAdmin) {
+    if (!m.homeTeam || !m.awayTeam) continue;
+    const existing = await prisma.tournamentMatch.findFirst({
+      where: { homeTeam: m.homeTeam, awayTeam: m.awayTeam },
+    });
+    if (existing) {
+      if (!["Completed", "TechLoss", "Postponed"].includes(existing.status)) {
+        await prisma.tournamentMatch.update({
+          where: { id: existing.id },
+          data: { status: "Completed", updatedAt: new Date() },
+        });
+      }
+    } else if (m.scheduledAt) {
+      await prisma.tournamentMatch.create({
+        data: {
+          round: m.round || 1,
+          slot: 999,
+          homeTeam: m.homeTeam,
+          awayTeam: m.awayTeam,
+          scheduledAt: m.scheduledAt,
+          endsAt: m.endsAt ?? new Date(m.scheduledAt.getTime() + MATCH_MS),
+          status: "Completed",
+        },
+      });
+    }
+  }
+
   if (clearExisting) {
     // Only delete non-completed matches when clearing
     await prisma.tournamentMatch.deleteMany({ where: { status: { not: "Completed" } } });
@@ -463,6 +500,8 @@ export async function importTournamentSchedule(
       skipped++;
     }
   }
+
+  await recalculateMatchStats().catch(() => {});
 
   return { imported, skipped, errors };
 }
