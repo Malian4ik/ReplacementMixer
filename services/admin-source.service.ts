@@ -277,6 +277,7 @@ async function fetchParticipantDetail(uuid: string): Promise<ParticipantDetail> 
 // ─── User detail (mmr, role, telegram, discord) ───────────────────────────────
 
 let _debugRoleMissCount = 0;
+let _debugUserFieldsCount = 0;
 
 const ROLE_MAP: Record<string, number> = {
   CARRY: 1,
@@ -337,7 +338,15 @@ async function fetchUserDetail(userUuid: string): Promise<UserDetail> {
     }
   }
 
-  // (role is now read from participant page; user page may not have it)
+  // Debug: log all field names on user page when role not found (first 2 users only)
+  if (!checkedRoleValue && _debugUserFieldsCount < 2) {
+    _debugUserFieldsCount++;
+    const fieldNames = [...new Set([...html.matchAll(/name="([^"]+)"/g)].map(m => m[1]).filter(n => !n.startsWith("csrfmiddleware")))];
+    console.log(`[fetchUserDetail] miss #${_debugUserFieldsCount} fields:`, JSON.stringify(fieldNames.slice(0, 50)));
+    // Also look for any role-like text
+    const roleSnippet = html.match(/.{0,30}(role|carry|midlaner|offlaner|support|position|роль).{0,100}/i)?.[0]?.replace(/\s+/g, " ");
+    if (roleSnippet) console.log(`[fetchUserDetail] role-text snippet:`, roleSnippet);
+  }
 
   const checkedRoleMatch = checkedRoleValue ? [null, checkedRoleValue] : null;
   const telegramMatch = html.match(/name="telegram"\s+[^>]*value="([^"]*)"/);
@@ -380,6 +389,7 @@ export async function fetchAllParticipants(
   tournamentId: string | number
 ): Promise<AdminParticipant[]> {
   _debugRoleMissCount = 0; // reset per-import
+  _debugUserFieldsCount = 0;
   // 1. Collect all pages of participant list
   const rawList: RawListParticipant[] = [];
   let page = 1;
