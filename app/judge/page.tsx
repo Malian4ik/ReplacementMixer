@@ -41,6 +41,7 @@ interface ActiveSessionSlot {
   neededRole: number;
   replacedPlayerNick: string | null;
   replacedPlayerMmr?: number | null;
+  slotCurrentTeamAvgMmr?: number;
   slotTeamId: string | null;
   slotTeamName: string | null;
   assignedPlayerId: string | null;
@@ -55,6 +56,10 @@ interface ActiveSession {
   slotsNeeded: number;
   currentWave: number;
   status: string;
+  currentTeamAvgMmr: number;
+  targetAvgMmr: number;
+  maxDeviation: number;
+  currentPlayerCount: number;
   slots: ActiveSessionSlot[];
   waves: Array<{
     id: string;
@@ -67,7 +72,7 @@ interface ActiveSession {
       subScore: number | null;
       player: { id: string; nick: string; mmr: number; mainRole: number; flexRole: number | null };
     }>;
-    candidates: Array<{ player: { nick: string } }>;
+    candidates: Array<{ playerId: string; queuePosition: number; player: { nick: string } }>;
   }>;
 }
 
@@ -106,6 +111,30 @@ function slotFitLabel(fit: number): string {
   return "·";
 }
 
+function computeSlotSubScore(
+  player: { id: string; mmr: number; mainRole: number; flexRole: number | null },
+  slot: ActiveSessionSlot,
+  session: { currentTeamAvgMmr: number; targetAvgMmr: number; maxDeviation: number; currentPlayerCount: number },
+  queuePositions: Map<string, number>,
+  totalInQueue: number,
+  maxMmr: number
+): number {
+  const queuePos = queuePositions.get(player.id) ?? 0;
+  const queueNorm = totalInQueue > 0 && queuePos > 0 ? (totalInQueue - queuePos + 1) / totalInQueue : 0;
+  const mmrNorm = maxMmr > 0 ? player.mmr / maxMmr : 0;
+  const roleFit = player.mainRole === slot.neededRole ? 1.0 : player.flexRole === slot.neededRole ? 0.8 : 0.5;
+  const replacedMmr = slot.replacedPlayerMmr ?? 0;
+  const teamAvgMmr = slot.slotCurrentTeamAvgMmr ?? session.currentTeamAvgMmr;
+  const playerCount = session.currentPlayerCount;
+  const currentTotal = teamAvgMmr * playerCount;
+  const teamMmrAfter = replacedMmr === 0 && playerCount < 5
+    ? (currentTotal + player.mmr) / (playerCount + 1)
+    : (currentTotal - replacedMmr + player.mmr) / playerCount;
+  const maxDev = session.maxDeviation;
+  const balanceFactor = maxDev === 0 ? 1 : Math.max(0, 1 - Math.abs(teamMmrAfter - session.targetAvgMmr) / maxDev);
+  return (0.6 * queueNorm + 0.3 * mmrNorm + 0.1 * roleFit) * balanceFactor;
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function JudgePage() {
@@ -122,6 +151,8 @@ export default function JudgePage() {
   const [matchSearch, setMatchSearch] = useState<SearchState>({ pending: false, result: null, error: null });
   // slotId selected per respondent player: playerId → slotId
   const [slotPickMap, setSlotPickMap] = useState<Record<string, string>>({});
+  // Slot focused in the judge panel — scores are shown for this specific slot
+  const [focusedSlotId, setFocusedSlotId] = useState<string | null>(null);
 
   // ── Manual mode state (fallback) ──────────────────────────────────────────
   const [teamId, setTeamId] = useState("");
@@ -178,18 +209,28 @@ export default function JudgePage() {
     refetchInterval: 4000,
   });
 
-  // Auto-fill slotPickMap: for each new respondent pick the slot with the best roleFit
+  // Auto-fill slotPickMap: for each new respondent pick the slot with the best roleFit.
+  // Also clears stale mappings when a slot gets filled (so the next pick targets the remaining open slot).
   const _matchSession = matchSessionData?.session ?? null;
   const _activeMatchWave = _matchSession?.waves?.[0] ?? null;
+  const _openSlotsCount = _matchSession?.slots?.filter((s) => !s.assignedPlayerId).length ?? 0;
   useEffect(() => {
     if (!_matchSession) return;
     const openSlots = _matchSession.slots.filter((s) => !s.assignedPlayerId);
-    if (openSlots.length === 0) return;
+    const openSlotIds = new Set(openSlots.map((s) => s.id));
+    // Clear focused slot if it was just filled
+    setFocusedSlotId((prev) => (prev && !openSlotIds.has(prev) ? null : prev));
     const responses = _activeMatchWave?.responses ?? [];
     setSlotPickMap((prev) => {
       const next = { ...prev };
+      // Remove mappings that now point to filled slots
+      for (const [pid, sid] of Object.entries(next)) {
+        if (!openSlotIds.has(sid)) delete next[pid];
+      }
+      // Auto-fill players without a valid mapping
       responses.forEach((r) => {
         if (next[r.player.id]) return;
+        if (openSlots.length === 0) return;
         const best = openSlots
           .map((slot) => ({ slot, fit: roleFitScore(r.player.mainRole, r.player.flexRole, slot.neededRole) }))
           .sort((a, b) => b.fit - a.fit)[0];
@@ -197,7 +238,7 @@ export default function JudgePage() {
       });
       return next;
     });
-  }, [_activeMatchWave?.responses?.length, _matchSession?.slots?.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [_activeMatchWave?.responses?.length, _openSlotsCount]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
@@ -496,13 +537,13 @@ export default function JudgePage() {
           </div>
           <div style={{ width: 1, height: 30, background: "var(--border)" }} />
           <div>
-            <div style={{ fontSize: 10, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Причина замены</div>
+            <div style={{ fontSize: 10, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Причина замены *</div>
             <input
               value={comment}
               onChange={(e) => setComment(e.target.value)}
-              placeholder="Описание (необязательно)"
+              placeholder="Причина замены *"
               className="form-input"
-              style={{ width: 220, fontSize: 13, padding: "2px 8px", height: 28 }}
+              style={{ width: 220, fontSize: 13, padding: "2px 8px", height: 28, borderColor: comment.trim() ? undefined : "rgba(239,68,68,0.5)" }}
             />
           </div>
         </div>
@@ -588,6 +629,10 @@ export default function JudgePage() {
               const activeWave = session.waves?.[0] ?? null;
               const openSlots = session.slots.filter((s) => !s.assignedPlayerId);
               const isMatchSession = !!session.awayTeamName;
+              const focusedSlot = focusedSlotId ? openSlots.find((s) => s.id === focusedSlotId) ?? null : null;
+              const queuePositionMap = new Map(activeWave?.candidates?.map((c) => [c.playerId, c.queuePosition + 1]) ?? []);
+              const totalInQueue = activeWave?.candidates?.length ?? 0;
+              const maxMmrForScore = activeWave?.responses?.length ? Math.max(...activeWave.responses.map((r) => r.player.mmr), 1) : 1;
 
               return (
                 <div style={{ padding: "10px 14px", background: "rgba(88,101,242,0.08)", border: "1px solid rgba(88,101,242,0.25)", borderRadius: 7 }}>
@@ -609,15 +654,21 @@ export default function JudgePage() {
                       {session.slots.map((slot) => {
                         const teamLabel = isMatchSession ? (slot.slotTeamName ?? session.teamName) : null;
                         const filled = !!slot.assignedPlayerId;
+                        const isFocused = !filled && focusedSlotId === slot.id;
                         return (
                           <div key={slot.id} style={{ display: "flex", alignItems: "center", gap: 3 }}>
-                            <div style={{
-                              padding: "2px 8px", borderRadius: 4, fontSize: 10, fontWeight: 600,
-                              background: filled ? "rgba(16,185,129,0.12)" : "rgba(239,68,68,0.08)",
-                              border: `1px solid ${filled ? "rgba(16,185,129,0.35)" : "rgba(239,68,68,0.3)"}`,
-                              color: filled ? "#34d399" : "#f87171",
-                            }}>
-                              {filled ? "✓" : "○"}{" "}
+                            <div
+                              role={filled ? undefined : "button"}
+                              onClick={filled ? undefined : () => setFocusedSlotId((prev) => prev === slot.id ? null : slot.id)}
+                              style={{
+                                padding: "2px 8px", borderRadius: 4, fontSize: 10, fontWeight: 600,
+                                background: filled ? "rgba(16,185,129,0.12)" : isFocused ? "rgba(88,101,242,0.2)" : "rgba(239,68,68,0.08)",
+                                border: `1px solid ${filled ? "rgba(16,185,129,0.35)" : isFocused ? "rgba(88,101,242,0.7)" : "rgba(239,68,68,0.3)"}`,
+                                color: filled ? "#34d399" : isFocused ? "#7289da" : "#f87171",
+                                cursor: filled ? "default" : "pointer",
+                                userSelect: "none",
+                              }}>
+                              {filled ? "✓" : isFocused ? "◉" : "○"}{" "}
                               {teamLabel && <span style={{ color: "var(--text-muted)", marginRight: 3 }}>{teamLabel} ·</span>}
                               {roleLabel(slot.neededRole)}
                               {slot.replacedPlayerNick && <span style={{ color: "var(--text-muted)", marginLeft: 3 }}>({slot.replacedPlayerNick})</span>}
@@ -655,12 +706,26 @@ export default function JudgePage() {
                         {" · до "}
                         {new Date(activeWave.endsAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
                       </div>
+                      {focusedSlot && (
+                        <div style={{ fontSize: 10, color: "#7289da", marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
+                          <span>🎯</span>
+                          <span>Фокус: <b>{focusedSlot.slotTeamName ?? session.teamName} · {roleLabel(focusedSlot.neededRole)}</b>{focusedSlot.replacedPlayerNick ? ` (${focusedSlot.replacedPlayerNick})` : ""} — score пересчитан</span>
+                          <button onClick={() => setFocusedSlotId(null)} style={{ fontSize: 9, padding: "0 4px", borderRadius: 3, border: "1px solid rgba(88,101,242,0.4)", background: "transparent", color: "#7289da", cursor: "pointer", lineHeight: 1.6 }}>✕</button>
+                        </div>
+                      )}
                       {/* Scrollable responses list, sorted best→worst by subScore */}
                       <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 320, overflowY: "auto", paddingRight: 2 }}>
                         {[...activeWave.responses]
-                          .sort((a, b) => (b.subScore ?? 0) - (a.subScore ?? 0))
+                          .sort((a, b) => {
+                            const sa = focusedSlot ? computeSlotSubScore(a.player, focusedSlot, session, queuePositionMap, totalInQueue, maxMmrForScore) : (a.subScore ?? 0);
+                            const sb = focusedSlot ? computeSlotSubScore(b.player, focusedSlot, session, queuePositionMap, totalInQueue, maxMmrForScore) : (b.subScore ?? 0);
+                            return sb - sa;
+                          })
                           .map((r, idx) => {
-                          const currentSlotId = slotPickMap[r.player.id] ?? (openSlots[0]?.id ?? "");
+                          const currentSlotId = focusedSlot ? focusedSlotId! : (slotPickMap[r.player.id] ?? (openSlots[0]?.id ?? ""));
+                          const displayScore = focusedSlot
+                            ? computeSlotSubScore(r.player, focusedSlot, session, queuePositionMap, totalInQueue, maxMmrForScore)
+                            : r.subScore;
                           // Best slot for this player
                           const bestSlot = openSlots.length > 0
                             ? [...openSlots].sort((a, b) =>
@@ -674,9 +739,9 @@ export default function JudgePage() {
                             <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 8px", borderRadius: 4, background: idx === 0 ? "rgba(16,185,129,0.06)" : "rgba(0,0,0,0.25)", border: `1px solid ${idx === 0 ? "rgba(16,185,129,0.2)" : "rgba(88,101,242,0.15)"}` }}>
                               {/* Rank + score */}
                               <span style={{ fontSize: 10, color: "var(--text-muted)", flexShrink: 0, width: 14, textAlign: "center" }}>{idx + 1}</span>
-                              {r.subScore != null && (
-                                <span style={{ fontSize: 11, fontWeight: 700, color: scoreColor, fontFamily: "monospace", flexShrink: 0, minWidth: 38 }}>
-                                  {r.subScore.toFixed(3)}
+                              {displayScore != null && (
+                                <span style={{ fontSize: 11, fontWeight: 700, color: focusedSlot ? "#7289da" : scoreColor, fontFamily: "monospace", flexShrink: 0, minWidth: 38 }}>
+                                  {displayScore.toFixed(3)}
                                 </span>
                               )}
                               {/* Player info */}
@@ -719,8 +784,8 @@ export default function JudgePage() {
                               )}
                               {/* Assign button */}
                               <button
-                                style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, border: "1px solid rgba(16,185,129,0.4)", background: "rgba(16,185,129,0.1)", color: "#34d399", cursor: judgeName.trim() && openSlots.length > 0 ? "pointer" : "not-allowed", opacity: judgeName.trim() && openSlots.length > 0 ? 1 : 0.4, flexShrink: 0 }}
-                                disabled={!judgeName.trim() || pickResponderMutation.isPending || openSlots.length === 0}
+                                style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, border: "1px solid rgba(16,185,129,0.4)", background: "rgba(16,185,129,0.1)", color: "#34d399", cursor: judgeName.trim() && comment.trim() && openSlots.length > 0 ? "pointer" : "not-allowed", opacity: judgeName.trim() && comment.trim() && openSlots.length > 0 ? 1 : 0.4, flexShrink: 0 }}
+                                disabled={!judgeName.trim() || !comment.trim() || pickResponderMutation.isPending || openSlots.length === 0}
                                 onClick={() => pickResponderMutation.mutate({
                                   sessionId: session.id,
                                   playerId: r.player.id,
@@ -758,7 +823,7 @@ export default function JudgePage() {
             {(() => {
               const hasSession = !!matchSessionData?.session;
               const hasSelected = selectedHome.size > 0 || selectedAway.size > 0;
-              const disabled = !hasSelected || !judgeName.trim() || matchSearch.pending || hasSession;
+              const disabled = !hasSelected || !judgeName.trim() || !comment.trim() || matchSearch.pending || hasSession;
               const totalSelected = selectedHome.size + selectedAway.size;
               return (
                 <button
@@ -842,6 +907,7 @@ export default function JudgePage() {
           poolEntries={poolEntries}
           targetAvgMmr={targetAvgMmr}
           judgeName={judgeName}
+          comment={comment}
           teamId={teamId}
           setTeamId={setTeamId}
           replacedPlayerId={replacedPlayerId}
@@ -873,7 +939,7 @@ export default function JudgePage() {
 // ── Manual Fallback Panel ─────────────────────────────────────────────────────
 
 function ManualFallback({
-  teams, poolEntries, targetAvgMmr, judgeName,
+  teams, poolEntries, targetAvgMmr, judgeName, comment,
   teamId, setTeamId, replacedPlayerId, setReplacedPlayerId,
   emptySlotRole, setEmptySlotRole,
   manualSearch, handleDiscordSearch,
@@ -885,6 +951,7 @@ function ManualFallback({
   poolEntries: SubstitutionPoolEntry[];
   targetAvgMmr: number;
   judgeName: string;
+  comment: string;
   teamId: string;
   setTeamId: (v: string) => void;
   replacedPlayerId: string;
@@ -1024,8 +1091,8 @@ function ManualFallback({
           {/* Discord search */}
           <div style={{ marginTop: "auto", paddingTop: 12, borderTop: "1px solid var(--border)" }}>
             <button
-              style={{ width: "100%", padding: "9px 0", borderRadius: 6, border: "1px solid rgba(88,101,242,0.4)", background: "rgba(88,101,242,0.08)", color: "rgba(88,101,242,0.9)", fontSize: 13, fontWeight: 700, cursor: "pointer", opacity: (!teamId || !replacedPlayerId || !judgeName.trim() || manualSearch.pending) ? 0.4 : 1 }}
-              disabled={!teamId || !replacedPlayerId || !judgeName.trim() || manualSearch.pending}
+              style={{ width: "100%", padding: "9px 0", borderRadius: 6, border: "1px solid rgba(88,101,242,0.4)", background: "rgba(88,101,242,0.08)", color: "rgba(88,101,242,0.9)", fontSize: 13, fontWeight: 700, cursor: "pointer", opacity: (!teamId || !replacedPlayerId || !judgeName.trim() || !comment.trim() || manualSearch.pending) ? 0.4 : 1 }}
+              disabled={!teamId || !replacedPlayerId || !judgeName.trim() || !comment.trim() || manualSearch.pending}
               onClick={handleDiscordSearch}
             >
               {manualSearch.pending ? "Запускаю..." : "🔍 Поиск в Discord"}
@@ -1056,8 +1123,8 @@ function ManualFallback({
                     <div key={r.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 8px", borderRadius: 4, background: "rgba(0,0,0,0.25)", marginBottom: 3 }}>
                       <span style={{ fontSize: 12 }}>{r.player.nick} <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{r.player.mmr.toLocaleString()}</span></span>
                       <button
-                        style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, border: "1px solid rgba(16,185,129,0.4)", background: "rgba(16,185,129,0.1)", color: "#34d399", cursor: judgeName.trim() ? "pointer" : "not-allowed", opacity: judgeName.trim() ? 1 : 0.5 }}
-                        disabled={!judgeName.trim() || pickPending}
+                        style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, border: "1px solid rgba(16,185,129,0.4)", background: "rgba(16,185,129,0.1)", color: "#34d399", cursor: judgeName.trim() && comment.trim() ? "pointer" : "not-allowed", opacity: judgeName.trim() && comment.trim() ? 1 : 0.5 }}
+                        disabled={!judgeName.trim() || !comment.trim() || pickPending}
                         onClick={() => onPickResponder(activeSession.id, r.player.id)}
                       >
                         Выбрать
@@ -1092,7 +1159,7 @@ function ManualFallback({
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
               {poolEntries.map((e, i) => {
-                const canAssign = !!(teamId && replacedPlayerId && judgeName.trim());
+                const canAssign = !!(teamId && replacedPlayerId && judgeName.trim() && comment.trim());
                 const selectedTeamObj = teams.find((t) => t.id === teamId);
                 const isEmptySlotLocal = replacedPlayerId === EMPTY_SLOT;
                 const replacedPlayerObj = selectedTeamObj?.players?.find((p) => p?.id === replacedPlayerId) ?? null;

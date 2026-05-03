@@ -41,9 +41,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Игрок не найден в активном пуле" }, { status: 404 });
   }
 
-  // Resolve slot info — use specific slot if provided, otherwise first open slot or session defaults
+  // Resolve slot info — use specific slot if provided (only if still open), otherwise first open slot
   let targetSlot = slotId
-    ? session.slots.find((s) => s.id === slotId) ?? null
+    ? (session.slots.find((s) => s.id === slotId && !s.assignedPlayerId)
+        ?? session.slots.find((s) => !s.assignedPlayerId)
+        ?? null)
     : session.slots.find((s) => !s.assignedPlayerId) ?? null;
 
   const teamId = (targetSlot as typeof targetSlot & { slotTeamId?: string | null } | null)?.slotTeamId ?? session.teamId;

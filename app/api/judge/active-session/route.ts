@@ -168,11 +168,27 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Enrich slots with replacedPlayerMmr for display in judge panel
+  // Enrich slots with replacedPlayerMmr and slotCurrentTeamAvgMmr for client-side scoring
   for (const slot of session.slots) {
     if (slot.replacedPlayerId) {
       const rp = await prisma.player.findUnique({ where: { id: slot.replacedPlayerId }, select: { mmr: true } });
       (slot as typeof slot & { replacedPlayerMmr?: number | null }).replacedPlayerMmr = rp?.mmr ?? null;
+    }
+    if (!slot.assignedPlayerId) {
+      const teamId = slot.slotTeamId ?? session.teamId;
+      const team = await prisma.team.findUnique({
+        where: { id: teamId },
+        select: { player1Id: true, player2Id: true, player3Id: true, player4Id: true, player5Id: true },
+      });
+      const playerIds = team
+        ? [team.player1Id, team.player2Id, team.player3Id, team.player4Id, team.player5Id].filter(Boolean) as string[]
+        : [];
+      const players = playerIds.length > 0
+        ? await prisma.player.findMany({ where: { id: { in: playerIds } }, select: { mmr: true } })
+        : [];
+      (slot as typeof slot & { slotCurrentTeamAvgMmr?: number }).slotCurrentTeamAvgMmr = players.length > 0
+        ? Math.round(players.reduce((s, p) => s + p.mmr, 0) / players.length)
+        : session.currentTeamAvgMmr;
     }
   }
 
