@@ -17,8 +17,12 @@ export function isReadyButton(customId: string): boolean {
  * - Replies ephemerally so other users don't see individual confirmations.
  */
 export async function handleReadyButton(interaction: ButtonInteraction): Promise<void> {
-  // Defer the reply immediately to avoid the 3-second timeout
-  await interaction.deferReply({ ephemeral: true });
+  try {
+    await interaction.deferReply({ ephemeral: true });
+  } catch {
+    // Interaction already expired or acknowledged (e.g. bot restarted mid-wave)
+    return;
+  }
 
   const waveId = interaction.customId.split(":")[1];
   const discordId = interaction.user.id;

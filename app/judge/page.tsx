@@ -748,6 +748,9 @@ export default function JudgePage() {
                               <span style={{ fontSize: 12, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                                 <b>{r.player.nick}</b>
                                 <span style={{ fontSize: 10, color: "var(--text-muted)", marginLeft: 6 }}>
+                                  {queuePositionMap.get(r.player.id) != null && (
+                                    <span style={{ color: "#facc15", fontWeight: 600, marginRight: 4 }}>#{queuePositionMap.get(r.player.id)}</span>
+                                  )}
                                   {r.player.mmr.toLocaleString()} · {roleLabel(r.player.mainRole)}
                                   {r.player.flexRole != null ? `/${roleLabel(r.player.flexRole)}` : ""}
                                 </span>
