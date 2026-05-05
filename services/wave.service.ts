@@ -270,14 +270,23 @@ export async function selectBestResponder(
 
   if (poolEntries.length === 0) return null;
 
-  const scored = scoreCandidates(poolEntries as unknown as SubstitutionPoolEntry[], {
-    neededRole: session.neededRole as RoleNumber,
-    currentTeamAvgMmr: session.currentTeamAvgMmr,
-    replacedPlayerMmr: session.replacedPlayerMmr,
-    currentPlayerCount: session.currentPlayerCount,
-    targetAvgMmr: session.targetAvgMmr,
-    maxDeviation: session.maxDeviation,
-  });
+  // Build queue position map from wave candidates (1-based for scoring)
+  const queuePositionsForScore = new Map(
+    wave.candidates.map((c) => [c.playerId, c.queuePosition + 1])
+  );
+
+  const scored = scoreCandidates(
+    poolEntries as unknown as SubstitutionPoolEntry[],
+    {
+      neededRole: session.neededRole as RoleNumber,
+      currentTeamAvgMmr: session.currentTeamAvgMmr,
+      replacedPlayerMmr: session.replacedPlayerMmr,
+      currentPlayerCount: session.currentPlayerCount,
+      targetAvgMmr: session.targetAvgMmr,
+      maxDeviation: session.maxDeviation,
+    },
+    queuePositionsForScore.size > 0 ? queuePositionsForScore : undefined
+  );
 
   // Tie-breakers: subScore desc → queuePosition asc → clickedAt asc
   const queuePos = new Map(wave.candidates.map((c) => [c.playerId, c.queuePosition]));
