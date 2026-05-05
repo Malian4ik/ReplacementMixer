@@ -465,7 +465,13 @@ export default function SchedulePage() {
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <button className="btn btn-ghost btn-sm" onClick={() => qc.invalidateQueries({ queryKey: ["schedule-matches"] })}>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={async () => {
+              await fetch("/api/cron/sync-schedule").catch(() => {});
+              qc.invalidateQueries({ queryKey: ["schedule-matches"] });
+            }}
+          >
             <RefreshCw size={12} /> Обновить
           </button>
           {isOwner && (
