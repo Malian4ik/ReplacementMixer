@@ -286,6 +286,7 @@ export default function SchedulePage() {
   const qc = useQueryClient();
 
   const [activeMatch, setActiveMatch] = useState<TournamentMatch | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [showGenerate, setShowGenerate] = useState(false);
   const [showClear, setShowClear] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
@@ -467,12 +468,16 @@ export default function SchedulePage() {
         <div style={{ display: "flex", gap: 8 }}>
           <button
             className="btn btn-ghost btn-sm"
+            disabled={isSyncing}
             onClick={async () => {
+              setIsSyncing(true);
               await fetch("/api/cron/sync-schedule").catch(() => {});
-              qc.invalidateQueries({ queryKey: ["schedule-matches"] });
+              await qc.invalidateQueries({ queryKey: ["schedule-matches"] });
+              setIsSyncing(false);
             }}
           >
-            <RefreshCw size={12} /> Обновить
+            <RefreshCw size={12} style={{ animation: isSyncing ? "spin 1s linear infinite" : undefined }} />
+            {isSyncing ? "Синхронизация..." : "Обновить"}
           </button>
           {isOwner && (
             <button className="btn btn-ghost btn-sm" onClick={() => setShowImport(true)}>
