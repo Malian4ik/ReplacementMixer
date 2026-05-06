@@ -1024,7 +1024,7 @@ function ManualFallback({
   };
 
   return (
-    <div style={{ flex: 1, overflow: "hidden", display: "grid", gridTemplateColumns: "280px 1fr", gap: 12, padding: "12px 16px" }}>
+    <div style={{ flex: 1, overflow: "hidden", display: "grid", gridTemplateColumns: "1fr 300px", gap: 12, padding: "12px 16px" }}>
 
       {/* Left: Context */}
       <div style={col}>
@@ -1122,18 +1122,37 @@ function ManualFallback({
                   <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 6 }}>
                     Откликнулись: {activeWave.responses.length}/{activeWave.candidates.length}
                   </div>
-                  {activeWave.responses.map((r) => (
-                    <div key={r.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 8px", borderRadius: 4, background: "rgba(0,0,0,0.25)", marginBottom: 3 }}>
-                      <span style={{ fontSize: 12 }}>{r.player.nick} <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{r.player.mmr.toLocaleString()}</span></span>
-                      <button
-                        style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, border: "1px solid rgba(16,185,129,0.4)", background: "rgba(16,185,129,0.1)", color: "#34d399", cursor: judgeName.trim() && comment.trim() ? "pointer" : "not-allowed", opacity: judgeName.trim() && comment.trim() ? 1 : 0.5 }}
-                        disabled={!judgeName.trim() || !comment.trim() || pickPending}
-                        onClick={() => onPickResponder(activeSession.id, r.player.id)}
-                      >
-                        Выбрать
-                      </button>
-                    </div>
-                  ))}
+                  {(() => {
+                    const queuePosMap = new Map(activeWave.candidates.map((c) => [c.playerId, c.queuePosition + 1]));
+                    const sorted = [...activeWave.responses].sort((a, b) => (b.subScore ?? 0) - (a.subScore ?? 0));
+                    return sorted.map((r, idx) => {
+                      const qPos = queuePosMap.get(r.player.id);
+                      const score = r.subScore;
+                      const scoreColor = score != null ? (score >= 0.7 ? "#34d399" : score >= 0.4 ? "#fbbf24" : "#f87171") : "var(--text-muted)";
+                      return (
+                        <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 8px", borderRadius: 4, background: idx === 0 ? "rgba(16,185,129,0.07)" : "rgba(0,0,0,0.25)", border: `1px solid ${idx === 0 ? "rgba(16,185,129,0.25)" : "var(--border)"}`, marginBottom: 3 }}>
+                          <span style={{ fontSize: 10, color: "var(--text-muted)", width: 14, textAlign: "center", flexShrink: 0 }}>{idx + 1}</span>
+                          {score != null && (
+                            <span style={{ fontSize: 11, fontWeight: 700, color: scoreColor, fontFamily: "monospace", minWidth: 38, flexShrink: 0 }}>{score.toFixed(3)}</span>
+                          )}
+                          <span style={{ flex: 1, fontSize: 12, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            <b>{r.player.nick}</b>
+                            <span style={{ fontSize: 10, color: "var(--text-muted)", marginLeft: 5 }}>
+                              {qPos != null && <span style={{ color: "#facc15", fontWeight: 600, marginRight: 3 }}>#{qPos}</span>}
+                              {r.player.mmr.toLocaleString()} · R{r.player.mainRole}
+                            </span>
+                          </span>
+                          <button
+                            style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, border: "1px solid rgba(16,185,129,0.4)", background: "rgba(16,185,129,0.1)", color: "#34d399", cursor: judgeName.trim() && comment.trim() ? "pointer" : "not-allowed", opacity: judgeName.trim() && comment.trim() ? 1 : 0.5, flexShrink: 0 }}
+                            disabled={!judgeName.trim() || !comment.trim() || pickPending}
+                            onClick={() => onPickResponder(activeSession.id, r.player.id)}
+                          >
+                            Выбрать
+                          </button>
+                        </div>
+                      );
+                    });
+                  })()}
                 </>
               )}
             </div>
@@ -1161,7 +1180,7 @@ function ManualFallback({
             <div style={{ color: "var(--text-muted)", textAlign: "center", paddingTop: 40, fontSize: 13 }}>Пул пуст</div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-              {poolEntries.map((e, i) => {
+              {(poolSubScores ? [...poolEntries].sort((a, b) => (poolSubScores.get(b.id) ?? 0) - (poolSubScores.get(a.id) ?? 0)) : poolEntries).map((e, i) => {
                 const canAssign = !!(teamId && replacedPlayerId && judgeName.trim() && comment.trim());
                 const selectedTeamObj = teams.find((t) => t.id === teamId);
                 const isEmptySlotLocal = replacedPlayerId === EMPTY_SLOT;
