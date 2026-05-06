@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sendTelegramMessage } from "@/lib/telegram";
-import { buildMatchCompletionMessage } from "@/lib/report";
 
 const fmt = (d: Date) =>
   new Intl.DateTimeFormat("ru-RU", {
@@ -48,8 +47,6 @@ export async function GET() {
         where: { id: m.id },
         data: { status: "Completed", updatedAt: now },
       });
-      const msg = await buildMatchCompletionMessage(m);
-      await sendTelegramMessage(msg).catch(() => {});
     }
 
     return NextResponse.json({
