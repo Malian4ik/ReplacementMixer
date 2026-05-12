@@ -21,10 +21,13 @@ async function getTeamTelegramIds(teamName: string): Promise<string[]> {
 
 export async function GET() {
   try {
-    const tournament = await prisma.adminTournament.findFirst({
-      where: { lastSyncedAt: { not: null } },
-      orderBy: { lastSyncedAt: "desc" },
-    });
+    // Use the active tournament as source; fall back to last synced
+    const tournament =
+      (await prisma.adminTournament.findFirst({ where: { isActive: true } })) ??
+      (await prisma.adminTournament.findFirst({
+        where: { lastSyncedAt: { not: null } },
+        orderBy: { lastSyncedAt: "desc" },
+      }));
 
     if (!tournament) {
       return NextResponse.json({ ok: true, message: "Нет синкнутых турниров", notified: 0 });
@@ -39,15 +42,17 @@ export async function GET() {
       if (!m.homeTeam || !m.awayTeam) continue;
 
       const status = (m.adminStatus ?? "").trim().toLowerCase();
+      // Skip matches that are pending/scheduled or already finished
       if (!status || PENDING_RE.test(status) || DONE_RE.test(status)) continue;
 
-      // Status is active/live — check if already notified
-      const existing = await prisma.tournamentMatch.findFirst({
-        where: { homeTeam: m.homeTeam, awayTeam: m.awayTeam, notifiedAt: null },
+      // Match is active/live on admin site.
+      // Check if we already sent a notification for this pair (notifiedAt set = already sent).
+      const alreadyNotified = await prisma.tournamentMatch.findFirst({
+        where: { homeTeam: m.homeTeam, awayTeam: m.awayTeam, notifiedAt: { not: null } },
       });
-      if (!existing) continue;
+      if (alreadyNotified) continue;
 
-      const now = new Date();
+      // Send Telegram notifications to all players in both teams
       const [homeTgIds, awayTgIds] = await Promise.all([
         getTeamTelegramIds(m.homeTeam),
         getTeamTelegramIds(m.awayTeam),
@@ -67,10 +72,33 @@ export async function GET() {
         }
       }
 
-      await prisma.tournamentMatch.update({
-        where: { id: existing.id },
-        data: { notifiedAt: now, updatedAt: now },
+      // Record notification so we don't send it again.
+      // Upsert into TournamentMatch — create minimal record if doesn't exist yet.
+      const now = new Date();
+      const existing = await prisma.tournamentMatch.findFirst({
+        where: { homeTeam: m.homeTeam, awayTeam: m.awayTeam },
       });
+
+      if (existing) {
+        await prisma.tournamentMatch.update({
+          where: { id: existing.id },
+          data: { notifiedAt: now, status: "Active", updatedAt: now },
+        });
+      } else {
+        await prisma.tournamentMatch.create({
+          data: {
+            round: m.round || 1,
+            slot: 0,
+            homeTeam: m.homeTeam,
+            awayTeam: m.awayTeam,
+            scheduledAt: m.scheduledAt ?? now,
+            endsAt: m.endsAt ?? new Date(now.getTime() + 90 * 60 * 1000),
+            status: "Active",
+            notifiedAt: now,
+          },
+        });
+      }
+
       notified++;
     }
 
