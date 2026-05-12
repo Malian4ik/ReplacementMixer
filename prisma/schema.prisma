@@ -42,7 +42,7 @@ model Player {
 
 model Team {
   id           String   @id @default(cuid())
-  name         String   @unique
+  name         String
   tournamentId String?
   player1Id    String?
   player2Id    String?
@@ -56,6 +56,8 @@ model Team {
   tournament  AdminTournament?       @relation(fields: [tournamentId], references: [id])
   poolEntries SubstitutionPoolEntry[]
   logs        MatchSubstitutionLog[]
+
+  @@unique([name, tournamentId])
 }
 
 model SubstitutionPoolEntry {
