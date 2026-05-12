@@ -335,6 +335,13 @@ export async function syncPoolFromAdminWaitingList(
   await adminLogin();
   const waitingList = await fetchWaitingList(externalTournamentId);
 
+  // Deactivate all current Active entries — this is a full replacement of the pool
+  // so entries from previous tournaments don't leak into the new one.
+  await prisma.substitutionPoolEntry.updateMany({
+    where: { status: "Active", source: "admin_queue" },
+    data: { status: "Inactive" },
+  });
+
   let added = 0, updated = 0, notFound = 0;
   const errors: string[] = [];
 
@@ -344,30 +351,15 @@ export async function syncPoolFromAdminWaitingList(
       const player = await prisma.player.findUnique({ where: { nick: item.nick } });
       if (!player) { notFound++; continue; }
 
-      const existing = await prisma.substitutionPoolEntry.findFirst({
-        where: {
+      await prisma.substitutionPoolEntry.create({
+        data: {
           playerId: player.id,
+          source: "admin_queue",
+          adminQueuePosition: item.queuePosition,
           status: "Active",
         },
       });
-
-      if (existing) {
-        await prisma.substitutionPoolEntry.update({
-          where: { id: existing.id },
-          data: { adminQueuePosition: item.queuePosition },
-        });
-        updated++;
-      } else {
-        await prisma.substitutionPoolEntry.create({
-          data: {
-            playerId: player.id,
-            source: "admin_queue",
-            adminQueuePosition: item.queuePosition,
-            status: "Active",
-          },
-        });
-        added++;
-      }
+      added++;
     } catch (err: unknown) {
       errors.push(`${item.nick}: ${err instanceof Error ? err.message : String(err)}`);
     }
