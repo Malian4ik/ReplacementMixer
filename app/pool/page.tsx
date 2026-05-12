@@ -25,7 +25,7 @@ export default function PoolPage() {
   const qc = useQueryClient();
   const { user } = useUser();
   const canEdit = user?.role === "OWNER" || user?.role === "JUDGE";
-  const [statusFilter, setStatusFilter] = useState<string>("");
+  const [statusFilter, setStatusFilter] = useState<string>("Active");
   const [searchQ, setSearchQ] = useState("");
   const [searchResults, setSearchResults] = useState<Player[]>([]);
   const [confirmState, setConfirmState] = useState<{ message: string; onConfirm: () => void } | null>(null);
