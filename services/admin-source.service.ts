@@ -295,8 +295,8 @@ function parseSteamAccountId(html: string): string | undefined {
   if (urlMatch) {
     try {
       const id64 = BigInt(urlMatch[1]);
-      const accountId = id64 - 76561197960265728n;
-      if (accountId > 0n) return accountId.toString();
+      const accountId = id64 - BigInt("76561197960265728");
+      if (accountId > BigInt(0)) return accountId.toString();
     } catch { /* ignore */ }
   }
   // Try field with steam_id value directly
@@ -307,8 +307,8 @@ function parseSteamAccountId(html: string): string | undefined {
     const raw = fieldMatch[1];
     if (raw.length === 17) {
       try {
-        const accountId = BigInt(raw) - 76561197960265728n;
-        if (accountId > 0n) return accountId.toString();
+        const accountId = BigInt(raw) - BigInt("76561197960265728");
+        if (accountId > BigInt(0)) return accountId.toString();
       } catch { /* ignore */ }
     }
     if (raw.length <= 12) return raw; // already account_id
