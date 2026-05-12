@@ -6,11 +6,15 @@
     },
     {
       "path": "/api/cron/schedule-check",
-      "schedule": "0 0 * * *"
+      "schedule": "*/5 * * * *"
     },
     {
       "path": "/api/cron/sync-schedule",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/match-notifier",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

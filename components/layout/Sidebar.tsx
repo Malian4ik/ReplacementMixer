@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Gavel, ListOrdered, Users2, ShieldCheck, Trophy, ScrollText, CalendarDays, UserCog, Swords, BookOpen, Ban, Moon, Download } from "lucide-react";
 import { useUser } from "@/components/UserContext";
+import { TournamentSwitcher } from "@/components/layout/TournamentSwitcher";
 
 const nav = [
   { href: "/queue",        label: "Очередь",               icon: ListOrdered, desc: "TOP-10 кандидатов" },
@@ -102,6 +103,9 @@ export function Sidebar() {
             </span>
           </div>
         </div>
+
+        {/* Tournament Switcher */}
+        <TournamentSwitcher />
 
         {/* Nav items */}
         <nav style={{ flex: 1, padding: "10px 8px", overflowY: "auto" }}>

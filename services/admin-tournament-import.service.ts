@@ -189,7 +189,8 @@ export interface TeamImportResult {
 }
 
 export async function importTournamentTeams(
-  externalTournamentId: string
+  externalTournamentId: string,
+  localTournamentId?: string
 ): Promise<TeamImportResult> {
   await adminLogin();
 
@@ -247,28 +248,23 @@ export async function importTournamentTeams(
       const ids = nicks.slice(0, 5).map(n => playerMap.get(n) ?? null);
       while (ids.length < 5) ids.push(null);
 
-      const existing = await prisma.team.findUnique({ where: { name: teamName } });
-      await prisma.team.upsert({
-        where: { name: teamName },
-        create: {
-          name: teamName,
-          player1Id: ids[0],
-          player2Id: ids[1],
-          player3Id: ids[2],
-          player4Id: ids[3],
-          player5Id: ids[4],
-        },
-        update: {
-          player1Id: ids[0],
-          player2Id: ids[1],
-          player3Id: ids[2],
-          player4Id: ids[3],
-          player5Id: ids[4],
-        },
-      });
+      const playerData = {
+        player1Id: ids[0],
+        player2Id: ids[1],
+        player3Id: ids[2],
+        player4Id: ids[3],
+        player5Id: ids[4],
+        ...(localTournamentId ? { tournamentId: localTournamentId } : {}),
+      };
 
-      if (existing) updated++;
-      else created++;
+      const existing = await prisma.team.findUnique({ where: { name: teamName } });
+      if (existing) {
+        await prisma.team.update({ where: { id: existing.id }, data: playerData });
+        updated++;
+      } else {
+        await prisma.team.create({ data: { name: teamName, ...playerData } });
+        created++;
+      }
     } catch (err: unknown) {
       failed++;
       errors.push(`${teamName}: ${err instanceof Error ? err.message : String(err)}`);
@@ -334,7 +330,8 @@ export interface PoolSyncResult {
 }
 
 export async function syncPoolFromAdminWaitingList(
-  externalTournamentId: string
+  externalTournamentId: string,
+  localTournamentId?: string
 ): Promise<PoolSyncResult> {
   await adminLogin();
   const waitingList = await fetchWaitingList(externalTournamentId);
@@ -349,7 +346,11 @@ export async function syncPoolFromAdminWaitingList(
       if (!player) { notFound++; continue; }
 
       const existing = await prisma.substitutionPoolEntry.findFirst({
-        where: { playerId: player.id, status: "Active" },
+        where: {
+          playerId: player.id,
+          status: "Active",
+          ...(localTournamentId ? { tournamentId: localTournamentId } : {}),
+        },
       });
 
       if (existing) {
@@ -365,6 +366,7 @@ export async function syncPoolFromAdminWaitingList(
             source: "admin_queue",
             adminQueuePosition: item.queuePosition,
             status: "Active",
+            ...(localTournamentId ? { tournamentId: localTournamentId } : {}),
           },
         });
         added++;

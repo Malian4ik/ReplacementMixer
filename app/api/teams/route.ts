@@ -23,8 +23,12 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const activeTournament = await prisma.adminTournament.findFirst({ where: { isActive: true } });
+  const tournamentId = req.nextUrl.searchParams.get("tournamentId") ?? activeTournament?.id ?? null;
+
   const teams = await prisma.team.findMany({
+    where: tournamentId ? { tournamentId } : {},
     orderBy: { name: "asc" },
   });
 

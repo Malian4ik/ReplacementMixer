@@ -3,6 +3,7 @@ import "./globals.css";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { QueryProvider } from "@/components/QueryProvider";
 import { UserProvider } from "@/components/UserContext";
+import { TournamentProvider } from "@/contexts/TournamentContext";
 
 export const metadata: Metadata = {
   title: "MixerCup Series — Dota 2 Tournament",
@@ -21,10 +22,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <QueryProvider>
           <UserProvider>
-            <div className="layout">
-              <Sidebar />
-              <div className="layout-content">{children}</div>
-            </div>
+            <TournamentProvider>
+              <div className="layout">
+                <Sidebar />
+                <div className="layout-content">{children}</div>
+              </div>
+            </TournamentProvider>
           </UserProvider>
         </QueryProvider>
       </body>

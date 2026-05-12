@@ -41,17 +41,19 @@ model Player {
 }
 
 model Team {
-  id        String   @id @default(cuid())
-  name      String   @unique
-  player1Id String?
-  player2Id String?
-  player3Id String?
-  player4Id String?
-  player5Id String?
-  captainId String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String   @id @default(cuid())
+  name         String   @unique
+  tournamentId String?
+  player1Id    String?
+  player2Id    String?
+  player3Id    String?
+  player4Id    String?
+  player5Id    String?
+  captainId    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
+  tournament  AdminTournament?       @relation(fields: [tournamentId], references: [id])
   poolEntries SubstitutionPoolEntry[]
   logs        MatchSubstitutionLog[]
 }
@@ -59,6 +61,7 @@ model Team {
 model SubstitutionPoolEntry {
   id                  String     @id @default(cuid())
   playerId            String
+  tournamentId        String?
   status              String     @default("Active")
   joinTime            DateTime   @default(now())
   assignedTeamId      String?
@@ -69,8 +72,9 @@ model SubstitutionPoolEntry {
   createdAt           DateTime   @default(now())
   updatedAt           DateTime   @updatedAt
 
-  player       Player  @relation(fields: [playerId], references: [id])
-  assignedTeam Team?   @relation(fields: [assignedTeamId], references: [id])
+  player       Player          @relation(fields: [playerId], references: [id])
+  tournament   AdminTournament? @relation(fields: [tournamentId], references: [id])
+  assignedTeam Team?            @relation(fields: [assignedTeamId], references: [id])
   logs         MatchSubstitutionLog[]
 
   @@map("ReplacementPoolEntry")
@@ -86,6 +90,7 @@ model TournamentMatch {
   endsAt       DateTime
   status       String    @default("Scheduled")
   techLossTeam String?
+  winnerTeam   String?
   notifiedAt   DateTime?
   judgeName    String?
   comment      String?
@@ -100,6 +105,7 @@ model AdminTournament {
   /// ID турнира в системе источника
   externalId      String   @unique
   name            String
+  isActive        Boolean  @default(false)
   status          String?
   startDate       DateTime?
   endDate         DateTime?
@@ -110,6 +116,8 @@ model AdminTournament {
 
   participations PlayerTournamentParticipation[]
   syncRuns       AdminTournamentSyncRun[]
+  teams          Team[]
+  poolEntries    SubstitutionPoolEntry[]
 }
 
 model PlayerTournamentParticipation {

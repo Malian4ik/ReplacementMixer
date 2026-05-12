@@ -43,3 +43,12 @@ next-env.d.ts
 /app/generated/prisma
 
 .vercel
+.env*.local
+
+# SQLite local dev databases
+*.db
+*.db-shm
+*.db-wal
+
+# Temp scripts
+scripts/

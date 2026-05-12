@@ -9,6 +9,19 @@ const fmt = (d: Date) =>
     minute: "2-digit",
   }).format(d);
 
+async function getTeamTelegramIds(teamName: string): Promise<string[]> {
+  const team = await prisma.team.findFirst({ where: { name: teamName } });
+  if (!team) return [];
+  const ids = [team.player1Id, team.player2Id, team.player3Id, team.player4Id, team.player5Id]
+    .filter(Boolean) as string[];
+  if (!ids.length) return [];
+  const players = await prisma.player.findMany({
+    where: { id: { in: ids } },
+    select: { telegramId: true },
+  });
+  return players.map(p => p.telegramId).filter(Boolean) as string[];
+}
+
 export async function GET() {
   try {
     const now = new Date();
@@ -25,9 +38,31 @@ export async function GET() {
     });
 
     for (const m of toNotify) {
+      const timeStr = `${fmt(m.scheduledAt)} — ${fmt(m.endsAt)} МСК`;
+
+      // Group chat notification
       await sendTelegramMessage(
-        `⚔️ Через 15 минут!\nТур ${m.round}: ${m.homeTeam} vs ${m.awayTeam}\n🕐 ${fmt(m.scheduledAt)} — ${fmt(m.endsAt)} МСК`
+        `⚔️ Через 15 минут!\nТур ${m.round}: ${m.homeTeam} vs ${m.awayTeam}\n🕐 ${timeStr}`
       );
+
+      // Personal notifications to each player
+      const [homeTgIds, awayTgIds] = await Promise.all([
+        getTeamTelegramIds(m.homeTeam),
+        getTeamTelegramIds(m.awayTeam),
+      ]);
+      const allTgIds = [...new Set([...homeTgIds, ...awayTgIds])];
+      const personalText =
+        `⏰ <b>Через 15 минут ваш матч!</b>\n\n` +
+        `🏠 <b>${m.homeTeam}</b> vs <b>${m.awayTeam}</b>\n` +
+        `🕐 ${timeStr}\n\nБудьте готовы!`;
+      for (const tgId of allTgIds) {
+        try {
+          await sendTelegramMessage(personalText, tgId);
+        } catch {
+          // ignore individual send errors
+        }
+      }
+
       await prisma.tournamentMatch.update({
         where: { id: m.id },
         data: { notifiedAt: now, updatedAt: now },
