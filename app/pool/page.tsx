@@ -7,6 +7,23 @@ import { useUser } from "@/components/UserContext";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { MatchBadge } from "@/components/MatchBadge";
 
+function trustScore(p: { matchesPlayed?: number; adminParticipationCount?: number; stake?: number; isDisqualified?: boolean }): number {
+  if (p.isDisqualified) return 0;
+  const activity  = Math.min((p.matchesPlayed ?? 0) * 5, 50);
+  const loyalty   = Math.min((p.adminParticipationCount ?? 0) * 10, 30);
+  const financial = Math.min((p.stake ?? 0) * 2, 20);
+  return Math.min(100, Math.round(activity + loyalty + financial));
+}
+
+function TrustBadge({ score }: { score: number }) {
+  const color = score >= 70 ? "#34d399" : score >= 40 ? "#facc15" : "#f87171";
+  return (
+    <span style={{ fontWeight: 700, fontSize: 12, color, fontFamily: "monospace" }}>
+      {score}
+    </span>
+  );
+}
+
 const STATUS_BADGE: Record<string, string> = {
   Active:   "badge badge-green",
   Picked:   "badge badge-blue",
@@ -242,7 +259,7 @@ export default function PoolPage() {
             <table className="tbl">
               <thead>
                 <tr>
-                  {[...["#", "№ОЧ", "НИК", "MMR", "STAKE", "РОЛЬ", "КОШЕЛЁК", "МАТЧИ", "СТАТУС", "ИСТОЧНИК"], ...(canEdit ? ["ДЕЙСТВИЯ"] : [])].map(h => (
+                  {[...["#", "№ОЧ", "НИК", "MMR", "STAKE", "РОЛЬ", "ТРАСТ", "МАТЧИ", "СТАТУС", "ИСТОЧНИК"], ...(canEdit ? ["ДЕЙСТВИЯ"] : [])].map(h => (
                     <th key={h}>{h}</th>
                   ))}
                 </tr>
@@ -260,9 +277,7 @@ export default function PoolPage() {
                     <td>{e.player.mmr.toLocaleString()}</td>
                     <td>{e.player.stake}</td>
                     <td>R{e.player.mainRole}{e.player.flexRole ? `/R${e.player.flexRole}` : ""}</td>
-                    <td style={{ fontSize: 12, color: e.player.wallet ? "var(--text-primary)" : "var(--text-secondary)", fontFamily: "monospace" }}>
-                      {e.player.wallet ?? "—"}
-                    </td>
+                    <td><TrustBadge score={trustScore(e.player as { matchesPlayed?: number; adminParticipationCount?: number; stake?: number; isDisqualified?: boolean })} /></td>
                     <td>
                       <MatchBadge count={(e.player as typeof e.player & { matchesPlayed?: number }).matchesPlayed ?? 0} />
                     </td>
@@ -297,7 +312,7 @@ export default function PoolPage() {
                 ))}
                 {visibleEntries.length === 0 && (
                   <tr>
-                    <td colSpan={10} style={{ textAlign: "center", color: "var(--text-muted)", padding: 32 }}>
+                    <td colSpan={11} style={{ textAlign: "center", color: "var(--text-muted)", padding: 32 }}>
                       Нет записей
                     </td>
                   </tr>

@@ -14,6 +14,19 @@ const CreatePlayerSchema = z.object({
   nightMatches: z.number().int().min(0).optional(),
 });
 
+function calcTrustScore(p: {
+  matchesPlayed: number;
+  adminParticipationCount: number;
+  stake: number;
+  isDisqualified: boolean;
+}): number {
+  if (p.isDisqualified) return 0;
+  const activity    = Math.min(p.matchesPlayed * 5, 50);          // до 50 за матчи
+  const loyalty     = Math.min(p.adminParticipationCount * 10, 30); // до 30 за участие в турнирах
+  const financial   = Math.min(p.stake * 2, 20);                  // до 20 за ставку
+  return Math.min(100, Math.round(activity + loyalty + financial));
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const disqualified = searchParams.get("disqualified") === "true";
@@ -33,7 +46,12 @@ export async function GET(req: NextRequest) {
   );
   const captainIds = new Set(allTeams.map(t => t.captainId).filter(Boolean) as string[]);
 
-  return NextResponse.json(players.map(p => ({ ...p, inTeam: inTeamIds.has(p.id), isCaptain: captainIds.has(p.id) })));
+  return NextResponse.json(players.map(p => ({
+    ...p,
+    inTeam: inTeamIds.has(p.id),
+    isCaptain: captainIds.has(p.id),
+    trustScore: calcTrustScore(p),
+  })));
 }
 
 export async function POST(req: NextRequest) {
