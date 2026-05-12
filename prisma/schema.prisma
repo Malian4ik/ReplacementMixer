@@ -29,6 +29,8 @@ model Player {
   lastImportedTournamentName  String?
   /// Когда последний раз синхронизировался с админкой
   lastSyncedAt                DateTime?
+  /// OpenDota account_id (Steam64 - 76561197960265728)
+  steamAccountId              String?
   createdAt                   DateTime @default(now())
   updatedAt                   DateTime @updatedAt
 

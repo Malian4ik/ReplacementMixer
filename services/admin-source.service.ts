@@ -88,6 +88,7 @@ export interface AdminParticipant {
   wallet?: string;
   telegramId?: string;
   discordId?: string;
+  steamAccountId?: string;
   tournamentStatus?: string;
   queuePosition?: number;
   qualifyRating?: number;
@@ -284,6 +285,35 @@ interface UserDetail {
   telegramId: string | undefined;
   discordId: string | undefined;
   wallet: string | undefined;
+  steamAccountId: string | undefined;
+}
+
+function parseSteamAccountId(html: string): string | undefined {
+  // Try to find steamId64 in Steam profile URLs
+  const urlMatch = html.match(/steamcommunity\.com\/profiles\/(\d{17})/i)
+    ?? html.match(/store\.steampowered\.com\/profiles\/(\d{17})/i);
+  if (urlMatch) {
+    try {
+      const id64 = BigInt(urlMatch[1]);
+      const accountId = id64 - 76561197960265728n;
+      if (accountId > 0n) return accountId.toString();
+    } catch { /* ignore */ }
+  }
+  // Try field with steam_id value directly
+  const fieldMatch = html.match(/name="steam_id"[^>]*value="(\d+)"/)
+    ?? html.match(/name="steamid"[^>]*value="(\d+)"/)
+    ?? html.match(/name="steam_profile"[^>]*value="[^"]*\/(\d{17})"/);
+  if (fieldMatch) {
+    const raw = fieldMatch[1];
+    if (raw.length === 17) {
+      try {
+        const accountId = BigInt(raw) - 76561197960265728n;
+        if (accountId > 0n) return accountId.toString();
+      } catch { /* ignore */ }
+    }
+    if (raw.length <= 12) return raw; // already account_id
+  }
+  return undefined;
 }
 
 async function fetchUserDetail(userUuid: string): Promise<UserDetail> {
@@ -291,7 +321,7 @@ async function fetchUserDetail(userUuid: string): Promise<UserDetail> {
     `${BASE}/admin/users/user/${userUuid}/change/`,
     { headers: makeHeaders() }
   );
-  if (!res.ok) return { mmr: undefined, mainRole: undefined, flexRole: undefined, telegramId: undefined, discordId: undefined, wallet: undefined };
+  if (!res.ok) return { mmr: undefined, mainRole: undefined, flexRole: undefined, telegramId: undefined, discordId: undefined, wallet: undefined, steamAccountId: undefined };
   const html = await res.text();
 
   const ratingMatch = html.match(/name="rating"[^>]*value="([^"]*)"/);
@@ -371,6 +401,7 @@ async function fetchUserDetail(userUuid: string): Promise<UserDetail> {
     telegramId: telegramMatch?.[1]?.trim() || undefined,
     discordId: discordMatch?.[1]?.trim() || undefined,
     wallet: eosMatch?.[1]?.trim() || undefined,
+    steamAccountId: parseSteamAccountId(html),
   };
 }
 
@@ -442,6 +473,7 @@ export async function fetchAllParticipants(
       telegramId: user?.telegramId,
       discordId: user?.discordId,
       wallet: user?.wallet || detail?.wallet,
+      steamAccountId: user?.steamAccountId,
       team: raw.team,
     };
   });

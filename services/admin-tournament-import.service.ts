@@ -116,6 +116,7 @@ export async function importTournamentParticipants(
           ...(p.wallet ? { wallet: p.wallet } : {}),
           ...(p.telegramId ? { telegramId: p.telegramId } : {}),
           ...(p.discordId ? { discordId: p.discordId } : {}),
+          ...(p.steamAccountId ? { steamAccountId: p.steamAccountId } : {}),
           hasPlayedBefore: playedBefore,
           adminParticipationCount: { increment: 1 },
           lastImportedTournamentName: tournamentInfo.name,

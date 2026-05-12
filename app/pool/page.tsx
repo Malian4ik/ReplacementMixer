@@ -7,15 +7,10 @@ import { useUser } from "@/components/UserContext";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { MatchBadge } from "@/components/MatchBadge";
 
-function trustScore(p: { matchesPlayed?: number; adminParticipationCount?: number; stake?: number; isDisqualified?: boolean }): number {
-  if (p.isDisqualified) return 0;
-  const activity  = Math.min((p.matchesPlayed ?? 0) * 5, 50);
-  const loyalty   = Math.min((p.adminParticipationCount ?? 0) * 10, 30);
-  const financial = Math.min((p.stake ?? 0) * 2, 20);
-  return Math.min(100, Math.round(activity + loyalty + financial));
-}
-
-function TrustBadge({ score }: { score: number }) {
+function TrustBadge({ score }: { score: number | null | undefined }) {
+  if (score === null || score === undefined) {
+    return <span style={{ color: "var(--text-muted)", fontSize: 11 }}>—</span>;
+  }
   const color = score >= 70 ? "#34d399" : score >= 40 ? "#facc15" : "#f87171";
   return (
     <span style={{ fontWeight: 700, fontSize: 12, color, fontFamily: "monospace" }}>
@@ -156,6 +151,21 @@ export default function PoolPage() {
   const pageEntries = visibleEntries.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const inPoolIds = new Set(entries.filter(e => e.status === "Active").map(e => e.playerId));
 
+  // Load Dota trust scores for players on the current page
+  const pagePlayerIds = pageEntries.map(e => e.playerId);
+  const { data: trustScores = [] } = useQuery<{ id: string; trustScore: number | null; hasSteam: boolean }[]>({
+    queryKey: ["trust", pagePlayerIds],
+    queryFn: () =>
+      fetch("/api/players/trust", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playerIds: pagePlayerIds }),
+      }).then(r => r.json()),
+    enabled: pagePlayerIds.length > 0,
+    staleTime: 5 * 60 * 1000,
+  });
+  const trustMap = new Map(trustScores.map(t => [t.id, t]));
+
   return (
     <>
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -277,7 +287,7 @@ export default function PoolPage() {
                     <td>{e.player.mmr.toLocaleString()}</td>
                     <td>{e.player.stake}</td>
                     <td>R{e.player.mainRole}{e.player.flexRole ? `/R${e.player.flexRole}` : ""}</td>
-                    <td><TrustBadge score={trustScore(e.player as { matchesPlayed?: number; adminParticipationCount?: number; stake?: number; isDisqualified?: boolean })} /></td>
+                    <td><TrustBadge score={trustMap.get(e.playerId)?.trustScore} /></td>
                     <td>
                       <MatchBadge count={(e.player as typeof e.player & { matchesPlayed?: number }).matchesPlayed ?? 0} />
                     </td>
