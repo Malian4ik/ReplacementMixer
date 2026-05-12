@@ -19,11 +19,20 @@ export async function GET(req: NextRequest) {
     ...(tournamentId ? { tournamentId } : {}),
   };
 
-  const entries = await prisma.substitutionPoolEntry.findMany({
+  let entries = await prisma.substitutionPoolEntry.findMany({
     where,
     include: { player: true },
     orderBy: [{ joinTime: "asc" }],
   });
+
+  // Fallback: if tournament is active but has no pool entries yet, show legacy entries (tournamentId = null)
+  if (tournamentId && entries.length === 0) {
+    entries = await prisma.substitutionPoolEntry.findMany({
+      where: { ...(status ? { status } : {}), tournamentId: null },
+      include: { player: true },
+      orderBy: [{ joinTime: "asc" }],
+    });
+  }
 
   entries.sort((a, b) => {
     const aq = a.adminQueuePosition ?? 999999;

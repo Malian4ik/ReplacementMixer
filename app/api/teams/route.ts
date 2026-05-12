@@ -27,10 +27,18 @@ export async function GET(req: NextRequest) {
   const activeTournament = await prisma.adminTournament.findFirst({ where: { isActive: true } });
   const tournamentId = req.nextUrl.searchParams.get("tournamentId") ?? activeTournament?.id ?? null;
 
-  const teams = await prisma.team.findMany({
+  let teams = await prisma.team.findMany({
     where: tournamentId ? { tournamentId } : {},
     orderBy: { name: "asc" },
   });
+
+  // Fallback: if tournament is active but has no teams yet, show legacy teams (tournamentId = null)
+  if (tournamentId && teams.length === 0) {
+    teams = await prisma.team.findMany({
+      where: { tournamentId: null },
+      orderBy: { name: "asc" },
+    });
+  }
 
   const playerIds = teams.flatMap((t) =>
     [t.player1Id, t.player2Id, t.player3Id, t.player4Id, t.player5Id].filter(Boolean) as string[]
