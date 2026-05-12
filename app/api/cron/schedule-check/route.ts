@@ -3,8 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { adminLogin, fetchTournamentScheduleData } from "@/services/admin-source.service";
 import { sendTelegramMessage } from "@/lib/telegram";
 
-const PENDING_RE = /^(pending|scheduled|запланирован)$/i;
-const DONE_RE = /^(завершен|завершён|completed|finished|done|canceled|cancelled|tech_loss|техническое\s*поражение)$/i;
+const PENDING_RE = /pending|scheduled|запланирован|в\s*ожидании/i;
+const DONE_RE = /завершен|завершён|завершена|победа|поражение|completed|finished|done|canceled|cancelled|tech_loss|техническое\s*поражение/i;
 
 const fmt = (d: Date) =>
   new Intl.DateTimeFormat("ru-RU", {
