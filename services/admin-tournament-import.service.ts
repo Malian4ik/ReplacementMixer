@@ -257,7 +257,7 @@ export async function importTournamentTeams(
         ...(localTournamentId ? { tournamentId: localTournamentId } : {}),
       };
 
-      const existing = await prisma.team.findUnique({ where: { name: teamName } });
+      const existing = await prisma.team.findFirst({ where: { name: teamName } });
       if (existing) {
         await prisma.team.update({ where: { id: existing.id }, data: playerData });
         updated++;

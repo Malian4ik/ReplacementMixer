@@ -54,24 +54,18 @@ export async function POST() {
     const slots = [anchorPlayer.id, ...others.map((p) => p.id)].slice(0, 5);
     const name = `_ТЕСТ ${suffix}_`;
 
-    return prisma.team.upsert({
-      where: { name },
-      update: {
-        player1Id: slots[0] ?? null,
-        player2Id: slots[1] ?? null,
-        player3Id: slots[2] ?? null,
-        player4Id: slots[3] ?? null,
-        player5Id: slots[4] ?? null,
-      },
-      create: {
-        name,
-        player1Id: slots[0] ?? null,
-        player2Id: slots[1] ?? null,
-        player3Id: slots[2] ?? null,
-        player4Id: slots[3] ?? null,
-        player5Id: slots[4] ?? null,
-      },
-    });
+    const data = {
+      player1Id: slots[0] ?? null,
+      player2Id: slots[1] ?? null,
+      player3Id: slots[2] ?? null,
+      player4Id: slots[3] ?? null,
+      player5Id: slots[4] ?? null,
+    };
+    const existing = await prisma.team.findFirst({ where: { name, tournamentId: null } });
+    if (existing) {
+      return prisma.team.update({ where: { id: existing.id }, data });
+    }
+    return prisma.team.create({ data: { name, ...data } });
   }
 
   const homeTeam = await ensureTeam(kobz, "A");

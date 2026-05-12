@@ -44,7 +44,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
   const replacedNick = interaction.options.getString("replaced-player")?.trim() ?? null;
 
   // ── Look up team ──────────────────────────────────────────────────────────
-  const team = await prisma.team.findUnique({ where: { name: teamName } });
+  const team = await prisma.team.findFirst({ where: { name: teamName } });
   if (!team) {
     await interaction.editReply(`❌ Команда **${teamName}** не найдена в базе данных.`);
     return;

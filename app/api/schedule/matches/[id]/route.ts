@@ -9,9 +9,10 @@ const MATCH_MS = 1.5 * 60 * 60 * 1000;
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const { action, techLossTeam, judgeName, comment } = await req.json() as {
+    const { action, techLossTeam, winnerTeam, judgeName, comment } = await req.json() as {
       action: "tech_loss" | "postpone" | "complete";
       techLossTeam?: string;
+      winnerTeam?: string;
       judgeName?: string;
       comment?: string;
     };
@@ -21,12 +22,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     if (action === "tech_loss") {
       if (!techLossTeam) return NextResponse.json({ error: "Укажите команду с тех. поражением" }, { status: 400 });
+      const winner = techLossTeam === match.homeTeam ? match.awayTeam : match.homeTeam;
       await prisma.tournamentMatch.update({
         where: { id },
-        data: { status: "TechLoss", techLossTeam, judgeName, comment, updatedAt: new Date() },
+        data: { status: "TechLoss", techLossTeam, winnerTeam: winner, judgeName, comment, updatedAt: new Date() },
       });
-
-      const winner = techLossTeam === match.homeTeam ? match.awayTeam : match.homeTeam;
       await sendTelegramMessage(
         `❌ Тех. поражение | Тур ${match.round}\n${match.homeTeam} vs ${match.awayTeam}\nТех. луз: ${techLossTeam} | Победитель: ${winner}${judgeName ? `\nСудья: ${judgeName}` : ""}${comment ? `\nКомментарий: ${comment}` : ""}`
       );
@@ -89,7 +89,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     } else if (action === "complete") {
       await prisma.tournamentMatch.update({
         where: { id },
-        data: { status: "Completed", judgeName, comment, updatedAt: new Date() },
+        data: { status: "Completed", winnerTeam: winnerTeam ?? null, judgeName, comment, updatedAt: new Date() },
       });
       const msg = await buildMatchCompletionMessage(match);
       await sendTelegramMessage(msg).catch(() => {});

@@ -22,7 +22,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
 
   const teamName = interaction.options.getString("team", true).trim();
 
-  const team = await prisma.team.findUnique({ where: { name: teamName } });
+  const team = await prisma.team.findFirst({ where: { name: teamName } });
   if (!team) {
     await interaction.editReply(`❌ Команда **${teamName}** не найдена.`);
     return;
