@@ -1,0 +1,20 @@
+name: Cron Jobs
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  run-crons:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Schedule check (15-min notifications)
+        run: |
+          curl -s -o /dev/null -w "%{http_code}" \
+            "${{ secrets.APP_URL }}/api/cron/schedule-check"
+
+      - name: Match notifier (active match notifications)
+        run: |
+          curl -s -o /dev/null -w "%{http_code}" \
+            "${{ secrets.APP_URL }}/api/cron/match-notifier"
