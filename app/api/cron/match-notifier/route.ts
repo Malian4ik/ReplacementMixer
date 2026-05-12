@@ -45,8 +45,14 @@ export async function GET() {
       // Skip matches that are pending/scheduled or already finished
       if (!status || PENDING_RE.test(status) || DONE_RE.test(status)) continue;
 
-      // Skip matches scheduled more than 4 hours ago (stale "active" matches on admin site)
-      if (m.scheduledAt && m.scheduledAt < new Date(Date.now() - 4 * 60 * 60 * 1000)) continue;
+      // Only notify if match is scheduled within ±2h of now:
+      // - skip if scheduled more than 2h ago (stale old match)
+      // - skip if scheduled more than 15min in the future (judge activated too early)
+      if (m.scheduledAt) {
+        const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+        const fifteenMinFromNow = new Date(Date.now() + 15 * 60 * 1000);
+        if (m.scheduledAt < twoHoursAgo || m.scheduledAt > fifteenMinFromNow) continue;
+      }
 
       // Match is active/live on admin site.
       // Check if we already sent the "match started" notification (tracked via comment field).
