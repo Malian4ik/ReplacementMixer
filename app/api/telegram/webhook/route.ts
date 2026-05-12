@@ -17,8 +17,9 @@ export async function POST(req: NextRequest) {
 
     if (username) {
       // Find player by username stored in telegramId (with or without @)
+      const lo = username.toLowerCase();
       const updated = await prisma.player.updateMany({
-        where: { telegramId: { in: [username, `@${username}`] } },
+        where: { telegramId: { in: [username, `@${username}`, lo, `@${lo}`] } },
         data: { telegramId: chatId },
       });
 
