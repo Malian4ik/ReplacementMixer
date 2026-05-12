@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
 
-const PUBLIC = ["/login", "/register", "/setup", "/api/auth", "/api/setup", "/api/cron"];
+const PUBLIC = ["/login", "/register", "/setup", "/api/auth", "/api/setup", "/api/cron", "/api/telegram"];
 
 function getSecret() {
   return new TextEncoder().encode(process.env.JWT_SECRET ?? "mixercup-jwt-secret-change-me");
