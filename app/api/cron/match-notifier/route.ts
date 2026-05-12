@@ -4,7 +4,7 @@ import { adminLogin, fetchTournamentScheduleData } from "@/services/admin-source
 import { sendTelegramMessage } from "@/lib/telegram";
 
 const PENDING_RE = /^(pending|scheduled|запланирован)$/i;
-const DONE_RE = /^(завершен|завершён|completed|finished|done|canceled|cancelled|tech_loss|техническое\s*поражение)$/i;
+const DONE_RE = /завершен|завершён|завершена|победа|поражение|completed|finished|done|canceled|cancelled|tech_loss|техническое\s*поражение/i;
 
 async function getTeamTelegramIds(teamName: string): Promise<string[]> {
   const team = await prisma.team.findFirst({ where: { name: teamName } });
