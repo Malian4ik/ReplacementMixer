@@ -254,7 +254,6 @@ export async function importTournamentTeams(
         player3Id: ids[2],
         player4Id: ids[3],
         player5Id: ids[4],
-        ...(localTournamentId ? { tournamentId: localTournamentId } : {}),
       };
 
       const existing = await prisma.team.findFirst({ where: { name: teamName } });
@@ -349,7 +348,6 @@ export async function syncPoolFromAdminWaitingList(
         where: {
           playerId: player.id,
           status: "Active",
-          ...(localTournamentId ? { tournamentId: localTournamentId } : {}),
         },
       });
 
@@ -366,7 +364,6 @@ export async function syncPoolFromAdminWaitingList(
             source: "admin_queue",
             adminQueuePosition: item.queuePosition,
             status: "Active",
-            ...(localTournamentId ? { tournamentId: localTournamentId } : {}),
           },
         });
         added++;
