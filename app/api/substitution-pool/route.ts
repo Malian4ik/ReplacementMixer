@@ -12,27 +12,19 @@ const AddToPoolSchema = z.object({
 export async function GET(req: NextRequest) {
   const status = req.nextUrl.searchParams.get("status");
   const activeTournament = await prisma.adminTournament.findFirst({ where: { isActive: true } });
-  const tournamentId = req.nextUrl.searchParams.get("tournamentId") ?? activeTournament?.id ?? null;
+  const qTournamentId = req.nextUrl.searchParams.get("tournamentId");
+  const tournamentId = qTournamentId ?? activeTournament?.id ?? null;
 
   const where = {
     ...(status ? { status } : {}),
-    ...(tournamentId ? { tournamentId } : {}),
+    ...(tournamentId ? { OR: [{ tournamentId }, { tournamentId: null }] } : {}),
   };
 
-  let entries = await prisma.substitutionPoolEntry.findMany({
+  const entries = await prisma.substitutionPoolEntry.findMany({
     where,
     include: { player: true },
     orderBy: [{ joinTime: "asc" }],
   });
-
-  // Fallback: if tournament is active but has no pool entries yet, show legacy entries (tournamentId = null)
-  if (tournamentId && entries.length === 0) {
-    entries = await prisma.substitutionPoolEntry.findMany({
-      where: { ...(status ? { status } : {}), tournamentId: null },
-      include: { player: true },
-      orderBy: [{ joinTime: "asc" }],
-    });
-  }
 
   entries.sort((a, b) => {
     const aq = a.adminQueuePosition ?? 999999;
