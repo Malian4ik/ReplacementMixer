@@ -51,6 +51,14 @@ export default function PoolPage() {
     },
   });
 
+  const clearMutation = useMutation({
+    mutationFn: () => fetch("/api/substitution-pool/clear", { method: "POST" }).then(r => r.json()),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["pool"] });
+      alert(`Пул очищен. Деактивировано записей: ${data.cleared}`);
+    },
+  });
+
   useEffect(() => {
     if (canEdit && entries.some(e => e.inTeam && e.status === "Active")) {
       cleanupMutation.mutate();
@@ -145,18 +153,32 @@ export default function PoolPage() {
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           {canEdit && (
-            <button
-              className="btn btn-ghost btn-sm"
-              style={{ fontSize: 12, color: "#f87171" }}
-              onClick={() => {
-                if (confirm("Удалить дубли Active-записей? У каждого игрока останется одна запись.")) {
-                  dedupMutation.mutate();
-                }
-              }}
-              disabled={dedupMutation.isPending}
-            >
-              {dedupMutation.isPending ? "..." : "Удалить дубли"}
-            </button>
+            <>
+              <button
+                className="btn btn-ghost btn-sm"
+                style={{ fontSize: 12, color: "#f87171" }}
+                onClick={() => {
+                  if (confirm("Очистить пул полностью? Все Active-записи станут Inactive. После этого запусти синк пула.")) {
+                    clearMutation.mutate();
+                  }
+                }}
+                disabled={clearMutation.isPending}
+              >
+                {clearMutation.isPending ? "..." : "Очистить пул"}
+              </button>
+              <button
+                className="btn btn-ghost btn-sm"
+                style={{ fontSize: 12, color: "#94a3b8" }}
+                onClick={() => {
+                  if (confirm("Удалить дубли Active-записей? У каждого игрока останется одна запись.")) {
+                    dedupMutation.mutate();
+                  }
+                }}
+                disabled={dedupMutation.isPending}
+              >
+                {dedupMutation.isPending ? "..." : "Удалить дубли"}
+              </button>
+            </>
           )}
           <select
             className="form-select"
