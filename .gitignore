@@ -52,3 +52,11 @@ next-env.d.ts
 
 # Temp scripts
 scripts/
+
+# Temp query files
+5
+__query_tmp.js
+query_night_tmp.ts
+console.log*
+l.split*
+playerMap.get*
