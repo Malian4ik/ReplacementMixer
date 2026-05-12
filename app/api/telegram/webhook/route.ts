@@ -13,6 +13,8 @@ export async function POST(req: NextRequest) {
     const chatId = String(message.chat.id);
     const username = message.from?.username as string | undefined;
 
+    await sendTelegramMessage(`⏳ Ищу вас в базе игроков...`, chatId);
+
     if (username) {
       // Find player by username stored in telegramId (with or without @)
       const updated = await prisma.player.updateMany({
