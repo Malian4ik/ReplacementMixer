@@ -11,13 +11,9 @@ const AddToPoolSchema = z.object({
 
 export async function GET(req: NextRequest) {
   const status = req.nextUrl.searchParams.get("status");
-  const activeTournament = await prisma.adminTournament.findFirst({ where: { isActive: true } });
-  const qTournamentId = req.nextUrl.searchParams.get("tournamentId");
-  const tournamentId = qTournamentId ?? activeTournament?.id ?? null;
 
   const where = {
     ...(status ? { status } : {}),
-    ...(tournamentId ? { OR: [{ tournamentId }, { tournamentId: null }] } : {}),
   };
 
   const entries = await prisma.substitutionPoolEntry.findMany({
@@ -33,7 +29,6 @@ export async function GET(req: NextRequest) {
   });
 
   const allTeams = await prisma.team.findMany({
-    where: tournamentId ? { tournamentId } : {},
     select: { player1Id: true, player2Id: true, player3Id: true, player4Id: true, player5Id: true },
   });
   const inTeamIds = new Set(

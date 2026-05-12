@@ -24,13 +24,8 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
-  const activeTournament = await prisma.adminTournament.findFirst({ where: { isActive: true } });
-  const qTournamentId = req.nextUrl.searchParams.get("tournamentId");
-  const tournamentId = qTournamentId ?? activeTournament?.id ?? null;
-
-  // Show teams for the active tournament; if none found, fall back to all teams
+  // Show all teams
   let teams = await prisma.team.findMany({
-    where: tournamentId ? { OR: [{ tournamentId }, { tournamentId: null }] } : {},
     orderBy: { name: "asc" },
   });
 

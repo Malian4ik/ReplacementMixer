@@ -42,8 +42,7 @@ model Player {
 
 model Team {
   id           String   @id @default(cuid())
-  name         String
-  tournamentId String?
+  name         String   @unique
   player1Id    String?
   player2Id    String?
   player3Id    String?
@@ -53,17 +52,13 @@ model Team {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  tournament  AdminTournament?       @relation(fields: [tournamentId], references: [id])
   poolEntries SubstitutionPoolEntry[]
   logs        MatchSubstitutionLog[]
-
-  @@unique([name, tournamentId])
 }
 
 model SubstitutionPoolEntry {
   id                  String     @id @default(cuid())
   playerId            String
-  tournamentId        String?
   status              String     @default("Active")
   joinTime            DateTime   @default(now())
   assignedTeamId      String?
@@ -75,7 +70,6 @@ model SubstitutionPoolEntry {
   updatedAt           DateTime   @updatedAt
 
   player       Player          @relation(fields: [playerId], references: [id])
-  tournament   AdminTournament? @relation(fields: [tournamentId], references: [id])
   assignedTeam Team?            @relation(fields: [assignedTeamId], references: [id])
   logs         MatchSubstitutionLog[]
 
@@ -118,8 +112,6 @@ model AdminTournament {
 
   participations PlayerTournamentParticipation[]
   syncRuns       AdminTournamentSyncRun[]
-  teams          Team[]
-  poolEntries    SubstitutionPoolEntry[]
 }
 
 model PlayerTournamentParticipation {

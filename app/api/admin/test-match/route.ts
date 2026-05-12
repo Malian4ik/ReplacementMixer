@@ -61,7 +61,7 @@ export async function POST() {
       player4Id: slots[3] ?? null,
       player5Id: slots[4] ?? null,
     };
-    const existing = await prisma.team.findFirst({ where: { name, tournamentId: null } });
+    const existing = await prisma.team.findFirst({ where: { name } });
     if (existing) {
       return prisma.team.update({ where: { id: existing.id }, data });
     }
