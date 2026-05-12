@@ -45,6 +45,9 @@ export async function GET() {
       // Skip matches that are pending/scheduled or already finished
       if (!status || PENDING_RE.test(status) || DONE_RE.test(status)) continue;
 
+      // Skip matches scheduled more than 4 hours ago (stale "active" matches on admin site)
+      if (m.scheduledAt && m.scheduledAt < new Date(Date.now() - 4 * 60 * 60 * 1000)) continue;
+
       // Match is active/live on admin site.
       // Check if we already sent the "match started" notification (tracked via comment field).
       const alreadyNotified = await prisma.tournamentMatch.findFirst({
