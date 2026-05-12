@@ -60,31 +60,40 @@ export async function POST(req: NextRequest) {
 }
 
 async function calcDotaTrust(accountId: string): Promise<number | null> {
-  const [player, wl, counts] = await Promise.all([
-    fetchOpenDota<OpenDotaPlayer>(`/players/${accountId}`),
+  const [wl, counts] = await Promise.all([
     fetchOpenDota<OpenDotaWL>(`/players/${accountId}/wl?significant=0`),
     fetchOpenDota<OpenDotaCounts>(`/players/${accountId}/counts`),
   ]);
 
-  if (!player) return null;
+  if (!wl) return null;
 
-  const totalMatches = (wl?.win ?? 0) + (wl?.lose ?? 0);
+  const totalMatches = (wl.win ?? 0) + (wl.lose ?? 0);
 
-  // Abandon count from leaver_status (0 = stayed, 1+ = left/abandoned)
+  // ── Account age from account_id (lower = older Steam account) ──────────────
+  // Sequential Steam IDs: <50M = pre-2009, <150M = ~2012, <300M = ~2016, >500M = new
+  const idNum = parseInt(accountId, 10);
+  const ageScore =
+    idNum < 50_000_000  ? 30 :
+    idNum < 150_000_000 ? 25 :
+    idNum < 300_000_000 ? 18 :
+    idNum < 500_000_000 ? 10 : 4;  // Very new account → smurf risk high
+
+  // ── Match count (few matches on this account = smurf signal) ───────────────
+  const matchScore = Math.min(totalMatches / 20, 40); // 800+ matches = 40pts
+
+  // ── Win rate penalty (smurfs dominate → abnormally high WR) ────────────────
+  const winRate = totalMatches > 0 ? wl.win / totalMatches : 0.5;
+  // Normal ~50%, suspicious >62%, blatant >70%
+  const winRatePenalty = Math.min(30, Math.max(0, (winRate - 0.62) * 300));
+
+  // ── Abandon penalty (account sharing = different people quit) ──────────────
   const leaverStatus = counts?.leaver_status ?? {};
   const abandonCount = Object.entries(leaverStatus)
     .filter(([k]) => parseInt(k) >= 1)
     .reduce((sum, [, v]) => sum + (v.games ?? 0), 0);
-
   const abandonRate = totalMatches > 0 ? abandonCount / totalMatches : 0;
+  const abandonPenalty = Math.min(20, abandonRate * 400); // 5% abandons = -20pts
 
-  // Rank tier: 1=Herald, 2=Guardian, 3=Crusader, 4=Archon, 5=Legend, 6=Ancient, 7=Divine, 8=Immortal
-  const rankTier = player.rank_tier ?? 0;
-  const medal = Math.floor(rankTier / 10); // 1-8
-
-  const activity       = Math.min(totalMatches / 20, 50);   // cap at 1000 matches = 50pts
-  const rankBonus      = Math.min(medal * 3, 24);           // Immortal = 24pts
-  const abandonPenalty = Math.min(abandonRate * 500, 50);   // 10% abandons = 50pt penalty
-
-  return Math.max(0, Math.round(activity + rankBonus - abandonPenalty));
+  const score = ageScore + matchScore - winRatePenalty - abandonPenalty;
+  return Math.max(0, Math.round(score));
 }
