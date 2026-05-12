@@ -46,9 +46,9 @@ export async function GET() {
       if (!status || PENDING_RE.test(status) || DONE_RE.test(status)) continue;
 
       // Match is active/live on admin site.
-      // Check if we already sent a notification for this pair (notifiedAt set = already sent).
+      // Check if we already sent the "match started" notification (tracked via comment field).
       const alreadyNotified = await prisma.tournamentMatch.findFirst({
-        where: { homeTeam: m.homeTeam, awayTeam: m.awayTeam, notifiedAt: { not: null } },
+        where: { homeTeam: m.homeTeam, awayTeam: m.awayTeam, comment: "match_started" },
       });
       if (alreadyNotified) continue;
 
@@ -79,10 +79,11 @@ export async function GET() {
         where: { homeTeam: m.homeTeam, awayTeam: m.awayTeam },
       });
 
+      // Mark as "match started" notification sent (separate from 15-min notifiedAt)
       if (existing) {
         await prisma.tournamentMatch.update({
           where: { id: existing.id },
-          data: { notifiedAt: now, status: "Active", updatedAt: now },
+          data: { status: "Active", comment: "match_started", updatedAt: now },
         });
       } else {
         await prisma.tournamentMatch.create({
@@ -94,7 +95,7 @@ export async function GET() {
             scheduledAt: m.scheduledAt ?? now,
             endsAt: m.endsAt ?? new Date(now.getTime() + 90 * 60 * 1000),
             status: "Active",
-            notifiedAt: now,
+            comment: "match_started",
           },
         });
       }
