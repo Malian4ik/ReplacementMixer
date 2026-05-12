@@ -161,6 +161,7 @@ async function fetchRawGameFromDB(): Promise<RawGame | null> {
     where: {
       OR: [
         { status: "Live" },
+        { status: "Active" },
         {
           status: "Scheduled",
           scheduledAt: { lte: now },
