@@ -23,6 +23,20 @@ const EMPTY_FORM = {
   flexRole: "" as "" | 1|2|3|4|5, wallet: "", telegramId: "", discordId: "", nightMatches: 0,
 };
 
+const PAGE_SIZE = 20;
+
+function TrustBadge({ score }: { score: number | null | undefined }) {
+  if (score === null || score === undefined) {
+    return <span style={{ color: "var(--text-muted)", fontSize: 11 }}>—</span>;
+  }
+  const color = score >= 70 ? "#34d399" : score >= 40 ? "#facc15" : "#f87171";
+  return (
+    <span style={{ fontWeight: 700, fontSize: 12, color, fontFamily: "monospace" }}>
+      {score}
+    </span>
+  );
+}
+
 export default function PlayersPage() {
   const qc = useQueryClient();
   const { user } = useUser();
@@ -37,10 +51,11 @@ export default function PlayersPage() {
   const [sortKey, setSortKey] = useState<"nick" | "mmr" | "stake" | "isActiveInDatabase" | "createdAt" | "matchesPlayed">("nick");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [confirmState, setConfirmState] = useState<{ message: string; onConfirm: () => void } | null>(null);
+  const [page, setPage] = useState(1);
 
   function toggleSort(key: typeof sortKey) {
     if (sortKey === key) setSortDir(d => d === "asc" ? "desc" : "asc");
-    else { setSortKey(key); setSortDir("asc"); }
+    else { setSortKey(key); setSortDir("asc"); setPage(1); }
   }
 
   const { data: players = [], isLoading } = useQuery<Player[]>({
@@ -124,6 +139,24 @@ export default function PlayersPage() {
       else if (sortKey === "createdAt") cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
       return sortDir === "asc" ? cmp : -cmp;
     });
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const pageEntries = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const pagePlayerIds = pageEntries.map(p => p.id);
+
+  const { data: trustScores = [] } = useQuery<{ id: string; trustScore: number | null; hasSteam: boolean }[]>({
+    queryKey: ["trust", pagePlayerIds],
+    queryFn: () =>
+      fetch("/api/players/trust", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playerIds: pagePlayerIds }),
+      }).then(r => r.json()),
+    enabled: pagePlayerIds.length > 0,
+    staleTime: 5 * 60 * 1000,
+  });
+  const trustMap = new Map(trustScores.map(t => [t.id, t]));
+
   const active = players.filter(p => p.isActiveInDatabase).length;
   const activePlayers = players.filter(p => p.isActiveInDatabase);
   const avgMmr = activePlayers.length
@@ -190,14 +223,14 @@ export default function PlayersPage() {
             style={{ width: 220 }}
             placeholder="Поиск по нику..."
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={e => { setSearch(e.target.value); setPage(1); }}
           />
           <input
             className="form-input"
             style={{ width: 220 }}
             placeholder="Поиск по кошельку..."
             value={walletSearch}
-            onChange={e => setWalletSearch(e.target.value)}
+            onChange={e => { setWalletSearch(e.target.value); setPage(1); }}
           />
           <div style={{ display: "flex", gap: 8 }}>
           {canEdit && (
@@ -311,15 +344,15 @@ export default function PlayersPage() {
             <table className="tbl">
               <thead>
                 <tr>
-                  {(["НИК", "MMR", "STAKE", "РОЛЬ", "FLEX", "TELEGRAM", "DISCORD ID", "КОШЕЛЁК", "НОЧИ", "МАТЧИ", "СТАТУС", "ДОБАВЛЕН"] as const).map(h => {
+                  {(["НИК", "MMR", "STAKE", "РОЛЬ", "FLEX", "TELEGRAM", "ТРАСТ", "КОШЕЛЁК", "НОЧИ", "МАТЧИ", "СТАТУС", "ДОБАВЛЕН"] as const).map(h => {
                     const key = h === "НИК" ? "nick" : h === "MMR" ? "mmr" : h === "STAKE" ? "stake" : h === "СТАТУС" ? "isActiveInDatabase" : h === "ДОБАВЛЕН" ? "createdAt" : h === "МАТЧИ" ? "matchesPlayed" : null;
-                    const active = key && sortKey === key;
+                    const isActive = key && sortKey === key;
                     return (
                       <th key={h}
                         onClick={key ? () => toggleSort(key) : undefined}
                         style={key ? { cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" } : undefined}
                       >
-                        {h}{active ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
+                        {h}{isActive ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
                       </th>
                     );
                   })}
@@ -327,7 +360,7 @@ export default function PlayersPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(p => (
+                {pageEntries.map(p => (
                   <tr key={p.id} style={{ opacity: p.isActiveInDatabase ? 1 : 0.5 }}>
                     {editId === p.id ? (
                       <>
@@ -346,7 +379,13 @@ export default function PlayersPage() {
                           </select>
                         </td>
                         <td><input style={{ ...inputStyle, width: 100 }} value={editData.telegramId ?? ""} onChange={e => set("telegramId", e.target.value || null as unknown as string)} /></td>
-                        <td><input style={{ ...inputStyle, width: 130 }} value={editData.discordId ?? ""} placeholder="ID или @тег" onChange={e => set("discordId", e.target.value || null as unknown as string)} /></td>
+                        {/* ТРАСТ column in edit mode — shows Discord ID input since trust comes from OpenDota */}
+                        <td>
+                          <div>
+                            <div style={{ fontSize: 9, color: "var(--text-muted)", marginBottom: 2 }}>Discord ID</div>
+                            <input style={{ ...inputStyle, width: 130 }} value={editData.discordId ?? ""} placeholder="ID" onChange={e => set("discordId", e.target.value || null as unknown as string)} />
+                          </div>
+                        </td>
                         <td><input style={{ ...inputStyle, width: 100 }} value={editData.wallet ?? ""} onChange={e => set("wallet", e.target.value || null as unknown as string)} /></td>
                         <td><input type="number" style={{ ...inputStyle, width: 60 }} value={editData.nightMatches ?? 0} onChange={e => set("nightMatches", Number(e.target.value))} /></td>
                         <td style={{ color: "var(--text-muted)", fontSize: 11, textAlign: "center" }}>
@@ -380,7 +419,7 @@ export default function PlayersPage() {
                         <td><span style={{ color: "var(--accent)" }}>R{p.mainRole}</span></td>
                         <td style={{ color: "var(--text-secondary)" }}>{p.flexRole ? `R${p.flexRole}` : "—"}</td>
                         <td style={{ color: "var(--text-secondary)", fontSize: 12 }}>{p.telegramId ?? "—"}</td>
-                        <td style={{ color: p.discordId ? "#7289da" : "var(--text-muted)", fontSize: 12, fontFamily: "monospace" }}>{p.discordId ?? "—"}</td>
+                        <td><TrustBadge score={trustMap.get(p.id)?.trustScore} /></td>
                         <td style={{ color: "var(--text-secondary)", fontSize: 12, fontFamily: "monospace" }}>{p.wallet ?? "—"}</td>
                         <td>{p.nightMatches}</td>
                         <td>
@@ -422,13 +461,25 @@ export default function PlayersPage() {
                 ))}
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={10} style={{ textAlign: "center", color: "var(--text-muted)", padding: 32 }}>
+                    <td colSpan={13} style={{ textAlign: "center", color: "var(--text-muted)", padding: 32 }}>
                       {search ? "Игроки не найдены" : "Нет игроков"}
                     </td>
                   </tr>
                 )}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {totalPages > 1 && (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "12px 0" }}>
+            <button className="btn btn-ghost btn-sm" disabled={page === 1} onClick={() => setPage(1)}>«</button>
+            <button className="btn btn-ghost btn-sm" disabled={page === 1} onClick={() => setPage(p => p - 1)}>‹</button>
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map(pg => (
+              <button key={pg} className={`btn btn-sm ${pg === page ? "btn-accent" : "btn-ghost"}`} style={{ minWidth: 32 }} onClick={() => setPage(pg)}>{pg}</button>
+            ))}
+            <button className="btn btn-ghost btn-sm" disabled={page === totalPages} onClick={() => setPage(p => p + 1)}>›</button>
+            <button className="btn btn-ghost btn-sm" disabled={page === totalPages} onClick={() => setPage(totalPages)}>»</button>
           </div>
         )}
       </div>
