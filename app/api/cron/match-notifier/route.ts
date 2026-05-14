@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { adminLogin, fetchTournamentScheduleData } from "@/services/admin-source.service";
 import { sendTelegramMessage } from "@/lib/telegram";
+import { creditNightMatches } from "@/services/match-stats.service";
 
 const PENDING_RE = /pending|scheduled|запланирован|в\s*ожидании/i;
 const DONE_RE = /завершен|завершён|завершена|победа|поражение|completed|finished|done|canceled|cancelled|tech_loss|техническое\s*поражение/i;
@@ -112,7 +113,19 @@ export async function GET() {
       notified++;
     }
 
-    return NextResponse.json({ ok: true, notified });
+    // Начислить ночные стрики для матчей, завершённых в admin
+    let nightCredited = 0;
+    for (const m of adminMatches) {
+      if (!m.homeTeam || !m.awayTeam || !m.scheduledAt) continue;
+      const status = (m.adminStatus ?? "").trim().toLowerCase();
+      if (!DONE_RE.test(status)) continue; // только завершённые
+      try {
+        await creditNightMatches(m.homeTeam, m.awayTeam, m.scheduledAt);
+        nightCredited++;
+      } catch { /* игнорируем ошибки отдельных матчей */ }
+    }
+
+    return NextResponse.json({ ok: true, notified, nightCredited });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Ошибка";
     return NextResponse.json({ error: msg }, { status: 500 });

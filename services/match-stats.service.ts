@@ -84,23 +84,30 @@ export async function recalculateMatchStats(): Promise<{ totalMatches: number; p
 }
 
 /** Начислить +1 nightMatches игрокам обеих команд если матч ночной (00:00–06:59 МСК по scheduledAt).
- *  Идемпотентно: повторный вызов на уже зачтённый матч ничего не делает. */
+ *  Идемпотентно: повторный вызов на уже зачтённый матч ничего не делает.
+ *  Авто-создаёт колонку nightCredited при первом вызове — ничего руками делать не нужно. */
 export async function creditNightMatches(
-  matchId: string,
   homeTeam: string,
   awayTeam: string,
   scheduledAt: Date,
 ): Promise<void> {
+  // Авто-миграция: добавить колонку если её ещё нет
+  try {
+    await prisma.$executeRawUnsafe(
+      `ALTER TABLE "TournamentMatch" ADD COLUMN "nightCredited" INTEGER NOT NULL DEFAULT 0`
+    );
+  } catch { /* уже существует — ок */ }
+
   // Ночной диапазон: 00:00–06:59 МСК (UTC+3)
   const mskHour = (scheduledAt.getUTCHours() + 3) % 24;
   if (mskHour >= 7) return;
 
-  // Не начислять дважды
-  const match = await prisma.tournamentMatch.findUnique({
-    where: { id: matchId },
-    select: { nightCredited: true },
+  // Найти локальную запись матча (создаётся match-notifier-ом когда матч становится активным)
+  const record = await prisma.tournamentMatch.findFirst({
+    where: { homeTeam, awayTeam },
+    select: { id: true, nightCredited: true },
   });
-  if (!match || match.nightCredited) return;
+  if (record?.nightCredited) return; // уже зачтён
 
   // Актуальный состав обеих команд на момент завершения
   const teams = await prisma.team.findMany({
@@ -117,8 +124,10 @@ export async function creditNightMatches(
     data: { nightMatches: { increment: 1 } },
   });
 
-  await prisma.tournamentMatch.update({
-    where: { id: matchId },
-    data: { nightCredited: true },
-  });
+  if (record) {
+    await prisma.tournamentMatch.update({
+      where: { id: record.id },
+      data: { nightCredited: true },
+    });
+  }
 }
