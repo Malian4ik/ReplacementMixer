@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Gavel, ListOrdered, Users2, ShieldCheck, Trophy, ScrollText, CalendarDays, UserCog, Swords, BookOpen, Ban, Moon, Download } from "lucide-react";
+import { Gavel, ListOrdered, Users2, ShieldCheck, Trophy, ScrollText, CalendarDays, UserCog, Swords, BookOpen, Ban, Moon, Download, Heart } from "lucide-react";
 import { useUser } from "@/components/UserContext";
 import { TournamentSwitcher } from "@/components/layout/TournamentSwitcher";
 
@@ -13,6 +13,7 @@ const nav = [
   { href: "/teams",        label: "Команды",               icon: Trophy,      desc: "Составы команд" },
   { href: "/logs",         label: "Журнал",                icon: ScrollText,  desc: "История действий" },
   { href: "/night-top",    label: "Ночные стрики",         icon: Moon,        desc: "Рейтинг по ночным" },
+  { href: "/loyalty",      label: "Верные игроки",         icon: Heart,       desc: "Ни разу не менялись" },
   { href: "/disqualified", label: "Дисквалифицированные",  icon: Ban,         desc: "Удалённые игроки" },
 ];
 
@@ -32,6 +33,7 @@ const marketingNav = [
   { href: "/teams",        label: "Команды",              icon: Trophy,      desc: "Составы команд" },
   { href: "/logs",         label: "Журнал",               icon: ScrollText,  desc: "История действий" },
   { href: "/night-top",    label: "Ночные стрики",        icon: Moon,        desc: "Рейтинг по ночным" },
+  { href: "/loyalty",      label: "Верные игроки",        icon: Heart,       desc: "Ни разу не менялись" },
 ];
 
 export function Sidebar() {
