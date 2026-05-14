@@ -30,16 +30,21 @@ export async function GET() {
 
   const players = await prisma.player.findMany({
     where: { id: { in: stayedIds } },
-    select: { id: true, nick: true, mmr: true },
+    select: { id: true, nick: true, mmr: true, matchesPlayed: true },
   });
 
   // Группируем по командам
-  const byTeam: Record<string, { nick: string; mmr: number }[]> = {};
+  const byTeam: Record<string, { nick: string; mmr: number; matchesPlayed: number }[]> = {};
   for (const p of players) {
     const team = teamPlayerMap.get(p.id)!;
     if (!byTeam[team]) byTeam[team] = [];
-    byTeam[team].push({ nick: p.nick, mmr: p.mmr });
+    byTeam[team].push({ nick: p.nick, mmr: p.mmr, matchesPlayed: p.matchesPlayed });
   }
+
+  const totalMatchesPlayed = players.reduce((s, p) => s + p.matchesPlayed, 0);
+  const avgMatchesPlayed = players.length > 0
+    ? (totalMatchesPlayed / players.length).toFixed(1)
+    : "0";
 
   const teamStats = Object.entries(byTeam)
     .sort((a, b) => a[0].localeCompare(b[0]))
@@ -59,6 +64,8 @@ export async function GET() {
       loyalPlayers: stayedIds.length,
       teamsAllLoyal: fullTeams,
       totalTeams: Object.keys(byTeam).length,
+      totalMatchesPlayedByLoyal: totalMatchesPlayed,
+      avgMatchesPerLoyalPlayer: avgMatchesPlayed,
     },
     teams: teamStats,
     logCount: logs.length,
