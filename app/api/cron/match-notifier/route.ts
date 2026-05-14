@@ -113,10 +113,13 @@ export async function GET() {
       notified++;
     }
 
-    // Начислить ночные стрики для матчей, завершённых в admin
+    // Начислить ночные стрики для матчей, завершённых в admin НЕДАВНО (последние 3 часа)
+    // Только свежие матчи — старые уже получили стрики вручную
+    const recentCutoff = new Date(Date.now() - 3 * 60 * 60 * 1000);
     let nightCredited = 0;
     for (const m of adminMatches) {
       if (!m.homeTeam || !m.awayTeam || !m.scheduledAt) continue;
+      if (m.scheduledAt < recentCutoff) continue; // пропускаем старые матчи
       const status = (m.adminStatus ?? "").trim().toLowerCase();
       if (!DONE_RE.test(status)) continue; // только завершённые
       try {
