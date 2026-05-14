@@ -929,3 +929,136 @@ export async function fetchTournamentScheduleData(
   }
   return [];
 }
+
+// ─── Captain Draft ─────────────────────────────────────────────────────────────
+
+export interface DraftTeamData {
+  name: string;
+  captain: { nick: string; queuePosition: number | null } | null;
+  players: { nick: string; rating: number | null; isCaptain: boolean }[];
+}
+
+export interface DraftState {
+  tournamentName: string;
+  pickChoiceCount: number;
+  teams: DraftTeamData[];
+  pool: { nick: string; rating: number | null; queuePosition: number | null }[];
+  currentTeamName: string | null;
+  totalPicked: number;
+  totalPool: number;
+}
+
+export async function fetchDraftState(
+  tournamentId: string | number
+): Promise<DraftState | null> {
+  // Tournament metadata
+  let tournamentName = `Турнир ${tournamentId}`;
+  let pickChoiceCount = 8;
+  try {
+    const tRes = await fetch(
+      `${BASE}/admin/tournaments/tournament/${tournamentId}/change/`,
+      { headers: makeHeaders() }
+    );
+    if (tRes.ok) {
+      const html = await tRes.text();
+      const nm = html.match(/id="id_name"[^>]*value="([^"]*)"/);
+      if (nm) tournamentName = nm[1];
+      const pm = html.match(/name="captain_pick_choice_count"[^>]*value="([^"]*)"/);
+      if (pm && pm[1]) pickChoiceCount = parseInt(pm[1], 10) || 8;
+    }
+  } catch { /* ignore */ }
+
+  // All participants (list pages)
+  const rawList: RawListParticipant[] = [];
+  let page = 1;
+  while (true) {
+    const { items, hasMore } = await fetchParticipantPage(tournamentId, page);
+    rawList.push(...items);
+    if (!hasMore || page >= 50) break;
+    page++;
+  }
+
+  // Detail pages for qualify_rating + is_captain
+  const details = await batchMap(rawList, 8, async (p) => {
+    const res = await fetch(
+      `${BASE}/admin/tournaments/participant/${p.uuid}/change/`,
+      { headers: makeHeaders() }
+    );
+    if (!res.ok) return { rating: null, isCaptain: false };
+    const html = await res.text();
+    const qr = html.match(/name="qualify_rating"[^>]*value="([^"]*)"/);
+    const isCaptain =
+      /name="is_captain"[^>]*\bchecked\b/i.test(html) ||
+      /\bchecked\b[^>]*name="is_captain"/i.test(html) ||
+      /id="id_is_captain"[^>]*\bchecked\b/i.test(html) ||
+      /\bchecked\b[^>]*id="id_is_captain"/i.test(html);
+    return {
+      rating: qr?.[1] ? parseFloat(qr[1]) : null,
+      isCaptain,
+    };
+  });
+
+  // Merge
+  const all = rawList.map((raw, i) => ({
+    nick: raw.nick,
+    tournamentStatus: raw.tournamentStatus,
+    team: raw.team ?? null,
+    queuePosition: raw.queuePosition ?? null,
+    rating: details[i]?.rating ?? null,
+    isCaptain: details[i]?.isCaptain ?? false,
+  }));
+
+  const activePlayers = all.filter(p => /active/i.test(p.tournamentStatus));
+  const bidPlayers = all.filter(p => /bid/i.test(p.tournamentStatus));
+
+  // Group active players by team name
+  const teamMap = new Map<string, typeof all>();
+  for (const p of activePlayers) {
+    const key = p.team ?? "Без команды";
+    if (!teamMap.has(key)) teamMap.set(key, []);
+    teamMap.get(key)!.push(p);
+  }
+
+  const teams: DraftTeamData[] = [];
+  for (const [name, members] of teamMap.entries()) {
+    const cap = members.find(m => m.isCaptain) ?? null;
+    teams.push({
+      name,
+      captain: cap ? { nick: cap.nick, queuePosition: cap.queuePosition } : null,
+      players: members.map(m => ({ nick: m.nick, rating: m.rating, isCaptain: m.isCaptain })),
+    });
+  }
+
+  // Sort teams by captain queue_position, then name
+  teams.sort((a, b) => {
+    const aq = a.captain?.queuePosition ?? 9999;
+    const bq = b.captain?.queuePosition ?? 9999;
+    return aq !== bq ? aq - bq : a.name.localeCompare(b.name);
+  });
+
+  // Pool sorted by queue_position
+  const pool = bidPlayers
+    .sort((a, b) => (a.queuePosition ?? 9999) - (b.queuePosition ?? 9999))
+    .map(p => ({ nick: p.nick, rating: p.rating, queuePosition: p.queuePosition }));
+
+  // Current picker: fewest players → lowest captain queue_position
+  const incomplete = teams.filter(t => t.players.length < pickChoiceCount);
+  let currentTeamName: string | null = null;
+  if (incomplete.length > 0) {
+    incomplete.sort((a, b) => {
+      if (a.players.length !== b.players.length) return a.players.length - b.players.length;
+      return (a.captain?.queuePosition ?? 9999) - (b.captain?.queuePosition ?? 9999);
+    });
+    currentTeamName = incomplete[0].name;
+  }
+
+  return {
+    tournamentName,
+    pickChoiceCount,
+    teams,
+    pool,
+    currentTeamName,
+    totalPicked: activePlayers.length,
+    totalPool: bidPlayers.length,
+  };
+}
