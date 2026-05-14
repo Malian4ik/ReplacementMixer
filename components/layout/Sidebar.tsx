@@ -7,7 +7,6 @@ import { useUser } from "@/components/UserContext";
 import { TournamentSwitcher } from "@/components/layout/TournamentSwitcher";
 
 const nav = [
-  { href: "/queue",        label: "Очередь",               icon: ListOrdered, desc: "TOP-10 кандидатов" },
   { href: "/pool",         label: "Пул",                   icon: ShieldCheck, desc: "Активные кандидаты" },
   { href: "/players",      label: "Игроки",                icon: Users2,      desc: "База игроков" },
   { href: "/teams",        label: "Команды",               icon: Trophy,      desc: "Составы команд" },
@@ -23,7 +22,6 @@ const judgeNav = [
 ];
 
 const ownerNav = [
-  { href: "/schedule",      label: "Расписание", icon: CalendarDays, desc: "Round-robin турнир" },
   { href: "/admin/import",  label: "Импорт",     icon: Download,     desc: "Импорт из админки" },
 ];
 
