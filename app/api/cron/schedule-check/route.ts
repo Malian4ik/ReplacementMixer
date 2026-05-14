@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { adminLogin, fetchTournamentScheduleData } from "@/services/admin-source.service";
 import { sendTelegramMessage } from "@/lib/telegram";
+import { creditNightMatches } from "@/services/match-stats.service";
 
 const PENDING_RE = /pending|scheduled|запланирован|в\s*ожидании/i;
 const DONE_RE = /завершен|завершён|завершена|победа|поражение|completed|finished|done|canceled|cancelled|tech_loss|техническое\s*поражение/i;
@@ -125,13 +126,19 @@ export async function GET() {
     }
 
     // Auto-complete local matches that have ended (still useful for UI)
+    const toComplete = await prisma.tournamentMatch.findMany({
+      where: { endsAt: { lte: now }, status: { in: ["Scheduled", "Active", "Live"] } },
+      select: { id: true, homeTeam: true, awayTeam: true, scheduledAt: true },
+    });
+
     const completed = await prisma.tournamentMatch.updateMany({
-      where: {
-        endsAt: { lte: now },
-        status: { in: ["Scheduled", "Active", "Live"] },
-      },
+      where: { endsAt: { lte: now }, status: { in: ["Scheduled", "Active", "Live"] } },
       data: { status: "Completed" },
     });
+
+    for (const m of toComplete) {
+      await creditNightMatches(m.id, m.homeTeam, m.awayTeam, m.scheduledAt).catch(() => {});
+    }
 
     return NextResponse.json({ ok: true, notified, autoCompleted: completed.count });
   } catch (e: unknown) {

@@ -87,13 +87,14 @@ model TournamentMatch {
   scheduledAt  DateTime
   endsAt       DateTime
   status       String    @default("Scheduled")
-  techLossTeam String?
-  winnerTeam   String?
-  notifiedAt   DateTime?
-  judgeName    String?
-  comment      String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  techLossTeam  String?
+  winnerTeam    String?
+  notifiedAt    DateTime?
+  judgeName     String?
+  comment       String?
+  nightCredited Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 }
 
 // ── Tournament Import from Admin ──────────────────────────────────────────────

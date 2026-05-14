@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sendTelegramMessage } from "@/lib/telegram";
 import { buildMatchCompletionMessage } from "@/lib/report";
-import { recalculateMatchStats } from "@/services/match-stats.service";
+import { recalculateMatchStats, creditNightMatches } from "@/services/match-stats.service";
 
 const MATCH_MS = 1.5 * 60 * 60 * 1000;
 
@@ -31,6 +31,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         `❌ Тех. поражение | Тур ${match.round}\n${match.homeTeam} vs ${match.awayTeam}\nТех. луз: ${techLossTeam} | Победитель: ${winner}${judgeName ? `\nСудья: ${judgeName}` : ""}${comment ? `\nКомментарий: ${comment}` : ""}`
       );
       await recalculateMatchStats().catch(() => {});
+      await creditNightMatches(id, match.homeTeam, match.awayTeam, match.scheduledAt).catch(() => {});
 
     } else if (action === "postpone") {
       // Mark current match as Postponed
@@ -94,6 +95,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const msg = await buildMatchCompletionMessage(match);
       await sendTelegramMessage(msg).catch(() => {});
       await recalculateMatchStats().catch(() => {});
+      await creditNightMatches(id, match.homeTeam, match.awayTeam, match.scheduledAt).catch(() => {});
     } else {
       return NextResponse.json({ error: "Неизвестное действие" }, { status: 400 });
     }

@@ -7,6 +7,7 @@ export async function POST() {
   const migrations = [
     { sql: `ALTER TABLE "Player" ADD COLUMN "steamAccountId" TEXT`, label: "Player.steamAccountId" },
     { sql: `ALTER TABLE "TournamentMatch" ADD COLUMN "winnerTeam" TEXT`, label: "TournamentMatch.winnerTeam" },
+    { sql: `ALTER TABLE "TournamentMatch" ADD COLUMN "nightCredited" INTEGER NOT NULL DEFAULT 0`, label: "TournamentMatch.nightCredited" },
   ];
 
   for (const m of migrations) {
