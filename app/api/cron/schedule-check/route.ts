@@ -29,6 +29,10 @@ async function getTeamTelegramIds(teamName: string): Promise<string[]> {
 
 export async function GET() {
   try {
+    try {
+      await prisma.$executeRawUnsafe(`ALTER TABLE "TournamentMatch" ADD COLUMN "nightCredited" INTEGER NOT NULL DEFAULT 0`);
+    } catch { /* already exists */ }
+
     const now = new Date();
 
     // Use the active tournament; fall back to last synced

@@ -8,6 +8,10 @@ const MATCH_MS = 1.5 * 60 * 60 * 1000;
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    try {
+      await prisma.$executeRawUnsafe(`ALTER TABLE "TournamentMatch" ADD COLUMN "nightCredited" INTEGER NOT NULL DEFAULT 0`);
+    } catch { /* already exists */ }
+
     const { id } = await params;
     const { action, techLossTeam, winnerTeam, judgeName, comment } = await req.json() as {
       action: "tech_loss" | "postpone" | "complete";
