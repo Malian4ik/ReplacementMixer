@@ -42,11 +42,11 @@ export async function GET(req: NextRequest) {
         if (pid) playerTeam.set(pid, t.name);
       }
     }
-    const header = "Ник,MMR,Стейк,Роль,Матчей сыграно,Ночных матчей,Команда";
+    const header = "Ник;MMR;Стейк;Роль;Матчей сыграно;Ночных матчей;Команда";
     const lines = players.map(p =>
       [p.nick, p.mmr, p.stake, ROLES[p.mainRole] ?? p.mainRole, p.matchesPlayed, p.nightMatches, playerTeam.get(p.id) ?? "—"]
-        .map(v => `"${String(v ?? "").replace(/"/g, '""')}"`)
-        .join(",")
+        .map(v => String(v ?? "").replace(/;/g, ","))
+        .join(";")
     );
     const csv = "﻿" + [header, ...lines].join("\n");
     const date = new Date().toISOString().slice(0, 10);
