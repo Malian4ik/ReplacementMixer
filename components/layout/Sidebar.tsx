@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Gavel, ListOrdered, Users2, ShieldCheck, Trophy, ScrollText, CalendarDays, UserCog, Swords, BookOpen, Ban, Moon, Download, Heart } from "lucide-react";
+import { Gavel, ListOrdered, Users2, ShieldCheck, Trophy, ScrollText, CalendarDays, UserCog, Swords, BookOpen, Ban, Moon, Download, Heart, FileDown } from "lucide-react";
 import { useUser } from "@/components/UserContext";
 import { TournamentSwitcher } from "@/components/layout/TournamentSwitcher";
 
@@ -22,7 +22,8 @@ const judgeNav = [
 ];
 
 const ownerNav = [
-  { href: "/admin/import",  label: "Импорт",     icon: Download,     desc: "Импорт из админки" },
+  { href: "/admin/import",  label: "Импорт",     icon: Download,  desc: "Импорт из админки" },
+  { href: "/admin/export",  label: "Экспорт",    icon: FileDown,  desc: "Скачать статистику" },
 ];
 
 const PUBLIC_PATHS = ["/login", "/register", "/setup"];

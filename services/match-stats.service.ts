@@ -8,9 +8,9 @@ import {
 } from "./admin-source.service";
 
 export async function recalculateMatchStats(): Promise<{ totalMatches: number; playersUpdated: number }> {
-  const adminTournament = await prisma.adminTournament.findFirst({
-    orderBy: { lastSyncedAt: "desc" },
-  });
+  const adminTournament =
+    (await prisma.adminTournament.findFirst({ where: { isActive: true } })) ??
+    (await prisma.adminTournament.findFirst({ orderBy: { lastSyncedAt: "desc" } }));
   const cutoff = adminTournament?.startDate ?? new Date("2026-05-01T00:00:00Z");
 
   let totalMatches = 0;
@@ -238,7 +238,9 @@ export async function recalculateMatchStats(): Promise<{ totalMatches: number; p
 
 /** Debug: show why a specific player (by nick) has the matchesPlayed they do. */
 export async function debugPlayerStats(nick: string) {
-  const adminTournament = await prisma.adminTournament.findFirst({ orderBy: { lastSyncedAt: "desc" } });
+  const adminTournament =
+    (await prisma.adminTournament.findFirst({ where: { isActive: true } })) ??
+    (await prisma.adminTournament.findFirst({ orderBy: { lastSyncedAt: "desc" } }));
   const cutoff = adminTournament?.startDate ?? new Date("2026-05-01T00:00:00Z");
 
   const player = await prisma.player.findFirst({ where: { nick } });
