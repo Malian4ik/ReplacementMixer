@@ -119,6 +119,23 @@ export async function recalculateMatchStats(): Promise<{ totalMatches: number; p
   });
   updated += zeroed.count;
 
+  // Cap nightMatches to matchesPlayed — overcounting from non-idempotent cron can't
+  // produce more night games than total games played.
+  const overcredited = await prisma.$queryRaw<{ id: string; matchesPlayed: number }[]>`
+    SELECT id, "matchesPlayed" FROM "Player"
+    WHERE "nightMatches" > "matchesPlayed" AND "isActiveInDatabase" = 1
+  `;
+  for (const p of overcredited) {
+    await prisma.player.update({
+      where: { id: p.id },
+      data: { nightMatches: p.matchesPlayed },
+    });
+    updated++;
+  }
+  if (overcredited.length > 0) {
+    console.log(`[recalc] capped nightMatches for ${overcredited.length} players`);
+  }
+
   return { totalMatches, playersUpdated: updated };
 }
 
