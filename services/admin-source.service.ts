@@ -861,15 +861,13 @@ async function fetchMatchPage(
 
     const adminStatus = fieldText(row, "status") || fieldText(row, "colored_status") || "";
 
-    // Try to extract the game UUID from several sources (Django admin may use numeric or UUID PK)
-    // 1. Action checkbox value (most reliable — always contains the model PK)
-    const checkboxUuid = row.match(/name="_selected_action"[^>]*value="([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"/)?.[1];
-    // 2. Change link in the row
+    // Extract game UUID — confirmed source: field-match_id cell (probe showed uuidsOnPage from this field)
+    const matchIdText = fieldText(row, "match_id").trim();
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const matchIdUuid = UUID_RE.test(matchIdText) ? matchIdText : undefined;
+    // Fallback: change link or any UUID in href within the row
     const linkUuid = row.match(/\/admin\/tournaments\/game\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\//)?.[1];
-    // 3. field-short_id cell text (some models expose UUID as short_id)
-    const shortIdText = fieldText(row, "short_id");
-    const shortIdUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(shortIdText) ? shortIdText : undefined;
-    const id = checkboxUuid ?? linkUuid ?? shortIdUuid;
+    const id = matchIdUuid ?? linkUuid;
 
     items.push({
       id,
