@@ -57,6 +57,36 @@ export async function GET(req: NextRequest) {
     });
   }
 
+  const fixNight = req.nextUrl.searchParams.get("fixNight");
+  if (fixNight === "1") {
+    // Reconstruct nightMatches from nightCredited TournamentMatch records
+    const nightedMatches = await prisma.tournamentMatch.findMany({
+      where: { nightCredited: true },
+      select: { homeTeam: true, awayTeam: true },
+    });
+    const teamNames = [...new Set(nightedMatches.flatMap(m => [m.homeTeam, m.awayTeam]))];
+    const teams = await prisma.team.findMany({
+      where: { name: { in: teamNames } },
+      select: { name: true, player1Id: true, player2Id: true, player3Id: true, player4Id: true, player5Id: true },
+    });
+    const teamMap = new Map(teams.map(t => [t.name, t]));
+    const playerCounts = new Map<string, number>();
+    for (const m of nightedMatches) {
+      for (const teamName of [m.homeTeam, m.awayTeam]) {
+        const t = teamMap.get(teamName);
+        if (!t) continue;
+        for (const pid of [t.player1Id, t.player2Id, t.player3Id, t.player4Id, t.player5Id]) {
+          if (pid) playerCounts.set(pid, (playerCounts.get(pid) ?? 0) + 1);
+        }
+      }
+    }
+    await prisma.player.updateMany({ where: {}, data: { nightMatches: 0 } });
+    for (const [playerId, count] of playerCounts) {
+      await prisma.player.updateMany({ where: { id: playerId }, data: { nightMatches: count } });
+    }
+    return NextResponse.json({ ok: true, nightMatchesRestored: playerCounts.size, totalNightMatches: nightedMatches.length });
+  }
+
   try {
     const result = await recalculateMatchStats();
     return NextResponse.json({ ok: true, ...result });
