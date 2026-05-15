@@ -999,15 +999,14 @@ function fieldHref(row: string, fieldName: string): string {
  * Fetch per-player match counts directly from gameuserstats admin page.
  * Each row in gameuserstats = one player in one game.
  *
- * When validGameIds is provided (Set of game UUIDs from completed tournament matches),
- * fetches ALL gameuserstats rows unfiltered and counts only those whose game UUID
- * is in validGameIds. This is the most accurate method.
- *
- * Falls back to tournament filter patterns if validGameIds is not provided or empty.
+ * The field-game cell shows truncated text "Game {8-char-prefix}-…" (no link/href).
+ * gamePrefixMap maps the 8-char prefix to the full game UUID so we can match
+ * gameuserstats rows against the set of completed tournament game UUIDs.
  */
 export async function fetchPlayerGameCounts(
-  tournamentId: string | number,
+  _tournamentId: string | number,
   validGameIds?: Set<string>,
+  gamePrefixMap?: Map<string, string>,
 ): Promise<{
   byNick: Map<string, number>;
   byParticipantUuid: Map<string, number>;
@@ -1016,67 +1015,66 @@ export async function fetchPlayerGameCounts(
   const byNick = new Map<string, number>();
   const byParticipantUuid = new Map<string, number>();
 
-  // ── Primary path: game-UUID-based filtering (most accurate) ──────────────────
-  if (validGameIds && validGameIds.size > 0) {
-    console.log(`[fetchPlayerGameCounts] fetching all gameuserstats, filtering by ${validGameIds.size} game UUIDs`);
-    let page = 1;
-    let totalRows = 0;
-    let matchedRows = 0;
-
-    while (page <= 500) {
-      const url = page === 1 ? statsBase : `${statsBase}?p=${page}`;
-      const res = await fetch(url, { headers: makeHeaders() });
-      if (!res.ok) break;
-      const html = await res.text();
-
-      const listMatch = html.match(/id="result_list"[^>]*>([\s\S]*)/);
-      if (!listMatch) break;
-
-      let rowsOnPage = 0;
-      for (const [, row] of [...listMatch[1].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)]) {
-        // Extract game UUID from field-game href: /admin/tournaments/game/{UUID}/change/
-        const gameHref = fieldHref(row, "game");
-        const gameUuidMatch = gameHref.match(/\/admin\/tournaments\/game\/([0-9a-f-]{36})\//);
-        const gameUuid = gameUuidMatch?.[1];
-        if (!gameUuid || !validGameIds.has(gameUuid)) {
-          // Count row for pagination detection even if not matched
-          const hasAnyField = row.includes('class="field-');
-          if (hasAnyField) rowsOnPage++;
-          continue;
-        }
-
-        rowsOnPage++;
-        matchedRows++;
-
-        // Primary: participant UUID from href
-        const uuidMatch = row.match(/\/admin\/tournaments\/participant\/([0-9a-f-]{36})\//);
-        if (uuidMatch) {
-          byParticipantUuid.set(uuidMatch[1], (byParticipantUuid.get(uuidMatch[1]) ?? 0) + 1);
-          continue;
-        }
-        // Fallback: nick from field-user (shown as plain text per probe)
-        const nick = fieldText(row, "user") || fieldText(row, "participant__nick") || fieldText(row, "nick");
-        if (nick && nick !== "-" && nick.length > 0) {
-          byNick.set(nick, (byNick.get(nick) ?? 0) + 1);
-        }
-      }
-
-      totalRows += rowsOnPage;
-      if (rowsOnPage === 0 && page > 1) break;
-
-      const hasMore =
-        new RegExp(`[?&]p=${page + 1}[&"]`).test(html) ||
-        new RegExp(`[?&]p=${page + 1}&amp;`).test(html);
-      if (!hasMore) break;
-      page++;
-    }
-
-    console.log(`[fetchPlayerGameCounts] scanned ${totalRows} rows, matched ${matchedRows}, nicks=${byNick.size}, uuids=${byParticipantUuid.size}`);
-    if (byNick.size > 0 || byParticipantUuid.size > 0) return { byNick, byParticipantUuid };
+  if (!validGameIds || validGameIds.size === 0 || !gamePrefixMap || gamePrefixMap.size === 0) {
+    console.log("[fetchPlayerGameCounts] no game UUID data, team-based fallback will be used");
+    return { byNick, byParticipantUuid };
   }
 
-  // No game UUIDs available or UUID matching found 0 rows — caller will use team-based fallback
-  console.log("[fetchPlayerGameCounts] no per-player data available, team-based fallback will be used");
+  console.log(`[fetchPlayerGameCounts] fetching gameuserstats, matching ${validGameIds.size} game UUIDs by 8-char prefix`);
+  let page = 1;
+  let totalRows = 0;
+  let matchedRows = 0;
+
+  while (page <= 500) {
+    const url = page === 1 ? statsBase : `${statsBase}?p=${page}`;
+    const res = await fetch(url, { headers: makeHeaders() });
+    if (!res.ok) break;
+    const html = await res.text();
+
+    const listMatch = html.match(/id="result_list"[^>]*>([\s\S]*)/);
+    if (!listMatch) break;
+
+    let rowsOnPage = 0;
+    for (const [, row] of [...listMatch[1].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)]) {
+      if (!row.includes('class="field-')) continue;
+      rowsOnPage++;
+
+      // field-game shows "Game {8-char-prefix}-…" — no href available
+      const gameText = fieldText(row, "game");
+      const prefixMatch = gameText.match(/Game ([0-9a-f]{8})-/i);
+      const prefix = prefixMatch?.[1];
+      const gameUuid = prefix ? gamePrefixMap.get(prefix) : undefined;
+      if (!gameUuid || !validGameIds.has(gameUuid)) continue;
+
+      matchedRows++;
+
+      // Try participant UUID from any href in the row
+      const uuidMatch = row.match(/\/admin\/tournaments\/participant\/([0-9a-f-]{36})\//);
+      if (uuidMatch) {
+        byParticipantUuid.set(uuidMatch[1], (byParticipantUuid.get(uuidMatch[1]) ?? 0) + 1);
+        continue;
+      }
+      // field-user contains plain nick text
+      const nick = fieldText(row, "user");
+      if (nick && nick !== "-" && nick.length > 0) {
+        byNick.set(nick, (byNick.get(nick) ?? 0) + 1);
+      }
+    }
+
+    totalRows += rowsOnPage;
+    if (rowsOnPage === 0 && page > 1) break;
+
+    const hasMore =
+      new RegExp(`[?&]p=${page + 1}[&"]`).test(html) ||
+      new RegExp(`[?&]p=${page + 1}&amp;`).test(html);
+    if (!hasMore) break;
+    page++;
+  }
+
+  console.log(`[fetchPlayerGameCounts] scanned ${totalRows} rows, matched ${matchedRows}, nicks=${byNick.size}, uuids=${byParticipantUuid.size}`);
+  if (byNick.size > 0 || byParticipantUuid.size > 0) return { byNick, byParticipantUuid };
+
+  console.log("[fetchPlayerGameCounts] 0 matches found, team-based fallback will be used");
   return { byNick: new Map(), byParticipantUuid: new Map() };
 }
 

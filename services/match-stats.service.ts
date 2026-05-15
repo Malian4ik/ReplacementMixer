@@ -65,9 +65,11 @@ export async function recalculateMatchStats(): Promise<{ totalMatches: number; p
     try {
       // Build set of game UUIDs from completed matches (extracted from admin change links)
       const validGameIds = new Set(adminCompletedMatches.filter(m => m.id).map(m => m.id!));
-      const sampleIds = adminCompletedMatches.slice(0, 3).map(m => `id=${JSON.stringify(m.id)}`).join(", ");
-      console.log("[recalc] validGameIds:", validGameIds.size, "of", adminCompletedMatches.length, "| sample:", sampleIds);
-      const { byNick, byParticipantUuid } = await fetchPlayerGameCounts(adminTournament.externalId, validGameIds);
+      // Build 8-char prefix → full UUID map (field-game in gameuserstats shows "Game {prefix}-…")
+      const gamePrefixMap = new Map<string, string>();
+      for (const uuid of validGameIds) gamePrefixMap.set(uuid.slice(0, 8), uuid);
+      console.log("[recalc] validGameIds:", validGameIds.size, "of", adminCompletedMatches.length, "prefixMap:", gamePrefixMap.size);
+      const { byNick, byParticipantUuid } = await fetchPlayerGameCounts(adminTournament.externalId, validGameIds, gamePrefixMap);
 
       // Minimum threshold: if fewer than 50 players found, data is incomplete — fall back to team-based
       const MIN_PLAYERS_THRESHOLD = 50;
