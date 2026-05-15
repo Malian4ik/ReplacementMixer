@@ -1069,64 +1069,10 @@ export async function fetchPlayerGameCounts(
 
     console.log(`[fetchPlayerGameCounts] scanned ${totalRows} rows, matched ${matchedRows}, nicks=${byNick.size}, uuids=${byParticipantUuid.size}`);
     if (byNick.size > 0 || byParticipantUuid.size > 0) return { byNick, byParticipantUuid };
-    console.warn("[fetchPlayerGameCounts] game-UUID filter matched 0 rows, falling back to tournament filters");
   }
 
-  // ── Fallback: tournament filter patterns ──────────────────────────────────────
-  const filters = [
-    `?game__tournament__id__exact=${tournamentId}`,
-    `?game__round__tournament__id__exact=${tournamentId}`,
-    `?round__tournament__id__exact=${tournamentId}`,
-    `?tournament__id__exact=${tournamentId}`,
-  ];
-
-  for (const filter of filters) {
-    const fbByNick = new Map<string, number>();
-    const fbByUuid = new Map<string, number>();
-    let page = 1;
-    let totalRows = 0;
-    console.log(`[fetchPlayerGameCounts] trying filter ${filter}`);
-
-    while (page <= 300) {
-      const url = page === 1 ? `${statsBase}${filter}` : `${statsBase}${filter}&p=${page}`;
-      const res = await fetch(url, { headers: makeHeaders() });
-      if (!res.ok) break;
-      const html = await res.text();
-
-      const listMatch = html.match(/id="result_list"[^>]*>([\s\S]*)/);
-      if (!listMatch) break;
-
-      let rowsOnPage = 0;
-      for (const [, row] of [...listMatch[1].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)]) {
-        const uuidMatch = row.match(/\/admin\/tournaments\/participant\/([0-9a-f-]{36})\//);
-        if (uuidMatch) {
-          fbByUuid.set(uuidMatch[1], (fbByUuid.get(uuidMatch[1]) ?? 0) + 1);
-          rowsOnPage++;
-          continue;
-        }
-        const nick = fieldText(row, "user") || fieldText(row, "participant__nick") || fieldText(row, "nick");
-        if (nick && nick !== "-") {
-          fbByNick.set(nick, (fbByNick.get(nick) ?? 0) + 1);
-          rowsOnPage++;
-        }
-      }
-
-      totalRows += rowsOnPage;
-      if (rowsOnPage === 0 && page > 1) break;
-      const hasMore =
-        new RegExp(`[?&]p=${page + 1}[&"]`).test(html) ||
-        new RegExp(`[?&]p=${page + 1}&amp;`).test(html);
-      if (!hasMore) break;
-      page++;
-    }
-
-    if (fbByUuid.size > 0 || fbByNick.size > 0) {
-      console.log(`[fetchPlayerGameCounts] filter="${filter}" rows=${totalRows} uuids=${fbByUuid.size} nicks=${fbByNick.size}`);
-      return { byNick: fbByNick, byParticipantUuid: fbByUuid };
-    }
-  }
-
-  console.warn("[fetchPlayerGameCounts] gameuserstats returned no data for tournament", tournamentId);
+  // No game UUIDs available or UUID matching found 0 rows — caller will use team-based fallback
+  console.log("[fetchPlayerGameCounts] no per-player data available, team-based fallback will be used");
   return { byNick: new Map(), byParticipantUuid: new Map() };
 }
 
