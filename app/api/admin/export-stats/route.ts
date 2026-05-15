@@ -6,8 +6,15 @@ const ROLES: Record<number, string> = { 1: "Carry", 2: "Mid", 3: "Offlane", 4: "
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const format = searchParams.get("format") ?? "json";
+  const tournamentName = searchParams.get("tournament") ?? "Mixer Cup #1";
 
-  const [players, teams] = await Promise.all([
+  // Find MixerCup #1 to get per-tournament bid sizes
+  const tournament = await prisma.adminTournament.findFirst({
+    where: { name: { contains: tournamentName } },
+    select: { id: true, name: true },
+  });
+
+  const [players, teams, participations] = await Promise.all([
     prisma.player.findMany({
       where: { isActiveInDatabase: true },
       orderBy: [{ matchesPlayed: "desc" }, { nightMatches: "desc" }],
@@ -22,6 +29,12 @@ export async function GET(req: Request) {
         player1Id: true, player2Id: true, player3Id: true, player4Id: true, player5Id: true,
       },
     }),
+    tournament
+      ? prisma.playerTournamentParticipation.findMany({
+          where: { tournamentId: tournament.id },
+          select: { playerId: true, bidSize: true, qualifyRating: true },
+        })
+      : Promise.resolve([]),
   ]);
 
   // Build playerId → teamName map
@@ -32,10 +45,16 @@ export async function GET(req: Request) {
     }
   }
 
+  // Build playerId → bidSize from the specific tournament
+  const playerBid = new Map<string, number>();
+  for (const p of participations) {
+    if (p.bidSize != null) playerBid.set(p.playerId, p.bidSize);
+  }
+
   const rows = players.map(p => ({
     nick: p.nick,
     mmr: p.mmr,
-    stake: p.stake,
+    stake: playerBid.get(p.id) ?? p.stake,
     role: ROLES[p.mainRole] ?? String(p.mainRole),
     matchesPlayed: p.matchesPlayed,
     nightMatches: p.nightMatches,

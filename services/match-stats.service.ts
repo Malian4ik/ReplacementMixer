@@ -74,8 +74,21 @@ export async function recalculateMatchStats(): Promise<{ totalMatches: number; p
   }
 
   const updatedIds = [...playerNewCount.keys()];
+
+  // Don't zero out players who were substituted out — they played matches before leaving the team
+  const subLogs = await prisma.matchSubstitutionLog.findMany({
+    where: { replacedPlayerId: { not: null } },
+    select: { replacedPlayerId: true },
+    distinct: ["replacedPlayerId"],
+  });
+  const substitutedIds = new Set(subLogs.map(s => s.replacedPlayerId).filter(Boolean) as string[]);
+
   const zeroed = await prisma.player.updateMany({
-    where: { matchesPlayed: { gt: 0 }, id: { notIn: updatedIds } },
+    where: {
+      matchesPlayed: { gt: 0 },
+      id: { notIn: updatedIds },
+      NOT: { id: { in: [...substitutedIds] } },
+    },
     data: { matchesPlayed: 0 },
   });
   updated += zeroed.count;
