@@ -77,50 +77,58 @@ export async function recalculateMatchStats(): Promise<{ totalMatches: number; p
     updated += r.count;
   }
 
-  // Restore matchesPlayed for players substituted OUT — count team matches before their substitution
+  // Restore matchesPlayed for players substituted OUT.
+  // A player may have been replaced from multiple teams in sequence — sum all periods.
   const subLogs = await prisma.matchSubstitutionLog.findMany({
     where: { replacedPlayerId: { not: null }, teamName: { not: null } },
     select: { replacedPlayerId: true, teamName: true, timestamp: true },
     orderBy: { timestamp: "asc" },
   });
 
-  // Use earliest substitution per player (first time they were replaced)
-  const substitutedData = new Map<string, { teamName: string; timestamp: Date }>();
+  // Collect ALL substitution events per player in chronological order
+  const allSubLogs = new Map<string, { teamName: string; timestamp: Date }[]>();
   for (const log of subLogs) {
     if (!log.replacedPlayerId || !log.teamName) continue;
-    if (!substitutedData.has(log.replacedPlayerId)) {
-      substitutedData.set(log.replacedPlayerId, { teamName: log.teamName, timestamp: log.timestamp });
-    }
+    if (!allSubLogs.has(log.replacedPlayerId)) allSubLogs.set(log.replacedPlayerId, []);
+    allSubLogs.get(log.replacedPlayerId)!.push({ teamName: log.teamName, timestamp: log.timestamp });
   }
 
-  for (const [playerId, { teamName, timestamp }] of substitutedData.entries()) {
+  for (const [playerId, subs] of allSubLogs.entries()) {
     if (playerNewCount.has(playerId)) continue; // already counted via current team roster
-    let count: number;
-    if (adminCompletedMatches.length > 0) {
-      // Use admin API data — more accurate than local DB (local DB may be incomplete)
-      count = adminCompletedMatches.filter(m =>
-        (m.homeTeam === teamName || m.awayTeam === teamName) &&
-        m.scheduledAt !== null &&
-        m.scheduledAt < timestamp
-      ).length;
-    } else {
-      count = await prisma.tournamentMatch.count({
-        where: {
-          OR: [{ homeTeam: teamName }, { awayTeam: teamName }],
-          scheduledAt: { gte: cutoff, lt: timestamp },
-          status: { in: ["Completed", "TechLoss", "Active"] },
-        },
-      });
+    let totalCount = 0;
+    // Each sub entry means: player was on subs[i].teamName from subs[i-1].timestamp (or cutoff) until subs[i].timestamp
+    for (let i = 0; i < subs.length; i++) {
+      const start = i === 0 ? cutoff : subs[i - 1].timestamp;
+      const end = subs[i].timestamp;
+      const { teamName } = subs[i];
+      let count: number;
+      if (adminCompletedMatches.length > 0) {
+        count = adminCompletedMatches.filter(m =>
+          (m.homeTeam === teamName || m.awayTeam === teamName) &&
+          m.scheduledAt !== null &&
+          m.scheduledAt >= start &&
+          m.scheduledAt < end
+        ).length;
+      } else {
+        count = await prisma.tournamentMatch.count({
+          where: {
+            OR: [{ homeTeam: teamName }, { awayTeam: teamName }],
+            scheduledAt: { gte: start, lt: end },
+            status: { in: ["Completed", "TechLoss", "Active"] },
+          },
+        });
+      }
+      totalCount += count;
     }
-    if (count > 0) {
-      playerNewCount.set(playerId, count);
-      await prisma.player.updateMany({ where: { id: playerId }, data: { matchesPlayed: count } });
+    if (totalCount > 0) {
+      playerNewCount.set(playerId, totalCount);
+      await prisma.player.updateMany({ where: { id: playerId }, data: { matchesPlayed: totalCount } });
       updated++;
     }
   }
 
   const updatedIds = [...playerNewCount.keys()];
-  const substitutedIds = new Set(substitutedData.keys());
+  const substitutedIds = new Set(allSubLogs.keys());
 
   const zeroed = await prisma.player.updateMany({
     where: {
