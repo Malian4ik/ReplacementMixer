@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { adminLogin, fetchTournamentScheduleData } from "./admin-source.service";
+import { adminLogin, fetchTournamentScheduleData, type AdminMatchInfo } from "./admin-source.service";
 
 export async function recalculateMatchStats(): Promise<{ totalMatches: number; playersUpdated: number }> {
   const matchCountByTeam = new Map<string, number>();
@@ -14,6 +14,8 @@ export async function recalculateMatchStats(): Promise<{ totalMatches: number; p
   });
 
   let totalMatches = 0;
+  // Lifted outside try so substitution logic can reuse admin data instead of querying local DB
+  let adminCompletedMatches: AdminMatchInfo[] = [];
 
   // Primary: admin API filtered by tournament ID (tournament__id__exact=N).
   // This is the only source that can correctly isolate current-tournament matches.
@@ -21,7 +23,7 @@ export async function recalculateMatchStats(): Promise<{ totalMatches: number; p
     try {
       await adminLogin();
       const matches = await fetchTournamentScheduleData(adminTournament.externalId);
-      const done = matches.filter(m => {
+      adminCompletedMatches = matches.filter(m => {
         const s = (m.adminStatus ?? "").toLowerCase();
         // Include: Complete, Completed, завершён — exclude only clearly pending/future
         if (!s || s === "pending" || s === "scheduled" || s === "запланирован") return false;
@@ -29,8 +31,8 @@ export async function recalculateMatchStats(): Promise<{ totalMatches: number; p
         return true;
       });
       console.log("[recalc] admin matches for tournament", adminTournament.externalId, ":", matches.length,
-        "done:", done.length, "statuses:", [...new Set(done.map(m => m.adminStatus))]);
-      for (const m of done) {
+        "done:", adminCompletedMatches.length, "statuses:", [...new Set(adminCompletedMatches.map(m => m.adminStatus))]);
+      for (const m of adminCompletedMatches) {
         if (!m.homeTeam || !m.awayTeam) continue;
         matchCountByTeam.set(m.homeTeam, (matchCountByTeam.get(m.homeTeam) ?? 0) + 1);
         matchCountByTeam.set(m.awayTeam, (matchCountByTeam.get(m.awayTeam) ?? 0) + 1);
@@ -93,13 +95,23 @@ export async function recalculateMatchStats(): Promise<{ totalMatches: number; p
 
   for (const [playerId, { teamName, timestamp }] of substitutedData.entries()) {
     if (playerNewCount.has(playerId)) continue; // already counted via current team roster
-    const count = await prisma.tournamentMatch.count({
-      where: {
-        OR: [{ homeTeam: teamName }, { awayTeam: teamName }],
-        scheduledAt: { gte: cutoff, lt: timestamp },
-        status: { in: ["Completed", "TechLoss", "Active"] },
-      },
-    });
+    let count: number;
+    if (adminCompletedMatches.length > 0) {
+      // Use admin API data — more accurate than local DB (local DB may be incomplete)
+      count = adminCompletedMatches.filter(m =>
+        (m.homeTeam === teamName || m.awayTeam === teamName) &&
+        m.scheduledAt !== null &&
+        m.scheduledAt < timestamp
+      ).length;
+    } else {
+      count = await prisma.tournamentMatch.count({
+        where: {
+          OR: [{ homeTeam: teamName }, { awayTeam: teamName }],
+          scheduledAt: { gte: cutoff, lt: timestamp },
+          status: { in: ["Completed", "TechLoss", "Active"] },
+        },
+      });
+    }
     if (count > 0) {
       playerNewCount.set(playerId, count);
       await prisma.player.updateMany({ where: { id: playerId }, data: { matchesPlayed: count } });
