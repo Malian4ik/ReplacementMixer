@@ -152,6 +152,52 @@ export async function recalculateMatchStats(): Promise<{ totalMatches: number; p
   return { totalMatches, playersUpdated: updated };
 }
 
+/** Debug: show why a specific player (by nick) has the matchesPlayed they do. */
+export async function debugPlayerStats(nick: string) {
+  const adminTournament = await prisma.adminTournament.findFirst({ orderBy: { lastSyncedAt: "desc" } });
+  const cutoff = adminTournament?.startDate ?? new Date("2026-05-01T00:00:00Z");
+
+  const player = await prisma.player.findFirst({ where: { nick } });
+  if (!player) return { error: "player not found", nick };
+
+  const teamsContaining = await prisma.team.findMany({
+    where: {
+      OR: [
+        { player1Id: player.id }, { player2Id: player.id }, { player3Id: player.id },
+        { player4Id: player.id }, { player5Id: player.id },
+      ],
+    },
+  });
+
+  const subLogs = await prisma.matchSubstitutionLog.findMany({
+    where: { replacedPlayerId: player.id },
+    orderBy: { timestamp: "asc" },
+  });
+
+  const localMatchCounts: Record<string, number> = {};
+  for (const team of teamsContaining) {
+    localMatchCounts[team.name] = await prisma.tournamentMatch.count({
+      where: {
+        OR: [{ homeTeam: team.name }, { awayTeam: team.name }],
+        scheduledAt: { gte: cutoff },
+        status: { in: ["Completed", "TechLoss"] },
+      },
+    });
+  }
+
+  return {
+    nick,
+    playerId: player.id,
+    currentMatchesPlayed: player.matchesPlayed,
+    nightMatches: player.nightMatches,
+    isActiveInDatabase: player.isActiveInDatabase,
+    currentTeams: teamsContaining.map(t => t.name),
+    localMatchCountsPerTeam: localMatchCounts,
+    substitutionLogs: subLogs.map(s => ({ teamName: s.teamName, timestamp: s.timestamp })),
+    adminTournament: adminTournament ? { externalId: adminTournament.externalId, name: adminTournament.name, cutoff } : null,
+  };
+}
+
 /** Начислить +1 nightMatches игрокам обеих команд если матч ночной (00:00–06:59 МСК по scheduledAt).
  *  Идемпотентно: повторный вызов на уже зачтённый матч ничего не делает.
  *  Авто-создаёт колонку nightCredited при первом вызове — ничего руками делать не нужно. */
