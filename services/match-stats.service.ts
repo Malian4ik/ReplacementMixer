@@ -73,15 +73,40 @@ export async function recalculateMatchStats(): Promise<{ totalMatches: number; p
     updated += r.count;
   }
 
-  const updatedIds = [...playerNewCount.keys()];
-
-  // Don't zero out players who were substituted out — they played matches before leaving the team
+  // Restore matchesPlayed for players substituted OUT — count team matches before their substitution
   const subLogs = await prisma.matchSubstitutionLog.findMany({
-    where: { replacedPlayerId: { not: null } },
-    select: { replacedPlayerId: true },
-    distinct: ["replacedPlayerId"],
+    where: { replacedPlayerId: { not: null }, teamName: { not: null } },
+    select: { replacedPlayerId: true, teamName: true, timestamp: true },
+    orderBy: { timestamp: "asc" },
   });
-  const substitutedIds = new Set(subLogs.map(s => s.replacedPlayerId).filter(Boolean) as string[]);
+
+  // Use earliest substitution per player (first time they were replaced)
+  const substitutedData = new Map<string, { teamName: string; timestamp: Date }>();
+  for (const log of subLogs) {
+    if (!log.replacedPlayerId || !log.teamName) continue;
+    if (!substitutedData.has(log.replacedPlayerId)) {
+      substitutedData.set(log.replacedPlayerId, { teamName: log.teamName, timestamp: log.timestamp });
+    }
+  }
+
+  for (const [playerId, { teamName, timestamp }] of substitutedData.entries()) {
+    if (playerNewCount.has(playerId)) continue; // already counted via current team roster
+    const count = await prisma.tournamentMatch.count({
+      where: {
+        OR: [{ homeTeam: teamName }, { awayTeam: teamName }],
+        scheduledAt: { lt: timestamp },
+        status: { in: ["Completed", "TechLoss", "Active"] },
+      },
+    });
+    if (count > 0) {
+      playerNewCount.set(playerId, count);
+      await prisma.player.updateMany({ where: { id: playerId }, data: { matchesPlayed: count } });
+      updated++;
+    }
+  }
+
+  const updatedIds = [...playerNewCount.keys()];
+  const substitutedIds = new Set(substitutedData.keys());
 
   const zeroed = await prisma.player.updateMany({
     where: {
