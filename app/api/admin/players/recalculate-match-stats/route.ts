@@ -27,7 +27,16 @@ export async function GET(req: NextRequest) {
     const hasResultList = html.includes('id="result_list"');
     const rowCount = [...html.matchAll(/<tr[^>]*class="[^"]*row[^"]*"/g)].length;
     const participantLinks = [...html.matchAll(/\/admin\/tournaments\/participant\/([0-9a-f-]{36})\//g)].length;
-    return NextResponse.json({ url, status: res.status, hasResultList, rowCount, fieldClasses, participantLinks, htmlSnippet: html.slice(0, 2000) });
+    const userLinks = [...html.matchAll(/\/admin\/users\/user\/([0-9a-f-]{36})\//g)].slice(0, 5).map(m => m[1]);
+    // Extract first 3 data rows HTML
+    const listMatch = html.match(/id="result_list"[^>]*>([\s\S]*)/);
+    const rows: string[] = [];
+    if (listMatch) {
+      for (const [, row] of [...listMatch[1].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)].slice(0, 3)) {
+        rows.push(row.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim());
+      }
+    }
+    return NextResponse.json({ url, status: res.status, hasResultList, rowCount, fieldClasses, participantLinks, userLinks, firstRows: rows });
   }
 
   const { totalMatches, playersUpdated } = await recalculateMatchStats();
