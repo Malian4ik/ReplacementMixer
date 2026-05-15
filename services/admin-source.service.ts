@@ -804,8 +804,8 @@ async function fetchMatchPage(
   page: number,
   baseUrl: string
 ): Promise<{ items: AdminMatchInfo[]; hasMore: boolean }> {
-  // No tournament filter — filter param names vary and the stored externalId may differ from Django's PK
-  const url = page === 1 ? baseUrl : `${baseUrl}?p=${page}`;
+  const sep = baseUrl.includes("?") ? "&" : "?";
+  const url = page === 1 ? baseUrl : `${baseUrl}${sep}p=${page}`;
   const res = await fetch(url, { headers: makeHeaders() });
   if (!res.ok) return { items: [], hasMore: false };
   const html = await res.text();

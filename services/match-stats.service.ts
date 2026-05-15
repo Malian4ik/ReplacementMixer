@@ -1,12 +1,9 @@
 import { prisma } from "@/lib/prisma";
+import { adminLogin, fetchTournamentScheduleData } from "./admin-source.service";
 
 export async function recalculateMatchStats(): Promise<{ totalMatches: number; playersUpdated: number }> {
   const matchCountByTeam = new Map<string, number>();
 
-  // Use local TournamentMatch table as the single source of truth.
-  // The admin API returns matches across ALL tournaments (no reliable tournament filter),
-  // so using it causes cross-tournament pollution. The local table is synced only for
-  // the current tournament by the schedule-check cron.
   const adminTournament = await prisma.adminTournament.findFirst({
     orderBy: { lastSyncedAt: "desc" },
   });
@@ -16,19 +13,48 @@ export async function recalculateMatchStats(): Promise<{ totalMatches: number; p
     select: { name: true, player1Id: true, player2Id: true, player3Id: true, player4Id: true, player5Id: true },
   });
 
-  const allMatches = await prisma.tournamentMatch.findMany({
-    where: {
-      status: { in: ["Completed", "TechLoss"] },
-      scheduledAt: { gte: cutoff },
-    },
-    select: { homeTeam: true, awayTeam: true },
-  });
-  for (const m of allMatches) {
-    matchCountByTeam.set(m.homeTeam, (matchCountByTeam.get(m.homeTeam) ?? 0) + 1);
-    matchCountByTeam.set(m.awayTeam, (matchCountByTeam.get(m.awayTeam) ?? 0) + 1);
+  let totalMatches = 0;
+
+  // Primary: admin API filtered by tournament ID (tournament__id__exact=N).
+  // This is the only source that can correctly isolate current-tournament matches.
+  if (adminTournament) {
+    try {
+      await adminLogin();
+      const matches = await fetchTournamentScheduleData(adminTournament.externalId);
+      const done = matches.filter(m => {
+        const s = (m.adminStatus ?? "").toLowerCase();
+        // Include: Complete, Completed, завершён — exclude only clearly pending/future
+        if (!s || s === "pending" || s === "scheduled" || s === "запланирован") return false;
+        if (!m.scheduledAt || m.scheduledAt < cutoff) return false;
+        return true;
+      });
+      console.log("[recalc] admin matches for tournament", adminTournament.externalId, ":", matches.length,
+        "done:", done.length, "statuses:", [...new Set(done.map(m => m.adminStatus))]);
+      for (const m of done) {
+        if (!m.homeTeam || !m.awayTeam) continue;
+        matchCountByTeam.set(m.homeTeam, (matchCountByTeam.get(m.homeTeam) ?? 0) + 1);
+        matchCountByTeam.set(m.awayTeam, (matchCountByTeam.get(m.awayTeam) ?? 0) + 1);
+        totalMatches++;
+      }
+    } catch (err) {
+      console.warn("[recalc] admin fetch failed, falling back to local DB:", err);
+    }
   }
-  const totalMatches = allMatches.length;
-  console.log("[recalc] local DB matches:", totalMatches, "after cutoff", cutoff.toISOString());
+
+  // Fallback to local DB only if admin fetch returned nothing
+  if (matchCountByTeam.size === 0) {
+    const allMatches = await prisma.tournamentMatch.findMany({
+      where: { status: { in: ["Completed", "TechLoss"] }, scheduledAt: { gte: cutoff } },
+      select: { homeTeam: true, awayTeam: true },
+    });
+    for (const m of allMatches) {
+      matchCountByTeam.set(m.homeTeam, (matchCountByTeam.get(m.homeTeam) ?? 0) + 1);
+      matchCountByTeam.set(m.awayTeam, (matchCountByTeam.get(m.awayTeam) ?? 0) + 1);
+    }
+    totalMatches = allMatches.length;
+    console.log("[recalc] local DB fallback, matches:", totalMatches);
+  }
+
   console.log("[recalc] teamCounts:", JSON.stringify(Object.fromEntries(matchCountByTeam)));
 
   const playerNewCount = new Map<string, number>();
