@@ -13,6 +13,14 @@ export async function recalculateMatchStats(): Promise<{ totalMatches: number; p
   // Cutoff is used both for admin filtering and for substituted-player local DB queries
   const cutoff = adminTournament?.startDate ?? new Date("2026-05-01T00:00:00Z");
 
+  // Load teams up front — used both as an allowlist for admin match filtering and
+  // for building player→matchCount mapping later. The admin schedule returns ALL
+  // tournaments' matches; only matches where BOTH teams exist in our local DB count.
+  const allTeams = await prisma.team.findMany({
+    select: { name: true, player1Id: true, player2Id: true, player3Id: true, player4Id: true, player5Id: true },
+  });
+  const localTeamNames = new Set(allTeams.map(t => t.name));
+
   if (adminTournament) {
     try {
       await adminLogin();
@@ -21,6 +29,8 @@ export async function recalculateMatchStats(): Promise<{ totalMatches: number; p
         const s = (m.adminStatus ?? "").toLowerCase();
         if (!s || s === "pending" || s === "scheduled" || s === "запланирован") return false;
         if (!m.scheduledAt || m.scheduledAt < cutoff) return false;
+        // Only count matches between teams that exist in the current tournament's local DB
+        if (!localTeamNames.has(m.homeTeam) || !localTeamNames.has(m.awayTeam)) return false;
         return true;
       });
       console.log("[recalc] admin matches total:", matches.length, "non-pending after", cutoff.toISOString(), ":", completedMatches.length,
@@ -51,10 +61,6 @@ export async function recalculateMatchStats(): Promise<{ totalMatches: number; p
   }
 
   console.log("[recalc] teamCounts:", JSON.stringify(Object.fromEntries(matchCountByTeam)));
-
-  const allTeams = await prisma.team.findMany({
-    select: { name: true, player1Id: true, player2Id: true, player3Id: true, player4Id: true, player5Id: true },
-  });
 
   const playerNewCount = new Map<string, number>();
   for (const team of allTeams) {
