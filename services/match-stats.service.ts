@@ -68,8 +68,10 @@ export async function recalculateMatchStats(): Promise<{ totalMatches: number; p
       console.log("[recalc] validGameIds for gameuserstats filter:", validGameIds.size);
       const { byNick, byParticipantUuid } = await fetchPlayerGameCounts(adminTournament.externalId, validGameIds);
 
+      // Minimum threshold: if fewer than 50 players found, data is incomplete — fall back to team-based
+      const MIN_PLAYERS_THRESHOLD = 50;
+
       if (byParticipantUuid.size > 0) {
-        // Resolve participant UUID → nick → player ID
         const uuidToNick = await buildParticipantUuidNickMap(adminTournament.externalId);
         const players = await prisma.player.findMany({ select: { id: true, nick: true } });
         const nickToId = new Map(players.map(p => [p.nick.toLowerCase(), p.id]));
@@ -79,8 +81,13 @@ export async function recalculateMatchStats(): Promise<{ totalMatches: number; p
           const pid = nickToId.get(nick.toLowerCase());
           if (pid) playerNewCount.set(pid, (playerNewCount.get(pid) ?? 0) + count);
         }
-        usedAdminPerPlayer = true;
-        console.log("[recalc] per-player from gameuserstats (by UUID):", playerNewCount.size, "players");
+        if (playerNewCount.size >= MIN_PLAYERS_THRESHOLD) {
+          usedAdminPerPlayer = true;
+          console.log("[recalc] per-player from gameuserstats (by UUID):", playerNewCount.size, "players");
+        } else {
+          console.warn("[recalc] gameuserstats (by UUID) only found", playerNewCount.size, "players — threshold not met, falling back");
+          playerNewCount = new Map();
+        }
       } else if (byNick.size > 0) {
         const players = await prisma.player.findMany({ select: { id: true, nick: true } });
         const nickToId = new Map(players.map(p => [p.nick.toLowerCase(), p.id]));
@@ -88,8 +95,13 @@ export async function recalculateMatchStats(): Promise<{ totalMatches: number; p
           const pid = nickToId.get(nick.toLowerCase());
           if (pid) playerNewCount.set(pid, count);
         }
-        usedAdminPerPlayer = true;
-        console.log("[recalc] per-player from gameuserstats (by nick):", playerNewCount.size, "players");
+        if (playerNewCount.size >= MIN_PLAYERS_THRESHOLD) {
+          usedAdminPerPlayer = true;
+          console.log("[recalc] per-player from gameuserstats (by nick):", playerNewCount.size, "players");
+        } else {
+          console.warn("[recalc] gameuserstats (by nick) only found", playerNewCount.size, "players — threshold not met, falling back");
+          playerNewCount = new Map();
+        }
       }
     } catch (err) {
       console.warn("[recalc] fetchPlayerGameCounts failed:", err);
