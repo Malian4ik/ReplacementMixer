@@ -59,19 +59,23 @@ export async function GET(req: NextRequest) {
 
   const fixNight = req.nextUrl.searchParams.get("fixNight");
   if (fixNight === "1") {
-    // Reconstruct nightMatches from nightCredited TournamentMatch records
-    const nightedMatches = await prisma.tournamentMatch.findMany({
-      where: { nightCredited: true },
-      select: { homeTeam: true, awayTeam: true },
+    // Reconstruct nightMatches from scheduledAt of completed matches (00:00–06:59 MSK)
+    const allCompleted = await prisma.tournamentMatch.findMany({
+      where: { status: { in: ["Completed", "TechLoss"] }, scheduledAt: { not: null } },
+      select: { homeTeam: true, awayTeam: true, scheduledAt: true },
     });
-    const teamNames = [...new Set(nightedMatches.flatMap(m => [m.homeTeam, m.awayTeam]))];
+    const nightMatches = allCompleted.filter(m => {
+      const mskHour = (m.scheduledAt!.getUTCHours() + 3) % 24;
+      return mskHour < 7;
+    });
+    const teamNames = [...new Set(nightMatches.flatMap(m => [m.homeTeam, m.awayTeam]))];
     const teams = await prisma.team.findMany({
       where: { name: { in: teamNames } },
       select: { name: true, player1Id: true, player2Id: true, player3Id: true, player4Id: true, player5Id: true },
     });
     const teamMap = new Map(teams.map(t => [t.name, t]));
     const playerCounts = new Map<string, number>();
-    for (const m of nightedMatches) {
+    for (const m of nightMatches) {
       for (const teamName of [m.homeTeam, m.awayTeam]) {
         const t = teamMap.get(teamName);
         if (!t) continue;
@@ -84,7 +88,12 @@ export async function GET(req: NextRequest) {
     for (const [playerId, count] of playerCounts) {
       await prisma.player.updateMany({ where: { id: playerId }, data: { nightMatches: count } });
     }
-    return NextResponse.json({ ok: true, nightMatchesRestored: playerCounts.size, totalNightMatches: nightedMatches.length });
+    return NextResponse.json({
+      ok: true,
+      completedMatches: allCompleted.length,
+      nightMatchesFound: nightMatches.length,
+      playersUpdated: playerCounts.size,
+    });
   }
 
   try {
