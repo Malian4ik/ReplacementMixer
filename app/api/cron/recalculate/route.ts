@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { recalculateMatchStats, debugPlayerStats } from "@/services/match-stats.service";
+import { adminLogin, fetchTournamentScheduleData } from "@/services/admin-source.service";
 import { prisma } from "@/lib/prisma";
 
 export const maxDuration = 300;
@@ -59,20 +60,26 @@ export async function GET(req: NextRequest) {
 
   const fixNight = req.nextUrl.searchParams.get("fixNight");
   if (fixNight === "1") {
-    // Reconstruct nightMatches from scheduledAt of completed matches (00:00–06:59 MSK)
+    // Reconstruct nightMatches from admin source (authoritative, only MixerCup #1 matches)
     const activeTournament =
       (await prisma.adminTournament.findFirst({ where: { isActive: true } })) ??
       (await prisma.adminTournament.findFirst({ orderBy: { lastSyncedAt: "desc" } }));
-    const cutoff = activeTournament?.startDate ?? new Date("2026-05-01T00:00:00Z");
-    const allCompleted = await prisma.tournamentMatch.findMany({
-      where: { status: { in: ["Completed", "TechLoss"] }, scheduledAt: { gte: cutoff } },
-      select: { homeTeam: true, awayTeam: true, scheduledAt: true },
+    if (!activeTournament) return NextResponse.json({ error: "No active tournament" }, { status: 400 });
+    const cutoff = activeTournament.startDate ?? new Date("2026-05-01T00:00:00Z");
+
+    await adminLogin();
+    const allAdminMatches = await fetchTournamentScheduleData(activeTournament.externalId);
+    const completedMatches = allAdminMatches.filter(m => {
+      const s = (m.adminStatus ?? "").toLowerCase();
+      return s !== "pending" && s !== "scheduled" && s !== "запланирован"
+        && m.scheduledAt && m.scheduledAt >= cutoff;
     });
-    const nightMatches = allCompleted.filter(m => {
-      const mskHour = (m.scheduledAt.getUTCHours() + 3) % 24;
+    const nightMatches = completedMatches.filter(m => {
+      const mskHour = (m.scheduledAt!.getUTCHours() + 3) % 24;
       return mskHour < 7;
     });
-    const teamNames = [...new Set(nightMatches.flatMap(m => [m.homeTeam, m.awayTeam]))];
+
+    const teamNames = [...new Set(nightMatches.flatMap(m => [m.homeTeam, m.awayTeam].filter(Boolean) as string[]))];
     const teams = await prisma.team.findMany({
       where: { name: { in: teamNames } },
       select: { name: true, player1Id: true, player2Id: true, player3Id: true, player4Id: true, player5Id: true },
@@ -81,6 +88,7 @@ export async function GET(req: NextRequest) {
     const playerCounts = new Map<string, number>();
     for (const m of nightMatches) {
       for (const teamName of [m.homeTeam, m.awayTeam]) {
+        if (!teamName) continue;
         const t = teamMap.get(teamName);
         if (!t) continue;
         for (const pid of [t.player1Id, t.player2Id, t.player3Id, t.player4Id, t.player5Id]) {
@@ -94,7 +102,9 @@ export async function GET(req: NextRequest) {
     }
     return NextResponse.json({
       ok: true,
-      completedMatches: allCompleted.length,
+      tournament: activeTournament.name,
+      totalAdminMatches: allAdminMatches.length,
+      completedMatches: completedMatches.length,
       nightMatchesFound: nightMatches.length,
       playersUpdated: playerCounts.size,
     });
