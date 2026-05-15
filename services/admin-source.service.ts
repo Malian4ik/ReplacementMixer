@@ -944,37 +944,36 @@ async function fetchAllMatchPages(
 }
 
 /** Fetch all match schedule rows for a tournament.
- *  Auto-discovers the URL from /admin/ home, then tries known patterns.
- *  Tries to filter by tournament ID first (multiple filter param patterns),
- *  falls back to all matches filtered by date cutoff in the caller. */
+ *  Uses ONLY the confirmed-working filter `tournament__id__exact` on the game URL.
+ *  Invalid Django filters are silently ignored (return ALL matches) — so we must NOT
+ *  try unrecognised filter names, and we must NOT fall back to unfiltered mode. */
 export async function fetchTournamentScheduleData(
   tournamentId: string | number
 ): Promise<AdminMatchInfo[]> {
-  const discovered = await discoverScheduleUrl();
-  const candidates = discovered
-    ? [discovered, ...SCHEDULE_URL_CANDIDATES.filter(u => u !== discovered)]
-    : SCHEDULE_URL_CANDIDATES;
-
-  // Filter patterns for game→tournament FK (Django ORM lookup notation)
-  const tournamentFilters = [
-    `?round__tournament__id__exact=${tournamentId}`,
-    `?round__tournament__exact=${tournamentId}`,
-    `?tournament__id__exact=${tournamentId}`,
-    `?tournament__exact=${tournamentId}`,
-    `?tournament=${tournamentId}`,
+  // Try the confirmed game URL first, then other candidates.
+  // Skip discoverScheduleUrl() — it picks up gameteam/ before game/.
+  const knownGameUrl = `${BASE}/admin/tournaments/game/`;
+  const orderedCandidates = [
+    knownGameUrl,
+    ...SCHEDULE_URL_CANDIDATES.filter(u => u !== knownGameUrl),
   ];
 
-  for (const baseUrl of candidates) {
-    // 1. Try with tournament filter — correct isolation per tournament
-    for (const qs of tournamentFilters) {
-      const filtered = await fetchAllMatchPages(tournamentId, baseUrl, qs);
-      if (filtered.length > 0) return filtered;
+  for (const baseUrl of orderedCandidates) {
+    const filteredBase = `${baseUrl}?tournament__id__exact=${tournamentId}`;
+    const filtered: AdminMatchInfo[] = [];
+    let page = 1;
+    while (true) {
+      const { items, hasMore } = await fetchMatchPage(tournamentId, page, filteredBase);
+      filtered.push(...items);
+      if (!hasMore || page >= 100) break;
+      page++;
     }
-
-    // 2. Fallback: no tournament filter, rely on date cutoff in the caller
-    const all = await fetchAllMatchPages(tournamentId, baseUrl, "");
-    if (all.length > 0) return all;
+    // Only accept result if it contains actual team names — otherwise it's the wrong URL
+    if (filtered.some(m => m.homeTeam || m.awayTeam)) return filtered;
   }
+
+  // Never fall back to unfiltered — that returns cross-tournament matches.
+  console.warn("[fetchTournamentScheduleData] no filtered results found for tournament", tournamentId);
   return [];
 }
 
