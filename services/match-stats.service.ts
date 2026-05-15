@@ -1,37 +1,34 @@
 import { prisma } from "@/lib/prisma";
-import { adminLogin, fetchTournamentScheduleData, type AdminMatchInfo } from "./admin-source.service";
+import {
+  adminLogin,
+  fetchTournamentScheduleData,
+  fetchPlayerGameCounts,
+  buildParticipantUuidNickMap,
+  type AdminMatchInfo,
+} from "./admin-source.service";
 
 export async function recalculateMatchStats(): Promise<{ totalMatches: number; playersUpdated: number }> {
-  const matchCountByTeam = new Map<string, number>();
-
   const adminTournament = await prisma.adminTournament.findFirst({
     orderBy: { lastSyncedAt: "desc" },
   });
   const cutoff = adminTournament?.startDate ?? new Date("2026-05-01T00:00:00Z");
 
-  const allTeams = await prisma.team.findMany({
-    select: { name: true, player1Id: true, player2Id: true, player3Id: true, player4Id: true, player5Id: true },
-  });
-
   let totalMatches = 0;
-  // Lifted outside try so substitution logic can reuse admin data instead of querying local DB
   let adminCompletedMatches: AdminMatchInfo[] = [];
+  const matchCountByTeam = new Map<string, number>();
 
-  // Primary: admin API filtered by tournament ID (tournament__id__exact=N).
-  // This is the only source that can correctly isolate current-tournament matches.
   if (adminTournament) {
     try {
       await adminLogin();
       const matches = await fetchTournamentScheduleData(adminTournament.externalId);
       adminCompletedMatches = matches.filter(m => {
         const s = (m.adminStatus ?? "").toLowerCase();
-        // Include: Complete, Completed, завершён — exclude only clearly pending/future
         if (!s || s === "pending" || s === "scheduled" || s === "запланирован") return false;
         if (!m.scheduledAt || m.scheduledAt < cutoff) return false;
         return true;
       });
-      console.log("[recalc] admin matches for tournament", adminTournament.externalId, ":", matches.length,
-        "done:", adminCompletedMatches.length, "statuses:", [...new Set(adminCompletedMatches.map(m => m.adminStatus))]);
+      console.log("[recalc] admin matches:", matches.length, "done:", adminCompletedMatches.length,
+        "statuses:", [...new Set(adminCompletedMatches.map(m => m.adminStatus))]);
       for (const m of adminCompletedMatches) {
         if (!m.homeTeam || !m.awayTeam) continue;
         matchCountByTeam.set(m.homeTeam, (matchCountByTeam.get(m.homeTeam) ?? 0) + 1);
@@ -39,11 +36,10 @@ export async function recalculateMatchStats(): Promise<{ totalMatches: number; p
         totalMatches++;
       }
     } catch (err) {
-      console.warn("[recalc] admin fetch failed, falling back to local DB:", err);
+      console.warn("[recalc] admin fetch failed:", err);
     }
   }
 
-  // Fallback to local DB only if admin fetch returned nothing
   if (matchCountByTeam.size === 0) {
     const allMatches = await prisma.tournamentMatch.findMany({
       where: { status: { in: ["Completed", "TechLoss"] }, scheduledAt: { gte: cutoff } },
@@ -57,35 +53,72 @@ export async function recalculateMatchStats(): Promise<{ totalMatches: number; p
     console.log("[recalc] local DB fallback, matches:", totalMatches);
   }
 
-  console.log("[recalc] teamCounts:", JSON.stringify(Object.fromEntries(matchCountByTeam)));
+  // ── Try to get exact per-player counts from admin gameuserstats ──────────────
+  // This is the most accurate source: each row = one player in one game.
+  let playerNewCount = new Map<string, number>();
+  let usedAdminPerPlayer = false;
 
-  // Need join dates to count only matches AFTER a mid-tournament substitute joined
-  const allPlayerRecords = await prisma.player.findMany({
-    select: { id: true, createdAt: true },
-  });
-  const playerJoinedAt = new Map(allPlayerRecords.map(p => [p.id, p.createdAt]));
+  if (adminTournament) {
+    try {
+      const { byNick, byParticipantUuid } = await fetchPlayerGameCounts(adminTournament.externalId);
 
-  const playerNewCount = new Map<string, number>();
-  for (const team of allTeams) {
-    const teamTotal = matchCountByTeam.get(team.name) ?? 0;
-    if (teamTotal === 0) continue;
-    for (const pid of [team.player1Id, team.player2Id, team.player3Id, team.player4Id, team.player5Id]) {
-      if (!pid) continue;
-      const joinedAt = playerJoinedAt.get(pid);
-      let personalCount: number;
-      if (joinedAt && joinedAt > cutoff && adminCompletedMatches.length > 0) {
-        // Player joined mid-tournament — count only team matches from start of their join day
-        const dayStart = new Date(joinedAt);
-        dayStart.setUTCHours(0, 0, 0, 0);
-        personalCount = adminCompletedMatches.filter(m =>
-          (m.homeTeam === team.name || m.awayTeam === team.name) &&
-          m.scheduledAt !== null &&
-          m.scheduledAt >= dayStart
-        ).length;
-      } else {
-        personalCount = teamTotal;
+      if (byParticipantUuid.size > 0) {
+        // Resolve participant UUID → nick → player ID
+        const uuidToNick = await buildParticipantUuidNickMap(adminTournament.externalId);
+        const players = await prisma.player.findMany({ select: { id: true, nick: true } });
+        const nickToId = new Map(players.map(p => [p.nick.toLowerCase(), p.id]));
+        for (const [uuid, count] of byParticipantUuid) {
+          const nick = uuidToNick.get(uuid);
+          if (!nick) continue;
+          const pid = nickToId.get(nick.toLowerCase());
+          if (pid) playerNewCount.set(pid, (playerNewCount.get(pid) ?? 0) + count);
+        }
+        usedAdminPerPlayer = true;
+        console.log("[recalc] per-player from gameuserstats (by UUID):", playerNewCount.size, "players");
+      } else if (byNick.size > 0) {
+        const players = await prisma.player.findMany({ select: { id: true, nick: true } });
+        const nickToId = new Map(players.map(p => [p.nick.toLowerCase(), p.id]));
+        for (const [nick, count] of byNick) {
+          const pid = nickToId.get(nick.toLowerCase());
+          if (pid) playerNewCount.set(pid, count);
+        }
+        usedAdminPerPlayer = true;
+        console.log("[recalc] per-player from gameuserstats (by nick):", playerNewCount.size, "players");
       }
-      playerNewCount.set(pid, Math.max(playerNewCount.get(pid) ?? 0, personalCount));
+    } catch (err) {
+      console.warn("[recalc] fetchPlayerGameCounts failed:", err);
+    }
+  }
+
+  // ── Fallback: team-based counting with join-date correction ──────────────────
+  if (!usedAdminPerPlayer) {
+    console.log("[recalc] falling back to team-based counting");
+    const allTeams = await prisma.team.findMany({
+      select: { name: true, player1Id: true, player2Id: true, player3Id: true, player4Id: true, player5Id: true },
+    });
+    const allPlayerRecords = await prisma.player.findMany({ select: { id: true, createdAt: true } });
+    const playerJoinedAt = new Map(allPlayerRecords.map(p => [p.id, p.createdAt]));
+
+    for (const team of allTeams) {
+      const teamTotal = matchCountByTeam.get(team.name) ?? 0;
+      if (teamTotal === 0) continue;
+      for (const pid of [team.player1Id, team.player2Id, team.player3Id, team.player4Id, team.player5Id]) {
+        if (!pid) continue;
+        const joinedAt = playerJoinedAt.get(pid);
+        let personalCount: number;
+        if (joinedAt && joinedAt > cutoff && adminCompletedMatches.length > 0) {
+          const dayStart = new Date(joinedAt);
+          dayStart.setUTCHours(0, 0, 0, 0);
+          personalCount = adminCompletedMatches.filter(m =>
+            (m.homeTeam === team.name || m.awayTeam === team.name) &&
+            m.scheduledAt !== null &&
+            m.scheduledAt >= dayStart
+          ).length;
+        } else {
+          personalCount = teamTotal;
+        }
+        playerNewCount.set(pid, Math.max(playerNewCount.get(pid) ?? 0, personalCount));
+      }
     }
   }
 
@@ -97,80 +130,82 @@ export async function recalculateMatchStats(): Promise<{ totalMatches: number; p
     updated += r.count;
   }
 
-  // Restore matchesPlayed for players substituted OUT.
-  // A player may have been replaced from multiple teams in sequence — sum all periods.
-  const subLogs = await prisma.matchSubstitutionLog.findMany({
-    where: { replacedPlayerId: { not: null }, teamName: { not: null }, timestamp: { gte: cutoff } },
-    select: { replacedPlayerId: true, teamName: true, timestamp: true },
-    orderBy: { timestamp: "asc" },
-  });
+  // ── Substituted players (replaced from their team) ───────────────────────────
+  if (!usedAdminPerPlayer) {
+    const subLogs = await prisma.matchSubstitutionLog.findMany({
+      where: { replacedPlayerId: { not: null }, teamName: { not: null }, timestamp: { gte: cutoff } },
+      select: { replacedPlayerId: true, teamName: true, timestamp: true },
+      orderBy: { timestamp: "asc" },
+    });
 
-  // Collect ALL substitution events per player in chronological order
-  const allSubLogs = new Map<string, { teamName: string; timestamp: Date }[]>();
-  for (const log of subLogs) {
-    if (!log.replacedPlayerId || !log.teamName) continue;
-    if (!allSubLogs.has(log.replacedPlayerId)) allSubLogs.set(log.replacedPlayerId, []);
-    allSubLogs.get(log.replacedPlayerId)!.push({ teamName: log.teamName, timestamp: log.timestamp });
-  }
+    const allSubLogs = new Map<string, { teamName: string; timestamp: Date }[]>();
+    for (const log of subLogs) {
+      if (!log.replacedPlayerId || !log.teamName) continue;
+      if (!allSubLogs.has(log.replacedPlayerId)) allSubLogs.set(log.replacedPlayerId, []);
+      allSubLogs.get(log.replacedPlayerId)!.push({ teamName: log.teamName, timestamp: log.timestamp });
+    }
 
-  for (const [playerId, subs] of allSubLogs.entries()) {
-    if (playerNewCount.has(playerId)) continue; // already counted via current team roster
-    let totalCount = 0;
-    // Each sub entry means: player was on subs[i].teamName from subs[i-1].timestamp (or cutoff) until subs[i].timestamp
-    for (let i = 0; i < subs.length; i++) {
-      const start = i === 0 ? cutoff : subs[i - 1].timestamp;
-      const end = subs[i].timestamp;
-      const { teamName } = subs[i];
-      let count: number;
-      if (adminCompletedMatches.length > 0) {
-        count = adminCompletedMatches.filter(m =>
-          (m.homeTeam === teamName || m.awayTeam === teamName) &&
-          m.scheduledAt !== null &&
-          m.scheduledAt >= start &&
-          m.scheduledAt < end
-        ).length;
-      } else {
-        count = await prisma.tournamentMatch.count({
-          where: {
-            OR: [{ homeTeam: teamName }, { awayTeam: teamName }],
-            scheduledAt: { gte: start, lt: end },
-            status: { in: ["Completed", "TechLoss", "Active"] },
-          },
-        });
+    for (const [playerId, subs] of allSubLogs.entries()) {
+      if (playerNewCount.has(playerId)) continue;
+      let totalCount = 0;
+      for (let i = 0; i < subs.length; i++) {
+        const start = i === 0 ? cutoff : subs[i - 1].timestamp;
+        const end = subs[i].timestamp;
+        const { teamName } = subs[i];
+        let count: number;
+        if (adminCompletedMatches.length > 0) {
+          count = adminCompletedMatches.filter(m =>
+            (m.homeTeam === teamName || m.awayTeam === teamName) &&
+            m.scheduledAt !== null &&
+            m.scheduledAt >= start &&
+            m.scheduledAt < end
+          ).length;
+        } else {
+          count = await prisma.tournamentMatch.count({
+            where: {
+              OR: [{ homeTeam: teamName }, { awayTeam: teamName }],
+              scheduledAt: { gte: start, lt: end },
+              status: { in: ["Completed", "TechLoss", "Active"] },
+            },
+          });
+        }
+        totalCount += count;
       }
-      totalCount += count;
+      if (totalCount > 0) {
+        playerNewCount.set(playerId, totalCount);
+        await prisma.player.updateMany({ where: { id: playerId }, data: { matchesPlayed: totalCount } });
+        updated++;
+      }
     }
-    if (totalCount > 0) {
-      playerNewCount.set(playerId, totalCount);
-      await prisma.player.updateMany({ where: { id: playerId }, data: { matchesPlayed: totalCount } });
-      updated++;
-    }
+
+    const substitutedIds = new Set(allSubLogs.keys());
+    const updatedIds = [...playerNewCount.keys()];
+    const zeroed = await prisma.player.updateMany({
+      where: {
+        matchesPlayed: { gt: 0 },
+        id: { notIn: updatedIds },
+        NOT: { id: { in: [...substitutedIds] } },
+      },
+      data: { matchesPlayed: 0 },
+    });
+    updated += zeroed.count;
+  } else {
+    // When using admin per-player data, zero out players not found in admin stats
+    const updatedIds = [...playerNewCount.keys()];
+    const zeroed = await prisma.player.updateMany({
+      where: { matchesPlayed: { gt: 0 }, id: { notIn: updatedIds } },
+      data: { matchesPlayed: 0 },
+    });
+    updated += zeroed.count;
   }
 
-  const updatedIds = [...playerNewCount.keys()];
-  const substitutedIds = new Set(allSubLogs.keys());
-
-  const zeroed = await prisma.player.updateMany({
-    where: {
-      matchesPlayed: { gt: 0 },
-      id: { notIn: updatedIds },
-      NOT: { id: { in: [...substitutedIds] } },
-    },
-    data: { matchesPlayed: 0 },
-  });
-  updated += zeroed.count;
-
-  // Cap nightMatches to matchesPlayed — overcounting from non-idempotent cron can't
-  // produce more night games than total games played.
+  // Cap nightMatches to matchesPlayed
   const overcredited = await prisma.$queryRaw<{ id: string; matchesPlayed: number }[]>`
     SELECT id, "matchesPlayed" FROM "Player"
     WHERE "nightMatches" > "matchesPlayed" AND "isActiveInDatabase" = 1
   `;
   for (const p of overcredited) {
-    await prisma.player.update({
-      where: { id: p.id },
-      data: { nightMatches: p.matchesPlayed },
-    });
+    await prisma.player.update({ where: { id: p.id }, data: { nightMatches: p.matchesPlayed } });
     updated++;
   }
   if (overcredited.length > 0) {
@@ -219,6 +254,7 @@ export async function debugPlayerStats(nick: string) {
     currentMatchesPlayed: player.matchesPlayed,
     nightMatches: player.nightMatches,
     isActiveInDatabase: player.isActiveInDatabase,
+    createdAt: player.createdAt,
     currentTeams: teamsContaining.map(t => t.name),
     localMatchCountsPerTeam: localMatchCounts,
     substitutionLogs: subLogs.map(s => ({ teamName: s.teamName, timestamp: s.timestamp })),
@@ -234,20 +270,16 @@ export async function creditNightMatches(
   awayTeam: string,
   scheduledAt: Date,
 ): Promise<void> {
-  // Авто-миграция: добавить колонку если её ещё нет
   try {
     await prisma.$executeRawUnsafe(
       `ALTER TABLE "TournamentMatch" ADD COLUMN "nightCredited" INTEGER NOT NULL DEFAULT 0`
     );
-  } catch { /* уже существует — ок */ }
+  } catch { /* already exists */ }
 
-  // Ночной диапазон: 00:00–06:59 МСК (UTC+3)
   const mskHour = (scheduledAt.getUTCHours() + 3) % 24;
   if (mskHour >= 7) return;
 
-  // Атомарно маркируем запись как зачтённую; если записи нет или уже зачтена — ничего не делаем.
-  // Это предотвращает дублирование при повторных вызовах (многократные запуски крона).
-  const dateStr = scheduledAt.toISOString().slice(0, 10); // YYYY-MM-DD
+  const dateStr = scheduledAt.toISOString().slice(0, 10);
   const marked = await prisma.$executeRawUnsafe(
     `UPDATE "TournamentMatch" SET "nightCredited" = 1
      WHERE id = (
@@ -258,9 +290,8 @@ export async function creditNightMatches(
      )`,
     homeTeam, awayTeam, dateStr,
   );
-  if (marked === 0) return; // нет записи или уже зачтён
+  if (marked === 0) return;
 
-  // Актуальный состав обеих команд на момент завершения
   const teams = await prisma.team.findMany({
     where: { name: { in: [homeTeam, awayTeam] } },
     select: { player1Id: true, player2Id: true, player3Id: true, player4Id: true, player5Id: true },

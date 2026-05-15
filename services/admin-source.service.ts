@@ -977,6 +977,84 @@ export async function fetchTournamentScheduleData(
   return [];
 }
 
+/**
+ * Fetch per-player match counts directly from gameuserstats admin page.
+ * Each row in gameuserstats = one player in one game.
+ * Returns { byNick: Map<nick, count>, byParticipantUuid: Map<uuid, count> }
+ * whichever is populated (depends on what fields the admin exposes).
+ */
+export async function fetchPlayerGameCounts(tournamentId: string | number): Promise<{
+  byNick: Map<string, number>;
+  byParticipantUuid: Map<string, number>;
+}> {
+  const statsBase = `${BASE}/admin/tournaments/gameuserstats/`;
+
+  // Try filter patterns — only confirmed-working ones to avoid silent all-data returns
+  const filters = [
+    `?game__round__tournament__id__exact=${tournamentId}`,
+    `?round__tournament__id__exact=${tournamentId}`,
+    `?tournament__id__exact=${tournamentId}`,
+  ];
+
+  for (const filter of filters) {
+    const byNick = new Map<string, number>();
+    const byParticipantUuid = new Map<string, number>();
+    let page = 1;
+    let totalRows = 0;
+
+    while (page <= 300) {
+      const url = page === 1
+        ? `${statsBase}${filter}`
+        : `${statsBase}${filter}&p=${page}`;
+      const res = await fetch(url, { headers: makeHeaders() });
+      if (!res.ok) break;
+      const html = await res.text();
+
+      const listMatch = html.match(/id="result_list"[^>]*>([\s\S]*)/);
+      if (!listMatch) break;
+
+      let rowsOnPage = 0;
+      for (const [, row] of [...listMatch[1].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)]) {
+        // Primary: participant UUID from href
+        const uuidMatch = row.match(/\/admin\/tournaments\/participant\/([0-9a-f-]{36})\//);
+        if (uuidMatch) {
+          const uuid = uuidMatch[1];
+          byParticipantUuid.set(uuid, (byParticipantUuid.get(uuid) ?? 0) + 1);
+          rowsOnPage++;
+          continue;
+        }
+        // Fallback: nick fields
+        const nick =
+          fieldText(row, "participant__nick") ||
+          fieldText(row, "player__nick") ||
+          fieldText(row, "nick") ||
+          fieldText(row, "user__nick");
+        if (nick) {
+          byNick.set(nick, (byNick.get(nick) ?? 0) + 1);
+          rowsOnPage++;
+        }
+      }
+
+      totalRows += rowsOnPage;
+      if (rowsOnPage === 0 && page > 1) break;
+
+      const hasMore =
+        new RegExp(`[?&]p=${page + 1}[&"]`).test(html) ||
+        new RegExp(`[?&]p=${page + 1}&amp;`).test(html);
+      if (!hasMore) break;
+      page++;
+    }
+
+    if (byParticipantUuid.size > 0 || byNick.size > 0) {
+      console.log(`[fetchPlayerGameCounts] filter="${filter}" rows=${totalRows} UUIDs=${byParticipantUuid.size} nicks=${byNick.size}`);
+      return { byNick, byParticipantUuid };
+    }
+  }
+
+  console.warn("[fetchPlayerGameCounts] gameuserstats returned no data for tournament", tournamentId);
+  return { byNick: new Map(), byParticipantUuid: new Map() };
+}
+
 // ─── Captain Draft ─────────────────────────────────────────────────────────────
 
 export interface DraftTeamData {
