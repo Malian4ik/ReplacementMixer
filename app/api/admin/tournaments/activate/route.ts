@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(req: NextRequest) {
-  const { id, externalId, resetPlayers = true } = await req.json().catch(() => ({}));
+  const { id, externalId, resetPlayers = true, resetMatchStats = true } = await req.json().catch(() => ({}));
   if (!id && !externalId) return NextResponse.json({ error: "id or externalId required" }, { status: 400 });
 
   const tournament = id
@@ -36,8 +36,10 @@ export async function POST(req: NextRequest) {
     data: { isActiveInDatabase: true },
   });
 
-  // Reset match stats — fresh start for the new tournament
-  await prisma.player.updateMany({ where: {}, data: { matchesPlayed: 0 } });
+  // Reset match stats — fresh start for the new tournament (skip if preserving existing stats)
+  if (resetMatchStats) {
+    await prisma.player.updateMany({ where: {}, data: { matchesPlayed: 0 } });
+  }
 
   // Clear substitution pool (stale entries from previous tournament)
   await prisma.substitutionPoolEntry.updateMany({
