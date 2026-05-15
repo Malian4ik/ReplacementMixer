@@ -21,14 +21,12 @@ export async function recalculateMatchStats(): Promise<{ totalMatches: number; p
     try {
       await adminLogin();
       const matches = await fetchTournamentScheduleData(adminTournament.externalId);
-      // cutoff shifted 3h back to include midnight-MSK matches (00:00 MSK = 21:00 UTC prev day)
-      const cutoffEarly = new Date(cutoff.getTime() - 3 * 60 * 60 * 1000);
       let skippedStatus = 0, skippedDate = 0;
       adminCompletedMatches = matches.filter(m => {
         const s = (m.adminStatus ?? "").toLowerCase();
         // Only exclude explicitly pending/scheduled — empty status may still be a played game
         if (s === "pending" || s === "scheduled" || s === "запланирован") { skippedStatus++; return false; }
-        if (m.scheduledAt && m.scheduledAt < cutoffEarly) { skippedDate++; return false; }
+        if (!m.scheduledAt || m.scheduledAt < cutoff) { skippedDate++; return false; }
         return true;
       });
       console.log("[recalc] admin matches:", matches.length, "done:", adminCompletedMatches.length,
