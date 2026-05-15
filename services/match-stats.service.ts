@@ -1,65 +1,34 @@
 import { prisma } from "@/lib/prisma";
-import { adminLogin, fetchTournamentScheduleData } from "./admin-source.service";
 
 export async function recalculateMatchStats(): Promise<{ totalMatches: number; playersUpdated: number }> {
   const matchCountByTeam = new Map<string, number>();
-  let totalMatches = 0;
 
-  // Primary source: fetch completed matches directly from external admin
+  // Use local TournamentMatch table as the single source of truth.
+  // The admin API returns matches across ALL tournaments (no reliable tournament filter),
+  // so using it causes cross-tournament pollution. The local table is synced only for
+  // the current tournament by the schedule-check cron.
   const adminTournament = await prisma.adminTournament.findFirst({
     orderBy: { lastSyncedAt: "desc" },
   });
-
-  // Cutoff is used both for admin filtering and for substituted-player local DB queries
   const cutoff = adminTournament?.startDate ?? new Date("2026-05-01T00:00:00Z");
 
-  // Load teams up front — used both as an allowlist for admin match filtering and
-  // for building player→matchCount mapping later. The admin schedule returns ALL
-  // tournaments' matches; only matches where BOTH teams exist in our local DB count.
   const allTeams = await prisma.team.findMany({
     select: { name: true, player1Id: true, player2Id: true, player3Id: true, player4Id: true, player5Id: true },
   });
-  const localTeamNames = new Set(allTeams.map(t => t.name));
 
-  if (adminTournament) {
-    try {
-      await adminLogin();
-      const matches = await fetchTournamentScheduleData(adminTournament.externalId);
-      const completedMatches = matches.filter(m => {
-        const s = (m.adminStatus ?? "").toLowerCase();
-        if (!s || s === "pending" || s === "scheduled" || s === "запланирован") return false;
-        if (!m.scheduledAt || m.scheduledAt < cutoff) return false;
-        // Only count matches between teams that exist in the current tournament's local DB
-        if (!localTeamNames.has(m.homeTeam) || !localTeamNames.has(m.awayTeam)) return false;
-        return true;
-      });
-      console.log("[recalc] admin matches total:", matches.length, "non-pending after", cutoff.toISOString(), ":", completedMatches.length,
-        "statuses:", [...new Set(completedMatches.map(m => m.adminStatus))]);
-      for (const m of completedMatches) {
-        if (!m.homeTeam || !m.awayTeam) continue;
-        matchCountByTeam.set(m.homeTeam, (matchCountByTeam.get(m.homeTeam) ?? 0) + 1);
-        matchCountByTeam.set(m.awayTeam, (matchCountByTeam.get(m.awayTeam) ?? 0) + 1);
-        totalMatches++;
-      }
-    } catch (err) {
-      console.warn("[recalc] failed to fetch from admin, falling back to local DB:", err);
-    }
+  const allMatches = await prisma.tournamentMatch.findMany({
+    where: {
+      status: { in: ["Completed", "TechLoss"] },
+      scheduledAt: { gte: cutoff },
+    },
+    select: { homeTeam: true, awayTeam: true },
+  });
+  for (const m of allMatches) {
+    matchCountByTeam.set(m.homeTeam, (matchCountByTeam.get(m.homeTeam) ?? 0) + 1);
+    matchCountByTeam.set(m.awayTeam, (matchCountByTeam.get(m.awayTeam) ?? 0) + 1);
   }
-
-  // Fallback: read from local TournamentMatch if admin fetch failed or no tournament found
-  if (matchCountByTeam.size === 0) {
-    const allMatches = await prisma.tournamentMatch.findMany({
-      where: { status: { in: ["Completed", "TechLoss"] } },
-      select: { homeTeam: true, awayTeam: true },
-    });
-    for (const m of allMatches) {
-      matchCountByTeam.set(m.homeTeam, (matchCountByTeam.get(m.homeTeam) ?? 0) + 1);
-      matchCountByTeam.set(m.awayTeam, (matchCountByTeam.get(m.awayTeam) ?? 0) + 1);
-    }
-    totalMatches = allMatches.length;
-    console.log("[recalc] fallback to local DB, totalMatches:", totalMatches);
-  }
-
+  const totalMatches = allMatches.length;
+  console.log("[recalc] local DB matches:", totalMatches, "after cutoff", cutoff.toISOString());
   console.log("[recalc] teamCounts:", JSON.stringify(Object.fromEntries(matchCountByTeam)));
 
   const playerNewCount = new Map<string, number>();
