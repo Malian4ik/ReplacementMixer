@@ -906,8 +906,47 @@ async function discoverScheduleUrl(): Promise<string | null> {
   return null;
 }
 
+async function fetchAllMatchPages(
+  tournamentId: string | number,
+  baseUrl: string,
+  qs: string,
+): Promise<AdminMatchInfo[]> {
+  const all: AdminMatchInfo[] = [];
+  let page = 1;
+  while (true) {
+    const sep = qs ? (qs.includes("?") ? "&" : "?") : "?";
+    const url = page === 1
+      ? (qs ? `${baseUrl}${qs}` : baseUrl)
+      : `${baseUrl}${qs}${qs ? "&" : "?"}p=${page}`;
+    const res = await fetch(url, { headers: makeHeaders() });
+    if (!res.ok) break;
+    const html = await res.text();
+    const listMatch = html.match(/id="result_list"[^>]*>([\s\S]*)/);
+    if (!listMatch) break;
+    const items: AdminMatchInfo[] = [];
+    for (const [, row] of [...listMatch[1].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)]) {
+      const roundStr = fieldText(row, "round") || fieldText(row, "round__number") || fieldText(row, "round_number") || fieldText(row, "tour");
+      const homeTeam = fieldText(row, "team_1_name") || fieldText(row, "home_team") || fieldText(row, "home_team__name") || fieldText(row, "team1") || fieldText(row, "team1__name") || fieldText(row, "home");
+      const awayTeam = fieldText(row, "team_2_name") || fieldText(row, "away_team") || fieldText(row, "away_team__name") || fieldText(row, "team2") || fieldText(row, "team2__name") || fieldText(row, "away");
+      if (!homeTeam && !awayTeam) continue;
+      const startStr = fieldText(row, "planned_time") || fieldText(row, "start_time") || fieldText(row, "scheduled_at") || fieldText(row, "begin_time") || fieldText(row, "start");
+      const endStr = fieldText(row, "end_time") || fieldText(row, "ends_at") || fieldText(row, "finish_time") || fieldText(row, "end");
+      const adminStatus = fieldText(row, "status") || fieldText(row, "colored_status") || "";
+      items.push({ round: parseRoundNumber(roundStr), homeTeam, awayTeam, scheduledAt: parseAdminDateTime(startStr), endsAt: parseAdminDateTime(endStr), adminStatus });
+    }
+    all.push(...items);
+    const nextPage = page + 1;
+    const hasMore = new RegExp(`[?&]p=${nextPage}[&"]`).test(html) || new RegExp(`[?&]p=${nextPage}&amp;`).test(html);
+    if (!hasMore || page >= 100) break;
+    page++;
+  }
+  return all;
+}
+
 /** Fetch all match schedule rows for a tournament.
- *  Auto-discovers the URL from /admin/ home, then tries known patterns. */
+ *  Auto-discovers the URL from /admin/ home, then tries known patterns.
+ *  Tries to filter by tournament ID first (multiple filter param patterns),
+ *  falls back to all matches filtered by date cutoff in the caller. */
 export async function fetchTournamentScheduleData(
   tournamentId: string | number
 ): Promise<AdminMatchInfo[]> {
@@ -916,15 +955,24 @@ export async function fetchTournamentScheduleData(
     ? [discovered, ...SCHEDULE_URL_CANDIDATES.filter(u => u !== discovered)]
     : SCHEDULE_URL_CANDIDATES;
 
+  // Filter patterns for game→tournament FK (Django ORM lookup notation)
+  const tournamentFilters = [
+    `?round__tournament__id__exact=${tournamentId}`,
+    `?round__tournament__exact=${tournamentId}`,
+    `?tournament__id__exact=${tournamentId}`,
+    `?tournament__exact=${tournamentId}`,
+    `?tournament=${tournamentId}`,
+  ];
+
   for (const baseUrl of candidates) {
-    const all: AdminMatchInfo[] = [];
-    let page = 1;
-    while (true) {
-      const { items, hasMore } = await fetchMatchPage(tournamentId, page, baseUrl);
-      all.push(...items);
-      if (!hasMore || page >= 100) break;
-      page++;
+    // 1. Try with tournament filter — correct isolation per tournament
+    for (const qs of tournamentFilters) {
+      const filtered = await fetchAllMatchPages(tournamentId, baseUrl, qs);
+      if (filtered.length > 0) return filtered;
     }
+
+    // 2. Fallback: no tournament filter, rely on date cutoff in the caller
+    const all = await fetchAllMatchPages(tournamentId, baseUrl, "");
     if (all.length > 0) return all;
   }
   return [];
