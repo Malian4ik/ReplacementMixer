@@ -5,3 +5,8 @@ export async function POST() {
   const { totalMatches, playersUpdated } = await recalculateMatchStats();
   return NextResponse.json({ ok: true, totalMatches, playersUpdated });
 }
+
+export async function GET() {
+  const { totalMatches, playersUpdated } = await recalculateMatchStats();
+  return NextResponse.json({ ok: true, totalMatches, playersUpdated });
+}
