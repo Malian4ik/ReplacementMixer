@@ -60,7 +60,10 @@ export async function recalculateMatchStats(): Promise<{ totalMatches: number; p
 
   if (adminTournament) {
     try {
-      const { byNick, byParticipantUuid } = await fetchPlayerGameCounts(adminTournament.externalId);
+      // Build set of game UUIDs from completed matches (extracted from admin change links)
+      const validGameIds = new Set(adminCompletedMatches.filter(m => m.id).map(m => m.id!));
+      console.log("[recalc] validGameIds for gameuserstats filter:", validGameIds.size);
+      const { byNick, byParticipantUuid } = await fetchPlayerGameCounts(adminTournament.externalId, validGameIds);
 
       if (byParticipantUuid.size > 0) {
         // Resolve participant UUID → nick → player ID

@@ -741,6 +741,7 @@ export async function fetchTeamMemberNicks(
 // ─── Match schedule ───────────────────────────────────────────────────────────
 
 export interface AdminMatchInfo {
+  id?: string;  // Django game UUID (from change link)
   round: number;
   homeTeam: string;
   awayTeam: string;
@@ -860,7 +861,12 @@ async function fetchMatchPage(
 
     const adminStatus = fieldText(row, "status") || fieldText(row, "colored_status") || "";
 
+    // Extract game UUID from the change link in this row
+    const gameIdMatch = row.match(/\/admin\/tournaments\/game\/([0-9a-f-]{36})\/(?:change\/)?/);
+    const id = gameIdMatch?.[1];
+
     items.push({
+      id,
       round,
       homeTeam,
       awayTeam,
@@ -977,37 +983,44 @@ export async function fetchTournamentScheduleData(
   return [];
 }
 
+/** Extract href attribute value from a field-{name} cell */
+function fieldHref(row: string, fieldName: string): string {
+  const cellMatch = row.match(
+    new RegExp(`class="field-${fieldName}[^"]*"[^>]*>[\\s\\S]*?<a\\s+href="([^"]+)"`)
+  );
+  return cellMatch?.[1] ?? "";
+}
+
 /**
  * Fetch per-player match counts directly from gameuserstats admin page.
  * Each row in gameuserstats = one player in one game.
- * Returns { byNick: Map<nick, count>, byParticipantUuid: Map<uuid, count> }
- * whichever is populated (depends on what fields the admin exposes).
+ *
+ * When validGameIds is provided (Set of game UUIDs from completed tournament matches),
+ * fetches ALL gameuserstats rows unfiltered and counts only those whose game UUID
+ * is in validGameIds. This is the most accurate method.
+ *
+ * Falls back to tournament filter patterns if validGameIds is not provided or empty.
  */
-export async function fetchPlayerGameCounts(tournamentId: string | number): Promise<{
+export async function fetchPlayerGameCounts(
+  tournamentId: string | number,
+  validGameIds?: Set<string>,
+): Promise<{
   byNick: Map<string, number>;
   byParticipantUuid: Map<string, number>;
 }> {
   const statsBase = `${BASE}/admin/tournaments/gameuserstats/`;
+  const byNick = new Map<string, number>();
+  const byParticipantUuid = new Map<string, number>();
 
-  // Try filter patterns from most to least specific
-  const filters = [
-    `?game__tournament__id__exact=${tournamentId}`,         // Game → Tournament (direct FK, confirmed on game/)
-    `?game__round__tournament__id__exact=${tournamentId}`,  // Game → Round → Tournament
-    `?round__tournament__id__exact=${tournamentId}`,
-    `?tournament__id__exact=${tournamentId}`,
-  ];
-
-  for (const filter of filters) {
-    const byNick = new Map<string, number>();
-    const byParticipantUuid = new Map<string, number>();
+  // ── Primary path: game-UUID-based filtering (most accurate) ──────────────────
+  if (validGameIds && validGameIds.size > 0) {
+    console.log(`[fetchPlayerGameCounts] fetching all gameuserstats, filtering by ${validGameIds.size} game UUIDs`);
     let page = 1;
     let totalRows = 0;
-    console.log(`[fetchPlayerGameCounts] trying ${statsBase}${filter}`);
+    let matchedRows = 0;
 
-    while (page <= 300) {
-      const url = page === 1
-        ? `${statsBase}${filter}`
-        : `${statsBase}${filter}&p=${page}`;
+    while (page <= 500) {
+      const url = page === 1 ? statsBase : `${statsBase}?p=${page}`;
       const res = await fetch(url, { headers: makeHeaders() });
       if (!res.ok) break;
       const html = await res.text();
@@ -1017,23 +1030,30 @@ export async function fetchPlayerGameCounts(tournamentId: string | number): Prom
 
       let rowsOnPage = 0;
       for (const [, row] of [...listMatch[1].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)]) {
+        // Extract game UUID from field-game href: /admin/tournaments/game/{UUID}/change/
+        const gameHref = fieldHref(row, "game");
+        const gameUuidMatch = gameHref.match(/\/admin\/tournaments\/game\/([0-9a-f-]{36})\//);
+        const gameUuid = gameUuidMatch?.[1];
+        if (!gameUuid || !validGameIds.has(gameUuid)) {
+          // Count row for pagination detection even if not matched
+          const hasAnyField = row.includes('class="field-');
+          if (hasAnyField) rowsOnPage++;
+          continue;
+        }
+
+        rowsOnPage++;
+        matchedRows++;
+
         // Primary: participant UUID from href
         const uuidMatch = row.match(/\/admin\/tournaments\/participant\/([0-9a-f-]{36})\//);
         if (uuidMatch) {
-          const uuid = uuidMatch[1];
-          byParticipantUuid.set(uuid, (byParticipantUuid.get(uuid) ?? 0) + 1);
-          rowsOnPage++;
+          byParticipantUuid.set(uuidMatch[1], (byParticipantUuid.get(uuidMatch[1]) ?? 0) + 1);
           continue;
         }
-        // Fallback: nick fields
-        const nick =
-          fieldText(row, "participant__nick") ||
-          fieldText(row, "player__nick") ||
-          fieldText(row, "nick") ||
-          fieldText(row, "user__nick");
-        if (nick) {
+        // Fallback: nick from field-user (shown as plain text per probe)
+        const nick = fieldText(row, "user") || fieldText(row, "participant__nick") || fieldText(row, "nick");
+        if (nick && nick !== "-" && nick.length > 0) {
           byNick.set(nick, (byNick.get(nick) ?? 0) + 1);
-          rowsOnPage++;
         }
       }
 
@@ -1047,9 +1067,62 @@ export async function fetchPlayerGameCounts(tournamentId: string | number): Prom
       page++;
     }
 
-    if (byParticipantUuid.size > 0 || byNick.size > 0) {
-      console.log(`[fetchPlayerGameCounts] filter="${filter}" rows=${totalRows} UUIDs=${byParticipantUuid.size} nicks=${byNick.size}`);
-      return { byNick, byParticipantUuid };
+    console.log(`[fetchPlayerGameCounts] scanned ${totalRows} rows, matched ${matchedRows}, nicks=${byNick.size}, uuids=${byParticipantUuid.size}`);
+    if (byNick.size > 0 || byParticipantUuid.size > 0) return { byNick, byParticipantUuid };
+    console.warn("[fetchPlayerGameCounts] game-UUID filter matched 0 rows, falling back to tournament filters");
+  }
+
+  // ── Fallback: tournament filter patterns ──────────────────────────────────────
+  const filters = [
+    `?game__tournament__id__exact=${tournamentId}`,
+    `?game__round__tournament__id__exact=${tournamentId}`,
+    `?round__tournament__id__exact=${tournamentId}`,
+    `?tournament__id__exact=${tournamentId}`,
+  ];
+
+  for (const filter of filters) {
+    const fbByNick = new Map<string, number>();
+    const fbByUuid = new Map<string, number>();
+    let page = 1;
+    let totalRows = 0;
+    console.log(`[fetchPlayerGameCounts] trying filter ${filter}`);
+
+    while (page <= 300) {
+      const url = page === 1 ? `${statsBase}${filter}` : `${statsBase}${filter}&p=${page}`;
+      const res = await fetch(url, { headers: makeHeaders() });
+      if (!res.ok) break;
+      const html = await res.text();
+
+      const listMatch = html.match(/id="result_list"[^>]*>([\s\S]*)/);
+      if (!listMatch) break;
+
+      let rowsOnPage = 0;
+      for (const [, row] of [...listMatch[1].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)]) {
+        const uuidMatch = row.match(/\/admin\/tournaments\/participant\/([0-9a-f-]{36})\//);
+        if (uuidMatch) {
+          fbByUuid.set(uuidMatch[1], (fbByUuid.get(uuidMatch[1]) ?? 0) + 1);
+          rowsOnPage++;
+          continue;
+        }
+        const nick = fieldText(row, "user") || fieldText(row, "participant__nick") || fieldText(row, "nick");
+        if (nick && nick !== "-") {
+          fbByNick.set(nick, (fbByNick.get(nick) ?? 0) + 1);
+          rowsOnPage++;
+        }
+      }
+
+      totalRows += rowsOnPage;
+      if (rowsOnPage === 0 && page > 1) break;
+      const hasMore =
+        new RegExp(`[?&]p=${page + 1}[&"]`).test(html) ||
+        new RegExp(`[?&]p=${page + 1}&amp;`).test(html);
+      if (!hasMore) break;
+      page++;
+    }
+
+    if (fbByUuid.size > 0 || fbByNick.size > 0) {
+      console.log(`[fetchPlayerGameCounts] filter="${filter}" rows=${totalRows} uuids=${fbByUuid.size} nicks=${fbByNick.size}`);
+      return { byNick: fbByNick, byParticipantUuid: fbByUuid };
     }
   }
 
