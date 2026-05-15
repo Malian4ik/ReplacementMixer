@@ -80,7 +80,7 @@ export async function recalculateMatchStats(): Promise<{ totalMatches: number; p
   // Restore matchesPlayed for players substituted OUT.
   // A player may have been replaced from multiple teams in sequence — sum all periods.
   const subLogs = await prisma.matchSubstitutionLog.findMany({
-    where: { replacedPlayerId: { not: null }, teamName: { not: null } },
+    where: { replacedPlayerId: { not: null }, teamName: { not: null }, timestamp: { gte: cutoff } },
     select: { replacedPlayerId: true, teamName: true, timestamp: true },
     orderBy: { timestamp: "asc" },
   });
