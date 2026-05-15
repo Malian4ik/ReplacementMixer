@@ -989,9 +989,10 @@ export async function fetchPlayerGameCounts(tournamentId: string | number): Prom
 }> {
   const statsBase = `${BASE}/admin/tournaments/gameuserstats/`;
 
-  // Try filter patterns — only confirmed-working ones to avoid silent all-data returns
+  // Try filter patterns from most to least specific
   const filters = [
-    `?game__round__tournament__id__exact=${tournamentId}`,
+    `?game__tournament__id__exact=${tournamentId}`,         // Game → Tournament (direct FK, confirmed on game/)
+    `?game__round__tournament__id__exact=${tournamentId}`,  // Game → Round → Tournament
     `?round__tournament__id__exact=${tournamentId}`,
     `?tournament__id__exact=${tournamentId}`,
   ];
@@ -1001,6 +1002,7 @@ export async function fetchPlayerGameCounts(tournamentId: string | number): Prom
     const byParticipantUuid = new Map<string, number>();
     let page = 1;
     let totalRows = 0;
+    console.log(`[fetchPlayerGameCounts] trying ${statsBase}${filter}`);
 
     while (page <= 300) {
       const url = page === 1
