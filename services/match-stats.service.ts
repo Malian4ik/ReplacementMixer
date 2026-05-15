@@ -10,12 +10,13 @@ export async function recalculateMatchStats(): Promise<{ totalMatches: number; p
     orderBy: { lastSyncedAt: "desc" },
   });
 
+  // Cutoff is used both for admin filtering and for substituted-player local DB queries
+  const cutoff = adminTournament?.startDate ?? new Date("2026-05-01T00:00:00Z");
+
   if (adminTournament) {
     try {
       await adminLogin();
       const matches = await fetchTournamentScheduleData(adminTournament.externalId);
-      // Use tournament startDate as cutoff, fallback to 2026-05-01 for current season
-      const cutoff = adminTournament.startDate ?? new Date("2026-05-01T00:00:00Z");
       const completedMatches = matches.filter(m => {
         const s = (m.adminStatus ?? "").toLowerCase();
         if (!s || s === "pending" || s === "scheduled" || s === "запланирован") return false;
@@ -94,7 +95,7 @@ export async function recalculateMatchStats(): Promise<{ totalMatches: number; p
     const count = await prisma.tournamentMatch.count({
       where: {
         OR: [{ homeTeam: teamName }, { awayTeam: teamName }],
-        scheduledAt: { lt: timestamp },
+        scheduledAt: { gte: cutoff, lt: timestamp },
         status: { in: ["Completed", "TechLoss", "Active"] },
       },
     });
@@ -140,12 +141,20 @@ export async function creditNightMatches(
   const mskHour = (scheduledAt.getUTCHours() + 3) % 24;
   if (mskHour >= 7) return;
 
-  // Найти локальную запись матча (создаётся match-notifier-ом когда матч становится активным)
-  const record = await prisma.tournamentMatch.findFirst({
-    where: { homeTeam, awayTeam },
-    select: { id: true, nightCredited: true },
-  });
-  if (record?.nightCredited) return; // уже зачтён
+  // Атомарно маркируем запись как зачтённую; если записи нет или уже зачтена — ничего не делаем.
+  // Это предотвращает дублирование при повторных вызовах (многократные запуски крона).
+  const dateStr = scheduledAt.toISOString().slice(0, 10); // YYYY-MM-DD
+  const marked = await prisma.$executeRawUnsafe(
+    `UPDATE "TournamentMatch" SET "nightCredited" = 1
+     WHERE id = (
+       SELECT id FROM "TournamentMatch"
+       WHERE "homeTeam" = ? AND "awayTeam" = ? AND "nightCredited" = 0
+         AND DATE("scheduledAt") = DATE(?)
+       LIMIT 1
+     )`,
+    homeTeam, awayTeam, dateStr,
+  );
+  if (marked === 0) return; // нет записи или уже зачтён
 
   // Актуальный состав обеих команд на момент завершения
   const teams = await prisma.team.findMany({
@@ -161,11 +170,4 @@ export async function creditNightMatches(
     where: { id: { in: playerIds } },
     data: { nightMatches: { increment: 1 } },
   });
-
-  if (record) {
-    await prisma.tournamentMatch.update({
-      where: { id: record.id },
-      data: { nightCredited: true },
-    });
-  }
 }
