@@ -60,8 +60,12 @@ export async function GET(req: NextRequest) {
   const fixNight = req.nextUrl.searchParams.get("fixNight");
   if (fixNight === "1") {
     // Reconstruct nightMatches from scheduledAt of completed matches (00:00–06:59 MSK)
+    const activeTournament =
+      (await prisma.adminTournament.findFirst({ where: { isActive: true } })) ??
+      (await prisma.adminTournament.findFirst({ orderBy: { lastSyncedAt: "desc" } }));
+    const cutoff = activeTournament?.startDate ?? new Date("2026-05-01T00:00:00Z");
     const allCompleted = await prisma.tournamentMatch.findMany({
-      where: { status: { in: ["Completed", "TechLoss"] } },
+      where: { status: { in: ["Completed", "TechLoss"] }, scheduledAt: { gte: cutoff } },
       select: { homeTeam: true, awayTeam: true, scheduledAt: true },
     });
     const nightMatches = allCompleted.filter(m => {
