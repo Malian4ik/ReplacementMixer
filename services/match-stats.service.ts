@@ -65,7 +65,8 @@ export async function recalculateMatchStats(): Promise<{ totalMatches: number; p
     try {
       // Build set of game UUIDs from completed matches (extracted from admin change links)
       const validGameIds = new Set(adminCompletedMatches.filter(m => m.id).map(m => m.id!));
-      console.log("[recalc] validGameIds:", validGameIds.size, "of", adminCompletedMatches.length, "completed matches have UUID");
+      const sampleIds = adminCompletedMatches.slice(0, 3).map(m => `id=${JSON.stringify(m.id)}`).join(", ");
+      console.log("[recalc] validGameIds:", validGameIds.size, "of", adminCompletedMatches.length, "| sample:", sampleIds);
       const { byNick, byParticipantUuid } = await fetchPlayerGameCounts(adminTournament.externalId, validGameIds);
 
       // Minimum threshold: if fewer than 50 players found, data is incomplete — fall back to team-based

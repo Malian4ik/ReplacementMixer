@@ -29,20 +29,29 @@ export async function GET(req: NextRequest) {
     const rows: string[] = [];
     // Raw HTML of first 2 data rows (for UUID debugging) + stripped text
     const rawRows: string[] = [];
+    // Per-field extraction from first data row
+    const fieldValues: Record<string, string> = {};
     if (listMatch) {
       const allRows = [...listMatch[1].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)];
       for (const [, row] of allRows.slice(0, 3)) {
         rows.push(row.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim());
       }
       for (const [, row] of allRows.slice(1, 3)) {
-        rawRows.push(row.slice(0, 800));
+        rawRows.push(row.slice(0, 3000));
+      }
+      // Extract each field value from first data row
+      const firstDataRow = allRows[1]?.[1] ?? "";
+      for (const [, cls, cell] of firstDataRow.matchAll(/class="field-([^"\s]+)[^"]*"[^>]*>([\s\S]*?)<\/(?:td|th)>/g)) {
+        const text = cell.replace(/<[^>]+>/g, "").trim().replace(/\s+/g, " ");
+        const href = cell.match(/href="([^"]+)"/)?.[1] ?? "";
+        fieldValues[cls] = href ? `${text} | href=${href}` : text;
       }
     }
     // Checkbox values (_selected_action) — contain model PK
     const checkboxValues = [...html.matchAll(/name="_selected_action"[^>]*value="([^"]+)"/g)].slice(0, 5).map(m => m[1]);
     // All UUIDs found anywhere on the page
     const uuidsOnPage = [...new Set([...html.matchAll(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g)].map(m => m[0]))].slice(0, 10);
-    return NextResponse.json({ url, status: res.status, hasResultList, rowCount, fieldClasses, firstRows: rows, rawRows, checkboxValues, uuidsOnPage });
+    return NextResponse.json({ url, status: res.status, hasResultList, rowCount, fieldClasses, firstRows: rows, rawRows, fieldValues, checkboxValues, uuidsOnPage });
   }
 
   const { totalMatches, playersUpdated } = await recalculateMatchStats();
