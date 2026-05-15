@@ -59,13 +59,33 @@ export async function recalculateMatchStats(): Promise<{ totalMatches: number; p
 
   console.log("[recalc] teamCounts:", JSON.stringify(Object.fromEntries(matchCountByTeam)));
 
+  // Need join dates to count only matches AFTER a mid-tournament substitute joined
+  const allPlayerRecords = await prisma.player.findMany({
+    select: { id: true, createdAt: true },
+  });
+  const playerJoinedAt = new Map(allPlayerRecords.map(p => [p.id, p.createdAt]));
+
   const playerNewCount = new Map<string, number>();
   for (const team of allTeams) {
-    const count = matchCountByTeam.get(team.name) ?? 0;
-    if (count === 0) continue;
+    const teamTotal = matchCountByTeam.get(team.name) ?? 0;
+    if (teamTotal === 0) continue;
     for (const pid of [team.player1Id, team.player2Id, team.player3Id, team.player4Id, team.player5Id]) {
       if (!pid) continue;
-      playerNewCount.set(pid, Math.max(playerNewCount.get(pid) ?? 0, count));
+      const joinedAt = playerJoinedAt.get(pid);
+      let personalCount: number;
+      if (joinedAt && joinedAt > cutoff && adminCompletedMatches.length > 0) {
+        // Player joined mid-tournament — count only team matches from start of their join day
+        const dayStart = new Date(joinedAt);
+        dayStart.setUTCHours(0, 0, 0, 0);
+        personalCount = adminCompletedMatches.filter(m =>
+          (m.homeTeam === team.name || m.awayTeam === team.name) &&
+          m.scheduledAt !== null &&
+          m.scheduledAt >= dayStart
+        ).length;
+      } else {
+        personalCount = teamTotal;
+      }
+      playerNewCount.set(pid, Math.max(playerNewCount.get(pid) ?? 0, personalCount));
     }
   }
 
