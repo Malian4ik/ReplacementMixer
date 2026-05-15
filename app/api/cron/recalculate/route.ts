@@ -61,11 +61,11 @@ export async function GET(req: NextRequest) {
   if (fixNight === "1") {
     // Reconstruct nightMatches from scheduledAt of completed matches (00:00–06:59 MSK)
     const allCompleted = await prisma.tournamentMatch.findMany({
-      where: { status: { in: ["Completed", "TechLoss"] }, scheduledAt: { not: null } },
+      where: { status: { in: ["Completed", "TechLoss"] } },
       select: { homeTeam: true, awayTeam: true, scheduledAt: true },
     });
     const nightMatches = allCompleted.filter(m => {
-      const mskHour = (m.scheduledAt!.getUTCHours() + 3) % 24;
+      const mskHour = (m.scheduledAt.getUTCHours() + 3) % 24;
       return mskHour < 7;
     });
     const teamNames = [...new Set(nightMatches.flatMap(m => [m.homeTeam, m.awayTeam]))];
