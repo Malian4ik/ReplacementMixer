@@ -344,7 +344,7 @@ export default function PlayersPage() {
             <table className="tbl">
               <thead>
                 <tr>
-                  {(["НИК", "MMR", "STAKE", "РОЛЬ", "FLEX", "TELEGRAM", "ТРАСТ", "КОШЕЛЁК", "НОЧИ", "МАТЧИ", "СТАТУС", "ДОБАВЛЕН"] as const).map(h => {
+                  {(["НИК", "MMR", "STAKE", "РОЛЬ", "FLEX", "TELEGRAM", "DISCORD", "КОШЕЛЁК", "НОЧИ", "МАТЧИ", "СТАТУС", "ДОБАВЛЕН"] as const).map(h => {
                     const key = h === "НИК" ? "nick" : h === "MMR" ? "mmr" : h === "STAKE" ? "stake" : h === "СТАТУС" ? "isActiveInDatabase" : h === "ДОБАВЛЕН" ? "createdAt" : h === "МАТЧИ" ? "matchesPlayed" : null;
                     const isActive = key && sortKey === key;
                     return (
@@ -379,12 +379,8 @@ export default function PlayersPage() {
                           </select>
                         </td>
                         <td><input style={{ ...inputStyle, width: 100 }} value={editData.telegramId ?? ""} onChange={e => set("telegramId", e.target.value || null as unknown as string)} /></td>
-                        {/* ТРАСТ column in edit mode — shows Discord ID input since trust comes from OpenDota */}
                         <td>
-                          <div>
-                            <div style={{ fontSize: 9, color: "var(--text-muted)", marginBottom: 2 }}>Discord ID</div>
-                            <input style={{ ...inputStyle, width: 130 }} value={editData.discordId ?? ""} placeholder="ID" onChange={e => set("discordId", e.target.value || null as unknown as string)} />
-                          </div>
+                          <input style={{ ...inputStyle, width: 130 }} value={editData.discordId ?? ""} placeholder="Discord ID" onChange={e => set("discordId", e.target.value || null as unknown as string)} />
                         </td>
                         <td><input style={{ ...inputStyle, width: 100 }} value={editData.wallet ?? ""} onChange={e => set("wallet", e.target.value || null as unknown as string)} /></td>
                         <td><input type="number" style={{ ...inputStyle, width: 60 }} value={editData.nightMatches ?? 0} onChange={e => set("nightMatches", Number(e.target.value))} /></td>
@@ -419,7 +415,7 @@ export default function PlayersPage() {
                         <td><span style={{ color: "var(--accent)" }}>R{p.mainRole}</span></td>
                         <td style={{ color: "var(--text-secondary)" }}>{p.flexRole ? `R${p.flexRole}` : "—"}</td>
                         <td style={{ color: "var(--text-secondary)", fontSize: 12 }}>{p.telegramId ?? "—"}</td>
-                        <td><TrustBadge score={trustMap.get(p.id)?.trustScore} /></td>
+                        <td style={{ color: "var(--text-secondary)", fontSize: 12, fontFamily: "monospace" }}>{p.discordId ?? "—"}</td>
                         <td style={{ color: "var(--text-secondary)", fontSize: 12, fontFamily: "monospace" }}>{p.wallet ?? "—"}</td>
                         <td>{p.nightMatches}</td>
                         <td>
