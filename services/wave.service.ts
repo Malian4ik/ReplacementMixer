@@ -217,7 +217,9 @@ export async function recordReadyResponse(waveId: string, discordId: string, use
   if (!player) throw new Error("PLAYER_NOT_LINKED");
 
   // Check player is a candidate in this wave
-  let isCandidate = wave.candidates.some((c) => c.playerId === player.id);
+  if (!player) throw new Error("PLAYER_NOT_LINKED");
+  let currentPlayer = player;
+  let isCandidate = wave.candidates.some((c) => c.playerId === currentPlayer.id);
   if (!isCandidate) {
     // Additional fallback for migrated Discord IDs: bind click to matching candidate snapshot.
     const candidateByDiscord = wave.candidates.find(
@@ -226,7 +228,7 @@ export async function recordReadyResponse(waveId: string, discordId: string, use
     if (candidateByDiscord) {
       const candidatePlayer = await prisma.player.findUnique({ where: { id: candidateByDiscord.playerId } });
       if (candidatePlayer) {
-        player = candidatePlayer;
+        currentPlayer = candidatePlayer;
         isCandidate = true;
       }
     }
@@ -235,14 +237,14 @@ export async function recordReadyResponse(waveId: string, discordId: string, use
 
   // Check if player is still eligible (active in pool, not in team)
   const poolEntry = await prisma.substitutionPoolEntry.findFirst({
-    where: { playerId: player.id, status: "Active" },
+    where: { playerId: currentPlayer.id, status: "Active" },
   });
   if (!poolEntry) throw new Error("PLAYER_NOT_IN_POOL");
 
   // Upsert response (prevents duplicates via @@unique constraint)
   return prisma.waveResponse.upsert({
-    where: { waveId_playerId: { waveId, playerId: player.id } },
-    create: { waveId, playerId: player.id, discordId, clickedAt: new Date() },
+    where: { waveId_playerId: { waveId, playerId: currentPlayer.id } },
+    create: { waveId, playerId: currentPlayer.id, discordId, clickedAt: new Date() },
     update: {}, // no-op on duplicate
   });
 }
