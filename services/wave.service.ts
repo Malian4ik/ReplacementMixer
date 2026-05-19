@@ -178,6 +178,13 @@ export async function markWaveNoResponse(waveId: string) {
  * @param username - Discord username (tag) as fallback if numeric ID not found in DB.
  */
 export async function recordReadyResponse(waveId: string, discordId: string, username?: string) {
+  // Check wave is active early so we can use its candidate snapshot for fallback resolution
+  const wave = await prisma.substitutionWave.findUnique({
+    where: { id: waveId },
+    include: { candidates: true },
+  });
+  if (!wave || wave.status !== "Active") throw new Error("WAVE_NOT_ACTIVE");
+
   // Look up player by numeric discordId first
   let player = await prisma.player.findUnique({
     where: { discordId },
@@ -196,17 +203,34 @@ export async function recordReadyResponse(waveId: string, discordId: string, use
     }
   }
 
+  // Fallback: if player mapping is stale, try to resolve directly from this wave's candidates.
+  // This lets a valid candidate respond even when their Player.discordId wasn't synced properly.
+  if (!player) {
+    const candidateByDiscord = wave.candidates.find(
+      (c) => c.discordId === discordId || (!!username && c.discordId === username)
+    );
+    if (candidateByDiscord) {
+      player = await prisma.player.findUnique({ where: { id: candidateByDiscord.playerId } });
+    }
+  }
+
   if (!player) throw new Error("PLAYER_NOT_LINKED");
 
-  // Check wave is active
-  const wave = await prisma.substitutionWave.findUnique({
-    where: { id: waveId },
-    include: { candidates: true },
-  });
-  if (!wave || wave.status !== "Active") throw new Error("WAVE_NOT_ACTIVE");
-
   // Check player is a candidate in this wave
-  const isCandidate = wave.candidates.some((c) => c.playerId === player.id);
+  let isCandidate = wave.candidates.some((c) => c.playerId === player.id);
+  if (!isCandidate) {
+    // Additional fallback for migrated Discord IDs: bind click to matching candidate snapshot.
+    const candidateByDiscord = wave.candidates.find(
+      (c) => c.discordId === discordId || (!!username && c.discordId === username)
+    );
+    if (candidateByDiscord) {
+      const candidatePlayer = await prisma.player.findUnique({ where: { id: candidateByDiscord.playerId } });
+      if (candidatePlayer) {
+        player = candidatePlayer;
+        isCandidate = true;
+      }
+    }
+  }
   if (!isCandidate) throw new Error("CANDIDATE_NOT_IN_WAVE");
 
   // Check if player is still eligible (active in pool, not in team)

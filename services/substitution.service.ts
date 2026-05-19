@@ -118,7 +118,7 @@ export async function assignSubstitution(
       }
     }
 
-    // Reset night matches only if replacement happens during night hours (00:00–06:30 MSK)
+    // Reset night matches only if replacement happens during night hours (00:00–06:59 MSK)
     if (isNightTimeMsk()) {
       await prisma.player.update({
         where: { id: ctx.replacedPlayerId },
