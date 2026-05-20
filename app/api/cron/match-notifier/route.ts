@@ -117,8 +117,8 @@ export async function GET() {
       notified++;
     }
 
-    // Начислить ночные стрики для матчей, завершённых в admin НЕДАВНО (последние 3 часа)
-    // Только свежие матчи — старые уже получили стрики вручную
+    // Начислить ночные стрики для матчей, завершённых в admin НЕДАВНО (последние 3 часа).
+    // IMPORTANT: credit by exact local TournamentMatch.id to preserve idempotency.
     const recentCutoff = new Date(Date.now() - 3 * 60 * 60 * 1000);
     let nightCredited = 0;
     for (const m of adminMatches) {
@@ -127,7 +127,16 @@ export async function GET() {
       const status = (m.adminStatus ?? "").trim().toLowerCase();
       if (!DONE_RE.test(status)) continue; // только завершённые
       try {
-        await creditNightMatches(m.homeTeam, m.awayTeam, m.scheduledAt);
+        const local = await prisma.tournamentMatch.findFirst({
+          where: {
+            homeTeam: m.homeTeam,
+            awayTeam: m.awayTeam,
+            scheduledAt: m.scheduledAt,
+          },
+          select: { id: true },
+        });
+        if (!local) continue;
+        await creditNightMatches(local.id, m.homeTeam, m.awayTeam, m.scheduledAt);
         nightCredited++;
       } catch { /* игнорируем ошибки отдельных матчей */ }
     }

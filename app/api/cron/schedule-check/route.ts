@@ -141,7 +141,7 @@ export async function GET() {
     });
 
     for (const m of toComplete) {
-      await creditNightMatches(m.homeTeam, m.awayTeam, m.scheduledAt).catch(() => {});
+      await creditNightMatches(m.id, m.homeTeam, m.awayTeam, m.scheduledAt).catch(() => {});
     }
 
     return NextResponse.json({ ok: true, notified, autoCompleted: completed.count });

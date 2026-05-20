@@ -233,6 +233,24 @@ export async function recordReadyResponse(waveId: string, discordId: string, use
       }
     }
   }
+  if (!isCandidate) {
+    // One more fallback: candidate snapshot may contain stale/null discordId, so
+    // resolve among candidate players using current Player.discordId in DB.
+    const candidateIds = wave.candidates.map((c) => c.playerId);
+    const candidatePlayer = await prisma.player.findFirst({
+      where: {
+        id: { in: candidateIds },
+        OR: [
+          { discordId },
+          ...(username ? [{ discordId: username }] : []),
+        ],
+      },
+    });
+    if (candidatePlayer) {
+      currentPlayer = candidatePlayer;
+      isCandidate = true;
+    }
+  }
   if (!isCandidate) throw new Error("CANDIDATE_NOT_IN_WAVE");
 
   // Check if player is still eligible (active in pool, not in team)

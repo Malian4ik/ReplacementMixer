@@ -289,6 +289,7 @@ export async function debugPlayerStats(nick: string) {
  *  Идемпотентно: повторный вызов на уже зачтённый матч ничего не делает.
  *  Авто-создаёт колонку nightCredited при первом вызове — ничего руками делать не нужно. */
 export async function creditNightMatches(
+  matchId: string,
   homeTeam: string,
   awayTeam: string,
   scheduledAt: Date,
@@ -302,16 +303,13 @@ export async function creditNightMatches(
   const mskHour = (scheduledAt.getUTCHours() + 3) % 24;
   if (mskHour >= 7) return;
 
-  const dateStr = scheduledAt.toISOString().slice(0, 10);
+  // Idempotency must be tied to the exact local match row, not (home/away/date),
+  // otherwise duplicate rows for the same pair/day can produce double credit.
   const marked = await prisma.$executeRawUnsafe(
-    `UPDATE "TournamentMatch" SET "nightCredited" = 1
-     WHERE id = (
-       SELECT id FROM "TournamentMatch"
-       WHERE "homeTeam" = ? AND "awayTeam" = ? AND "nightCredited" = 0
-         AND DATE("scheduledAt") = DATE(?)
-       LIMIT 1
-     )`,
-    homeTeam, awayTeam, dateStr,
+    `UPDATE "TournamentMatch"
+     SET "nightCredited" = 1
+     WHERE "id" = ? AND "nightCredited" = 0`,
+    matchId,
   );
   if (marked === 0) return;
 
