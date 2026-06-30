@@ -25,6 +25,17 @@ const EMPTY_FORM = {
 
 const PAGE_SIZE = 20;
 
+async function readApiJson(res: Response) {
+  const text = await res.text();
+  if (!text) return {};
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { error: text.slice(0, 200) };
+  }
+}
+
 function TrustBadge({ score }: { score: number | null | undefined }) {
   if (score === null || score === undefined) {
     return <span style={{ color: "var(--text-muted)", fontSize: 11 }}>—</span>;
@@ -109,13 +120,21 @@ export default function PlayersPage() {
   });
 
   const clearMutation = useMutation({
-    mutationFn: () => fetch("/api/players/clear", { method: "POST" }).then(r => r.json()),
+    mutationFn: async () => {
+      const res = await fetch("/api/players/clear", { method: "POST" });
+      const json = await readApiJson(res);
+      if (!res.ok) throw new Error(json.error ?? "CLEAR_PLAYERS_FAILED");
+      return json;
+    },
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["players"] });
       qc.invalidateQueries({ queryKey: ["teams"] });
       qc.invalidateQueries({ queryKey: ["pool"] });
       qc.invalidateQueries({ queryKey: ["stats"] });
       alert(`Сброс выполнен. Удалено игроков: ${data.deleted}`);
+    },
+    onError: (error: Error) => {
+      alert(`Сброс не выполнен: ${error.message}`);
     },
   });
 
