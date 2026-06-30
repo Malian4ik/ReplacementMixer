@@ -2,21 +2,29 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 // POST /api/players/clear
-// Deletes all tournament data (logs, pool, teams, non-disqualified players).
-// Disqualified players are preserved — they are managed separately.
-// OWNER only — enforced on client.
+// Clears tournament data in FK-safe order. Disqualified players are preserved.
 export async function POST() {
-  // Delete in FK-safe order. Disqualified players are preserved.
-  await prisma.matchSubstitutionLog.deleteMany();
-  await prisma.waveResponse.deleteMany();
-  await prisma.waveCandidate.deleteMany();
-  await prisma.substitutionWave.deleteMany();
-  await prisma.substitutionSlot.deleteMany();
-  await prisma.substitutionSearchSession.deleteMany();
-  await prisma.substitutionPoolEntry.deleteMany();
-  await prisma.playerTournamentParticipation.deleteMany();
-  await prisma.team.deleteMany();
-  const result = await prisma.player.deleteMany({ where: { isDisqualified: false } });
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      await tx.matchSubstitutionLog.deleteMany();
+      await tx.waveResponse.deleteMany();
+      await tx.waveCandidate.deleteMany();
+      await tx.substitutionWave.deleteMany();
+      await tx.substitutionSlot.deleteMany();
+      await tx.substitutionSearchSession.deleteMany();
+      await tx.substitutionPoolEntry.deleteMany();
+      await tx.adminTournamentSyncRun.deleteMany();
+      await tx.playerTournamentParticipation.deleteMany();
+      await tx.adminTournament.deleteMany();
+      await tx.tournamentMatch.deleteMany();
+      await tx.team.deleteMany();
 
-  return NextResponse.json({ deleted: result.count });
+      return tx.player.deleteMany({ where: { isDisqualified: false } });
+    });
+
+    return NextResponse.json({ deleted: result.count });
+  } catch (error) {
+    console.error("CLEAR_PLAYERS_FAILED", error);
+    return NextResponse.json({ error: "CLEAR_PLAYERS_FAILED" }, { status: 500 });
+  }
 }
