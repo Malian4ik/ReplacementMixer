@@ -106,9 +106,17 @@ export async function importTournamentParticipants(
         { nick: p.nick },
         ...(p.discordId ? [{ discordId: p.discordId }] : []),
         ...(p.wallet ? [{ wallet: p.wallet }] : []),
+        ...(p.telegramId ? [{ telegramId: p.telegramId }] : []),
+        ...(p.steamAccountId ? [{ steamAccountId: p.steamAccountId }] : []),
       ];
       const existing = await prisma.player.findFirst({ where: { OR: identityOr } });
       const playedBefore = existing != null;
+      const existingParticipation = existing
+        ? await prisma.playerTournamentParticipation.findUnique({
+          where: { playerId_tournamentId: { playerId: existing.id, tournamentId: tournament.id } },
+          select: { id: true },
+        })
+        : null;
 
       // If tournamentStatus contains "disqualif" → mark as disqualified on our site
       const isDisq = /disqualif/i.test(p.tournamentStatus ?? "");
@@ -134,7 +142,7 @@ export async function importTournamentParticipants(
           data: {
             ...playerData,
             hasPlayedBefore: true,
-            adminParticipationCount: { increment: 1 },
+            ...(!existingParticipation ? { adminParticipationCount: { increment: 1 } } : {}),
           },
         })
         : await prisma.player.create({
@@ -171,7 +179,7 @@ export async function importTournamentParticipants(
           balance: p.balance ?? null,
         },
         update: {
-          participationCount: { increment: 1 },
+          participationCount: 1,
           playedBefore,
           tournamentStatus: p.tournamentStatus ?? null,
           queuePosition: p.queuePosition ?? null,
