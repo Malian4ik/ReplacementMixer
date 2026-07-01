@@ -82,17 +82,43 @@ export async function importTournamentParticipants(
     }
 
     try {
-      // Find existing player by nick
-      const existing = await prisma.player.findUnique({ where: { nick: p.nick } });
+      const identityOr = [
+        { nick: p.nick },
+        ...(p.discordId ? [{ discordId: p.discordId }] : []),
+        ...(p.wallet ? [{ wallet: p.wallet }] : []),
+      ];
+      const existing = await prisma.player.findFirst({ where: { OR: identityOr } });
       const playedBefore = existing != null;
 
       // If tournamentStatus contains "disqualif" → mark as disqualified on our site
       const isDisq = /disqualif/i.test(p.tournamentStatus ?? "");
 
-      // Upsert player
-      const player = await prisma.player.upsert({
-        where: { nick: p.nick },
-        create: {
+      const playerData = {
+        ...(existing?.nick !== p.nick ? { nick: p.nick } : {}),
+        ...(p.mmr != null ? { mmr: p.mmr } : {}),
+        ...(p.bidSize != null ? { stake: p.bidSize } : {}),
+        ...(p.mainRole != null ? { mainRole: p.mainRole } : {}),
+        ...(p.flexRole != null ? { flexRole: p.flexRole } : {}),
+        ...(p.wallet ? { wallet: p.wallet } : {}),
+        ...(p.telegramId ? { telegramId: p.telegramId } : {}),
+        ...(p.discordId ? { discordId: p.discordId } : {}),
+        ...(p.steamAccountId ? { steamAccountId: p.steamAccountId } : {}),
+        lastImportedTournamentName: tournamentInfo.name,
+        lastSyncedAt: new Date(),
+        ...(isDisq ? { isDisqualified: true, isActiveInDatabase: false } : {}),
+      };
+
+      const player = existing
+        ? await prisma.player.update({
+          where: { id: existing.id },
+          data: {
+            ...playerData,
+            hasPlayedBefore: true,
+            adminParticipationCount: { increment: 1 },
+          },
+        })
+        : await prisma.player.create({
+          data: {
           nick: p.nick,
           mmr: p.mmr ?? 0,
           stake: p.bidSize ?? 0,
@@ -108,22 +134,7 @@ export async function importTournamentParticipants(
           isDisqualified: isDisq,
           isActiveInDatabase: !isDisq,
         },
-        update: {
-          ...(p.mmr != null ? { mmr: p.mmr } : {}),
-          ...(p.bidSize != null ? { stake: p.bidSize } : {}),
-          ...(p.mainRole != null ? { mainRole: p.mainRole } : {}),
-          ...(p.flexRole != null ? { flexRole: p.flexRole } : {}),
-          ...(p.wallet ? { wallet: p.wallet } : {}),
-          ...(p.telegramId ? { telegramId: p.telegramId } : {}),
-          ...(p.discordId ? { discordId: p.discordId } : {}),
-          ...(p.steamAccountId ? { steamAccountId: p.steamAccountId } : {}),
-          hasPlayedBefore: playedBefore,
-          adminParticipationCount: { increment: 1 },
-          lastImportedTournamentName: tournamentInfo.name,
-          lastSyncedAt: new Date(),
-          ...(isDisq ? { isDisqualified: true, isActiveInDatabase: false } : {}),
-        },
-      });
+        });
 
       // Upsert participation record
       await prisma.playerTournamentParticipation.upsert({
