@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { adminLogin, getAdminHeaders } from "@/services/admin-source.service";
 
-const BASE = process.env.ADMIN_SOURCE_URL ?? "";
+const BASE = (process.env.ADMIN_SOURCE_URL ?? "").replace(/^\uFEFF/, "").trim();
 
 function extractField(row: string, fieldName: string): string {
   const m = row.match(new RegExp(`class="field-${fieldName}[^"]*"[^>]*>([\\s\\S]*?)<\\/(?:td|th)>`));
