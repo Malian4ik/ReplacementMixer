@@ -10,7 +10,7 @@
 import { adminLogin, getAdminHeaders } from "./admin-source.service";
 import { prisma } from "@/lib/prisma";
 
-const BASE = process.env.ADMIN_SOURCE_URL ?? "";
+const BASE = process.env.ADMIN_SOURCE_URL?.trim() ?? "";
 
 // в”Ђв”Ђ Types в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
@@ -167,8 +167,8 @@ async function fetchRawGameFromDB(): Promise<RawGame | null> {
   const match = await prisma.tournamentMatch.findFirst({
     where: {
       OR: [
-        { status: "Live" },
-        { status: "Active" },
+        { status: "Live", endsAt: { gte: now } },
+        { status: "Active", endsAt: { gte: now } },
         {
           status: "Scheduled",
           scheduledAt: { lte: now },

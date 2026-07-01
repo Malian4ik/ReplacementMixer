@@ -6,9 +6,9 @@
  *   ADMIN_SOURCE_PASSWORD — пароль
  */
 
-const BASE = process.env.ADMIN_SOURCE_URL ?? "";
-const USERNAME = process.env.ADMIN_SOURCE_USERNAME ?? "";
-const PASSWORD = process.env.ADMIN_SOURCE_PASSWORD ?? "";
+const BASE = process.env.ADMIN_SOURCE_URL?.trim() ?? "";
+const USERNAME = process.env.ADMIN_SOURCE_USERNAME?.trim() ?? "";
+const PASSWORD = process.env.ADMIN_SOURCE_PASSWORD?.trim() ?? "";
 
 let sessionCookie: string | null = null;
 
