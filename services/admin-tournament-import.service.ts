@@ -275,10 +275,31 @@ export async function importTournamentTeams(
 
   for (const [teamName, nicks] of teamMap) {
     try {
+      if (nicks.length === 0) {
+        failed++;
+        errors.push(`${teamName}: skipped empty team from admin parser`);
+        continue;
+      }
+
       const players = await prisma.player.findMany({ where: { nick: { in: nicks } } });
       const playerMap = new Map(players.map(p => [p.nick, p.id]));
       const ids = nicks.slice(0, 5).map(n => playerMap.get(n) ?? null);
       while (ids.length < 5) ids.push(null);
+
+      const existing = await prisma.team.findFirst({ where: { name: teamName } });
+      if (existing) {
+        // Never clear an existing slot just because admin parsing missed a player.
+        const previous = [
+          existing.player1Id,
+          existing.player2Id,
+          existing.player3Id,
+          existing.player4Id,
+          existing.player5Id,
+        ];
+        for (let i = 0; i < ids.length; i++) {
+          if (!ids[i] && previous[i]) ids[i] = previous[i];
+        }
+      }
 
       const playerData = {
         player1Id: ids[0],
@@ -288,7 +309,6 @@ export async function importTournamentTeams(
         player5Id: ids[4],
       };
 
-      const existing = await prisma.team.findFirst({ where: { name: teamName } });
       if (existing) {
         await prisma.team.update({ where: { id: existing.id }, data: playerData });
         updated++;
@@ -383,15 +403,35 @@ export async function syncPoolFromAdminWaitingList(
       const player = await prisma.player.findUnique({ where: { nick: item.nick } });
       if (!player) { notFound++; continue; }
 
-      await prisma.substitutionPoolEntry.create({
-        data: {
+      const existing = await prisma.substitutionPoolEntry.findFirst({
+        where: {
           playerId: player.id,
           source: "admin_queue",
-          adminQueuePosition: item.queuePosition,
-          status: "Active",
+          status: { not: "Picked" },
         },
+        orderBy: [{ joinTime: "desc" }],
       });
-      added++;
+
+      if (existing) {
+        await prisma.substitutionPoolEntry.update({
+          where: { id: existing.id },
+          data: {
+            adminQueuePosition: item.queuePosition,
+            status: "Active",
+          },
+        });
+        updated++;
+      } else {
+        await prisma.substitutionPoolEntry.create({
+          data: {
+            playerId: player.id,
+            source: "admin_queue",
+            adminQueuePosition: item.queuePosition,
+            status: "Active",
+          },
+        });
+        added++;
+      }
     } catch (err: unknown) {
       errors.push(`${item.nick}: ${err instanceof Error ? err.message : String(err)}`);
     }

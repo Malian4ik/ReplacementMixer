@@ -10,6 +10,15 @@ function cleanEnv(value: string | undefined): string {
   return (value ?? "").replace(/^\uFEFF/, "").trim();
 }
 
+function decodeHtml(value: string): string {
+  return value
+    .replace(/&amp;/g, "&")
+    .replace(/&#x27;/g, "'")
+    .replace(/&quot;/g, "\"")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+}
+
 const BASE = cleanEnv(process.env.ADMIN_SOURCE_URL);
 const USERNAME = cleanEnv(process.env.ADMIN_SOURCE_USERNAME);
 const PASSWORD = cleanEnv(process.env.ADMIN_SOURCE_PASSWORD);
@@ -740,13 +749,25 @@ export async function fetchTeamMemberNicks(
   const nicks: string[] = [];
   const seen = new Set<string>();
 
-  // Method 1: inline Russian text "Участник {nick} in «…»"
-  for (const [, nick] of html.matchAll(/Участник\s+(\S+)\s+in\s+/g)) {
-    if (!seen.has(nick)) { seen.add(nick); nicks.push(nick); }
+  // Method 1: Django admin user links in inline rows. This keeps spaces and non-latin nicks.
+  for (const [, rawText] of html.matchAll(/href="[^"]*\/admin\/users\/user\/[^"]+\/change\/"[^>]*>([\s\S]*?)<\/a>/g)) {
+    const nick = decodeHtml(rawText.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim());
+    if (nick && !seen.has(nick)) {
+      seen.add(nick);
+      nicks.push(nick);
+      if (nicks.length >= 5) return nicks;
+    }
   }
   if (nicks.length > 0) return nicks;
 
-  // Method 2: participant UUID href links → resolve via map
+  // Method 2: inline Russian text "Участник {nick} in ..."
+  for (const [, nick] of html.matchAll(/Участник\s+([\s\S]*?)\s+in\s+/g)) {
+    const cleanNick = decodeHtml(nick.replace(/\s+/g, " ").trim());
+    if (cleanNick && !seen.has(cleanNick)) { seen.add(cleanNick); nicks.push(cleanNick); }
+  }
+  if (nicks.length > 0) return nicks;
+
+  // Method 3: participant UUID href links -> resolve via map
   for (const [, uuid] of html.matchAll(/\/admin\/tournaments\/participant\/([0-9a-f-]{36})\//g)) {
     if (seen.has(uuid)) continue;
     seen.add(uuid);
