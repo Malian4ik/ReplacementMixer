@@ -4,7 +4,7 @@
  * Primary source: admin.mixer-cup.gg HTML scraping.
  * Fallback: local TournamentMatch table with status = "Active".
  *
- * Results are cached for 2 minutes in memory.
+ * Results are cached briefly in memory.
  */
 
 import { adminLogin, getAdminHeaders } from "./admin-source.service";
@@ -48,7 +48,7 @@ export interface ActiveGame {
 
 // в”Ђв”Ђ In-memory cache в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
-const CACHE_TTL_MS = 2 * 60 * 1000;
+const CACHE_TTL_MS = 15 * 1000;
 let cacheData: ActiveGame | null = null;
 let cacheFetchedAt = 0;
 
@@ -119,13 +119,17 @@ function isAdminStatusActive(row: string): boolean {
 }
 
 async function fetchRawGameFromAdmin(): Promise<RawGame | null> {
-  if (!BASE) return null;
+  const games = await fetchRawGamesFromAdmin();
+  return games[0] ?? null;
+}
+
+async function fetchRawGamesFromAdmin(): Promise<RawGame[]> {
+  if (!BASE) return [];
 
   try {
-    const probe = await fetch(`${BASE}/admin/`, { headers: getAdminHeaders(), redirect: "manual" });
-    if (probe.status === 302 || probe.url?.includes("/login/")) await adminLogin();
+    await adminLogin();
   } catch {
-    try { await adminLogin(); } catch { return null; }
+    return [];
   }
 
   // Unfiltered list sorted by status ascending (column 4) вЂ” "РђРєС‚РёРІРЅС‹Р№" sorts first in Russian alphabet
@@ -139,9 +143,13 @@ async function fetchRawGameFromAdmin(): Promise<RawGame | null> {
     `${BASE}/admin/tournaments/game/?p=3`,
   ];
 
+  const activeGames: RawGame[] = [];
+  const otherGames: RawGame[] = [];
+  const seen = new Set<string>();
+
   for (const url of candidates) {
     let res: Response;
-    try { res = await fetch(url, { headers: getAdminHeaders() }); }
+    try { res = await fetch(url, { headers: getAdminHeaders(), cache: "no-store" }); }
     catch { continue; }
     if (!res.ok) continue;
 
@@ -150,13 +158,16 @@ async function fetchRawGameFromAdmin(): Promise<RawGame | null> {
     if (!listMatch) continue;
 
     for (const [, row] of [...listMatch[1].matchAll(/<tr[^>]*class="[^"]*row[^"]*"[^>]*>([\s\S]*?)<\/tr>/g)]) {
-      if (!isAdminStatusActive(row)) continue;
       const game = parseRowToGame(row);
-      if (game) return game;
+      if (!game) continue;
+      if (seen.has(game.id)) continue;
+      seen.add(game.id);
+      if (isAdminStatusActive(row)) activeGames.push(game);
+      else otherGames.push(game);
     }
   }
 
-  return null;
+  return [...activeGames, ...otherGames];
 }
 
 // в”Ђв”Ђ DB fallback в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
@@ -281,18 +292,43 @@ export async function fetchActiveGame(): Promise<ActiveGame | null> {
   if (cacheValid()) return cacheData;
 
   let raw: RawGame | null = null;
-  let rawFromAdmin = false;
+  let homeTeam: ActiveGameTeam | null = null;
+  let awayTeam: ActiveGameTeam | null = null;
+  let substituteQueue: QueueEntry[] = [];
+  let adminHadCandidates = false;
 
   if (BASE) {
     try {
-      raw = await fetchRawGameFromAdmin();
-      rawFromAdmin = !!raw;
+      const adminGames = await fetchRawGamesFromAdmin();
+      adminHadCandidates = adminGames.length > 0;
+      for (const candidate of adminGames) {
+        const [candidateHome, candidateAway, candidateQueue] = await Promise.all([
+          buildTeam(candidate.homeTeamName),
+          buildTeam(candidate.awayTeamName),
+          fetchSubstituteQueue(),
+        ]);
+
+        if (candidateHome && candidateAway) {
+          raw = candidate;
+          homeTeam = candidateHome;
+          awayTeam = candidateAway;
+          substituteQueue = candidateQueue;
+          break;
+        }
+
+        console.warn("[active-match] admin candidate teams not found", {
+          homeTeamName: candidate.homeTeamName,
+          awayTeamName: candidate.awayTeamName,
+          homeFound: !!candidateHome,
+          awayFound: !!candidateAway,
+        });
+      }
     } catch (err) {
       console.error("[active-match] admin scraping failed:", err);
     }
   }
 
-  if (!raw) {
+  if (!raw && !adminHadCandidates) {
     try {
       raw = await fetchRawGameFromDB();
     } catch (err) {
@@ -306,36 +342,22 @@ export async function fetchActiveGame(): Promise<ActiveGame | null> {
     return null;
   }
 
-  let [homeTeam, awayTeam, substituteQueue] = await Promise.all([
-    buildTeam(raw.homeTeamName),
-    buildTeam(raw.awayTeamName),
-    fetchSubstituteQueue(),
-  ]);
+  if (!homeTeam || !awayTeam) {
+    [homeTeam, awayTeam, substituteQueue] = await Promise.all([
+      buildTeam(raw.homeTeamName),
+      buildTeam(raw.awayTeamName),
+      fetchSubstituteQueue(),
+    ]);
+  }
 
   if (!homeTeam || !awayTeam) {
     console.warn("[active-match] teams not found for active match", {
-      source: rawFromAdmin ? "admin" : "db",
+      source: "db",
       homeTeamName: raw.homeTeamName,
       awayTeamName: raw.awayTeamName,
       homeFound: !!homeTeam,
       awayFound: !!awayTeam,
     });
-
-    if (rawFromAdmin) {
-      try {
-        const dbRaw = await fetchRawGameFromDB();
-        if (dbRaw) {
-          raw = dbRaw;
-          [homeTeam, awayTeam, substituteQueue] = await Promise.all([
-            buildTeam(raw.homeTeamName),
-            buildTeam(raw.awayTeamName),
-            fetchSubstituteQueue(),
-          ]);
-        }
-      } catch (err) {
-        console.error("[active-match] DB fallback after admin roster miss failed:", err);
-      }
-    }
 
     if (!homeTeam || !awayTeam) {
       cacheData = null;
