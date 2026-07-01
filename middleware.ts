@@ -20,7 +20,6 @@ export async function middleware(req: NextRequest) {
     const res = NextResponse.next();
     res.headers.set("x-user-id", String(payload.userId ?? ""));
     res.headers.set("x-user-role", String(payload.role ?? ""));
-    res.headers.set("x-user-name", String(payload.name ?? ""));
 
     return res;
   } catch {

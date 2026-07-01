@@ -6,6 +6,11 @@ import { prisma } from "@/lib/prisma";
 export async function POST() {
   try {
     const result = await prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(`DELETE FROM "ReplacementWaveResponse"`);
+      await tx.$executeRawUnsafe(`DELETE FROM "ReplacementWaveCandidate"`);
+      await tx.$executeRawUnsafe(`DELETE FROM "ReplacementWave"`);
+      await tx.$executeRawUnsafe(`DELETE FROM "NightMatchEntry" WHERE "playerId" IN (SELECT "id" FROM "Player" WHERE "isDisqualified" = 0)`);
+
       await tx.matchSubstitutionLog.deleteMany();
       await tx.waveResponse.deleteMany();
       await tx.waveCandidate.deleteMany();
