@@ -2,8 +2,8 @@ import { createClient } from "@libsql/client";
 
 function getClient() {
   return createClient({
-    url: process.env.TURSO_DATABASE_URL ?? "file:prisma/dev.db",
-    authToken: process.env.TURSO_AUTH_TOKEN,
+    url: process.env.TURSO_DATABASE_URL?.trim() || "file:prisma/dev.db",
+    authToken: process.env.TURSO_AUTH_TOKEN?.trim(),
   });
 }
 
