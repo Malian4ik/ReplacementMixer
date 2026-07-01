@@ -1,14 +1,22 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+async function deleteOptionalTable(tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0], table: string) {
+  try {
+    await tx.$executeRawUnsafe(`DELETE FROM "${table}"`);
+  } catch {
+    // Some production databases still have/don't have legacy Discord-wave tables.
+  }
+}
+
 // POST /api/players/clear
 // Deletes tournament data in FK-safe order. Disqualified players are preserved.
 export async function POST() {
   try {
     const result = await prisma.$transaction(async (tx) => {
-      await tx.$executeRawUnsafe(`DELETE FROM "ReplacementWaveResponse"`);
-      await tx.$executeRawUnsafe(`DELETE FROM "ReplacementWaveCandidate"`);
-      await tx.$executeRawUnsafe(`DELETE FROM "ReplacementWave"`);
+      await deleteOptionalTable(tx, "ReplacementWaveResponse");
+      await deleteOptionalTable(tx, "ReplacementWaveCandidate");
+      await deleteOptionalTable(tx, "ReplacementWave");
       await tx.$executeRawUnsafe(`DELETE FROM "NightMatchEntry" WHERE "playerId" IN (SELECT "id" FROM "Player" WHERE "isDisqualified" = 0)`);
 
       await tx.matchSubstitutionLog.deleteMany();
