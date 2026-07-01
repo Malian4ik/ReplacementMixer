@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Fetches the currently active tournament match.
  *
  * Primary source: admin.mixer-cup.gg HTML scraping.
@@ -12,7 +12,7 @@ import { prisma } from "@/lib/prisma";
 
 const BASE = process.env.ADMIN_SOURCE_URL ?? "";
 
-// ── Types ──────────────────────────────────────────────────────────────────────
+// в”Ђв”Ђ Types в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 export interface ActiveGamePlayer {
   id: string;
@@ -46,7 +46,7 @@ export interface ActiveGame {
   substituteQueue: QueueEntry[];
 }
 
-// ── In-memory cache ────────────────────────────────────────────────────────────
+// в”Ђв”Ђ In-memory cache в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 const CACHE_TTL_MS = 2 * 60 * 1000;
 let cacheData: ActiveGame | null = null;
@@ -60,7 +60,7 @@ export function invalidateActiveGameCache(): void {
   cacheFetchedAt = 0;
 }
 
-// ── HTML helpers ───────────────────────────────────────────────────────────────
+// в”Ђв”Ђ HTML helpers в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 function extractField(row: string, fieldName: string): string {
   const m = row.match(
@@ -70,7 +70,7 @@ function extractField(row: string, fieldName: string): string {
   return m[1].replace(/<[^>]+>/g, "").trim().replace(/\s+/g, " ");
 }
 
-// ── Admin scraping ─────────────────────────────────────────────────────────────
+// в”Ђв”Ђ Admin scraping в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 interface RawGame {
   id: string;
@@ -107,8 +107,15 @@ function isAdminStatusActive(row: string): boolean {
     extractField(row, "colored_status") ||
     extractField(row, "status") ||
     extractField(row, "get_status_display") || "";
-  // Match both Latin ("active", "live") and Cyrillic ("Активный", "Идёт")
-  return /activ|Актив|идёт|live|in.prog/i.test(status);
+  // Match both Latin and Cyrillic admin labels.
+  return (
+    /activ|live|in.prog/i.test(status) ||
+    status.includes("Актив") ||
+    status.includes("Идёт") ||
+    status.includes("Идет") ||
+    status.includes("В игре") ||
+    status.includes("Запущ")
+  );
 }
 
 async function fetchRawGameFromAdmin(): Promise<RawGame | null> {
@@ -121,10 +128,10 @@ async function fetchRawGameFromAdmin(): Promise<RawGame | null> {
     try { await adminLogin(); } catch { return null; }
   }
 
-  // Unfiltered list sorted by status ascending (column 4) — "Активный" sorts first in Russian alphabet
+  // Unfiltered list sorted by status ascending (column 4) вЂ” "РђРєС‚РёРІРЅС‹Р№" sorts first in Russian alphabet
   // Also try first 3 pages in case the active match is not on page 1
   const candidates = [
-    `${BASE}/admin/tournaments/game/?o=4`,      // sort by status asc → Активный first
+    `${BASE}/admin/tournaments/game/?o=4`,      // sort by status asc в†’ РђРєС‚РёРІРЅС‹Р№ first
     `${BASE}/admin/tournaments/game/?o=4&p=2`,
     `${BASE}/admin/tournaments/game/?o=4&p=3`,
     `${BASE}/admin/tournaments/game/`,           // fallback: default ordering
@@ -152,7 +159,7 @@ async function fetchRawGameFromAdmin(): Promise<RawGame | null> {
   return null;
 }
 
-// ── DB fallback ────────────────────────────────────────────────────────────────
+// в”Ђв”Ђ DB fallback в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 async function fetchRawGameFromDB(): Promise<RawGame | null> {
   const now = new Date();
@@ -169,7 +176,7 @@ async function fetchRawGameFromDB(): Promise<RawGame | null> {
         },
       ],
     },
-    orderBy: { scheduledAt: "asc" },
+    orderBy: { scheduledAt: "desc" },
   });
   if (!match) return null;
 
@@ -182,12 +189,36 @@ async function fetchRawGameFromDB(): Promise<RawGame | null> {
   };
 }
 
-// ── Team enrichment (look up team + players in Prisma) ────────────────────────
+// в”Ђв”Ђ Team enrichment (look up team + players in Prisma) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 async function buildTeam(teamName: string): Promise<ActiveGameTeam | null> {
-  const team = await prisma.team.findFirst({
+  let team = await prisma.team.findFirst({
     where: { name: teamName },
   });
+
+  // Team names in admin are usually based on captain/current nick.
+  // If a captain changes nick, local imported team may still have the old name.
+  if (!team && teamName.startsWith("Team ")) {
+    const captainNick = teamName.slice(5).trim();
+    const captain = await prisma.player.findFirst({
+      where: { nick: captainNick },
+      select: { id: true },
+    });
+    if (captain) {
+      team = await prisma.team.findFirst({
+        where: {
+          OR: [
+            { player1Id: captain.id },
+            { player2Id: captain.id },
+            { player3Id: captain.id },
+            { player4Id: captain.id },
+            { player5Id: captain.id },
+          ],
+        },
+      });
+    }
+  }
+
   if (!team) return null;
 
   const slotIds = [
@@ -221,10 +252,10 @@ async function buildTeam(teamName: string): Promise<ActiveGameTeam | null> {
     ? Math.round(nonNullSlots.reduce((s, p) => s + p.mmr, 0) / nonNullSlots.length)
     : 0;
 
-  return { id: team.id, name: team.name, players: slots, avgMmr };
+  return { id: team.id, name: teamName, players: slots, avgMmr };
 }
 
-// ── Substitute queue (from reserve pool, ordered by joinTime) ──────────────────
+// в”Ђв”Ђ Substitute queue (from reserve pool, ordered by joinTime) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 async function fetchSubstituteQueue(): Promise<QueueEntry[]> {
   const entries = await prisma.substitutionPoolEntry.findMany({
@@ -244,16 +275,18 @@ async function fetchSubstituteQueue(): Promise<QueueEntry[]> {
   }));
 }
 
-// ── Public API ─────────────────────────────────────────────────────────────────
+// в”Ђв”Ђ Public API в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 export async function fetchActiveGame(): Promise<ActiveGame | null> {
   if (cacheValid()) return cacheData;
 
   let raw: RawGame | null = null;
+  let rawFromAdmin = false;
 
   if (BASE) {
     try {
       raw = await fetchRawGameFromAdmin();
+      rawFromAdmin = !!raw;
     } catch (err) {
       console.error("[active-match] admin scraping failed:", err);
     }
@@ -273,17 +306,42 @@ export async function fetchActiveGame(): Promise<ActiveGame | null> {
     return null;
   }
 
-  const [homeTeam, awayTeam, substituteQueue] = await Promise.all([
+  let [homeTeam, awayTeam, substituteQueue] = await Promise.all([
     buildTeam(raw.homeTeamName),
     buildTeam(raw.awayTeamName),
     fetchSubstituteQueue(),
   ]);
 
   if (!homeTeam || !awayTeam) {
-    // Teams not found in our DB — can't show roster
-    cacheData = null;
-    cacheFetchedAt = Date.now();
-    return null;
+    console.warn("[active-match] teams not found for active match", {
+      source: rawFromAdmin ? "admin" : "db",
+      homeTeamName: raw.homeTeamName,
+      awayTeamName: raw.awayTeamName,
+      homeFound: !!homeTeam,
+      awayFound: !!awayTeam,
+    });
+
+    if (rawFromAdmin) {
+      try {
+        const dbRaw = await fetchRawGameFromDB();
+        if (dbRaw) {
+          raw = dbRaw;
+          [homeTeam, awayTeam, substituteQueue] = await Promise.all([
+            buildTeam(raw.homeTeamName),
+            buildTeam(raw.awayTeamName),
+            fetchSubstituteQueue(),
+          ]);
+        }
+      } catch (err) {
+        console.error("[active-match] DB fallback after admin roster miss failed:", err);
+      }
+    }
+
+    if (!homeTeam || !awayTeam) {
+      cacheData = null;
+      cacheFetchedAt = Date.now();
+      return null;
+    }
   }
 
   cacheData = { id: raw.id, round: raw.round, slot: raw.slot, homeTeam, awayTeam, substituteQueue };
