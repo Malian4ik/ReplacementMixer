@@ -4,6 +4,8 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { QueryProvider } from "@/components/QueryProvider";
 import { UserProvider } from "@/components/UserContext";
 import { TournamentProvider } from "@/contexts/TournamentContext";
+import { getSessionFromCookies } from "@/lib/auth";
+import { findUserByEmail, findUserById } from "@/lib/db-user";
 
 export const metadata: Metadata = {
   title: "MixerCup Series — Dota 2 Tournament",
@@ -16,12 +18,29 @@ export const viewport: Viewport = {
   maximumScale: 1,
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+async function getInitialUser() {
+  const session = await getSessionFromCookies();
+  if (!session) return null;
+
+  const user = (await findUserById(session.userId)) ?? (await findUserByEmail(session.email.toLowerCase().trim()));
+  if (!user) return null;
+
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+  };
+}
+
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const initialUser = await getInitialUser();
+
   return (
     <html lang="ru">
       <body>
         <QueryProvider>
-          <UserProvider>
+          <UserProvider initialUser={initialUser}>
             <TournamentProvider>
               <div className="layout">
                 <Sidebar />

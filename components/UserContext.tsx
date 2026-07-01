@@ -6,9 +6,9 @@ interface UserContextValue { user: User | null; loading: boolean; refetch: () =>
 
 const UserContext = createContext<UserContextValue>({ user: null, loading: true, refetch: () => {} });
 
-export function UserProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+export function UserProvider({ children, initialUser = null }: { children: React.ReactNode; initialUser?: User | null }) {
+  const [user, setUser] = useState<User | null>(initialUser);
+  const [loading, setLoading] = useState(!initialUser);
 
   function refetch() {
     fetch("/api/auth/me").then(r => r.json()).then(d => {
@@ -17,7 +17,9 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     }).catch(() => setLoading(false));
   }
 
-  useEffect(() => { refetch(); }, []);
+  useEffect(() => {
+    if (!initialUser) refetch();
+  }, []);
 
   return <UserContext.Provider value={{ user, loading, refetch }}>{children}</UserContext.Provider>;
 }
