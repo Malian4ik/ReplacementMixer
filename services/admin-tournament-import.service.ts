@@ -15,8 +15,28 @@ import {
 } from "./admin-source.service";
 
 export async function getOrFetchTournamentList(): Promise<AdminTournamentInfo[]> {
-  await adminLogin();
-  return fetchTournaments();
+  try {
+    await adminLogin();
+    return await fetchTournaments();
+  } catch (err) {
+    console.warn("[admin-tournaments] source fetch failed, using local cache", err);
+    const cached = await prisma.adminTournament.findMany({
+      orderBy: [
+        { isActive: "desc" },
+        { startDate: "desc" },
+        { createdAt: "desc" },
+      ],
+    });
+    if (!cached.length) throw err;
+    return cached.map((t) => ({
+      id: t.externalId,
+      name: t.name,
+      status: t.status ?? undefined,
+      startDate: t.startDate?.toISOString(),
+      endDate: t.endDate?.toISOString(),
+      participantCount: t.participantCount,
+    }));
+  }
 }
 
 export interface ImportResult {

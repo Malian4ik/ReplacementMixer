@@ -12,18 +12,32 @@ const PASSWORD = process.env.ADMIN_SOURCE_PASSWORD?.trim() ?? "";
 
 let sessionCookie: string | null = null;
 
+const ADMIN_HEADERS: HeadersInit = {
+  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+  "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8",
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36",
+};
+
 // ─── Auth ────────────────────────────────────────────────────────────────────
 
 export async function adminLogin(): Promise<void> {
   if (!BASE) throw new Error("ADMIN_SOURCE_URL not configured");
 
   // 1. GET login page → CSRF token + csrftoken cookie
-  const loginPageRes = await fetch(`${BASE}/admin/login/`);
+  const loginPageRes = await fetch(`${BASE}/admin/login/`, {
+    headers: ADMIN_HEADERS,
+    redirect: "manual",
+  });
   const loginHtml = await loginPageRes.text();
 
-  const csrfMatch = loginHtml.match(/name="csrfmiddlewaretoken"\s+value="([^"]+)"/);
-  if (!csrfMatch) throw new Error("CSRF token not found on login page");
-  const csrfToken = csrfMatch[1];
+  const csrfInputMatch = loginHtml.match(/<input[^>]*name=["']csrfmiddlewaretoken["'][^>]*>/i);
+  const csrfToken =
+    csrfInputMatch?.[0].match(/value=["']([^"']+)["']/i)?.[1] ??
+    loginHtml.match(/name=["']csrfmiddlewaretoken["'][\s\S]{0,300}?value=["']([^"']+)["']/i)?.[1] ??
+    loginHtml.match(/value=["']([^"']+)["'][\s\S]{0,300}?name=["']csrfmiddlewaretoken["']/i)?.[1];
+  if (!csrfToken) {
+    throw new Error(`CSRF token not found on login page (status=${loginPageRes.status})`);
+  }
 
   const setCookieHeader = loginPageRes.headers.get("set-cookie") ?? "";
   const csrfCookieMatch = setCookieHeader.match(/csrftoken=([^;]+)/);
@@ -33,6 +47,7 @@ export async function adminLogin(): Promise<void> {
   const loginRes = await fetch(`${BASE}/admin/login/`, {
     method: "POST",
     headers: {
+      ...ADMIN_HEADERS,
       "Content-Type": "application/x-www-form-urlencoded",
       "Referer": `${BASE}/admin/login/`,
       "Cookie": `csrftoken=${csrfCookie}`,
@@ -57,8 +72,7 @@ export async function adminLogin(): Promise<void> {
 
 function makeHeaders(): HeadersInit {
   const h: Record<string, string> = {
-    Accept: "text/html,application/xhtml+xml",
-    "Accept-Language": "en-US,en;q=0.9",
+    ...ADMIN_HEADERS as Record<string, string>,
   };
   if (sessionCookie) h["Cookie"] = sessionCookie;
   return h;
