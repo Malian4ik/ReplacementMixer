@@ -145,7 +145,14 @@ function fieldText(row: string, fieldName: string): string {
   );
   if (!cellMatch) return "";
   // Strip all HTML tags, collapse whitespace
-  return cellMatch[1].replace(/<[^>]+>/g, "").trim().replace(/\s+/g, " ");
+  return decodeHtml(cellMatch[1].replace(/<[^>]+>/g, "").trim().replace(/\s+/g, " "));
+}
+
+function parseAdminNumber(value: string): number | undefined {
+  const normalized = value.replace(/\s+/g, "").replace(",", ".");
+  if (!normalized || normalized === "-") return undefined;
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function parseTournamentList(html: string): AdminTournamentInfo[] {
@@ -195,12 +202,8 @@ async function fetchParticipantPage(
 
   const items: RawListParticipant[] = [];
   for (const [, row] of [...listMatch[1].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)]) {
-    // Nickname is in <th class="field-nickname"> data-label="Nickname"><a>TEXT</a></th>
-    const nickMatch = row.match(
-      /class="field-nickname[^"]*"[^>]*data-label="Nickname"[^>]*><a[^>]*>([^<]*)<\/a><\/th>/
-    );
-    if (!nickMatch) continue;
-    const nick = nickMatch[1].trim();
+    const nick = fieldText(row, "nickname");
+    if (!nick) continue;
 
     const uuidMatch = row.match(/\/admin\/tournaments\/participant\/([0-9a-f-]{36})\//);
     if (!uuidMatch) continue;
@@ -216,8 +219,8 @@ async function fetchParticipantPage(
       nick,
       uuid: uuidMatch[1],
       tournamentStatus: statusText || "",
-      bidSize: bidStr ? parseFloat(bidStr) : undefined,
-      balance: balStr ? parseFloat(balStr) : undefined,
+      bidSize: parseAdminNumber(bidStr),
+      balance: parseAdminNumber(balStr),
       queuePosition: queueStr && queueStr !== "-" ? parseInt(queueStr, 10) : undefined,
       team: teamText || undefined,
     });
