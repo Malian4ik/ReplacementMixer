@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
     },
     include: {
       waves: {
-        where: { status: "Active" },
+        where: { status: { in: ["Active", "Processing"] } },
         orderBy: { waveNumber: "desc" },
         take: 1,
         include: {
