@@ -186,10 +186,21 @@ async function fetchRawGameFromDB(): Promise<RawGame | null> {
 
 // ── Team enrichment (look up team + players in Prisma) ────────────────────────
 
+function normalizeTeamName(name: string): string {
+  return name.normalize("NFKC").toLocaleLowerCase("ru-RU").replace(/[\s_-]+/g, "");
+}
+
 async function buildTeam(teamName: string): Promise<ActiveGameTeam | null> {
-  const team = await prisma.team.findFirst({
+  let team = await prisma.team.findFirst({
     where: { name: teamName },
   });
+
+  if (!team) {
+    const normalizedName = normalizeTeamName(teamName);
+    const teams = await prisma.team.findMany();
+    team = teams.find((candidate) => normalizeTeamName(candidate.name) === normalizedName) ?? null;
+  }
+
   if (!team) return null;
 
   const slotIds = [
