@@ -5,13 +5,15 @@ export const preferredRegion = "fra1";
 
 /** GET /api/schedule/matches/active
  *  Returns the currently active tournament match with team rosters.
- *  Result is cached for 2 minutes inside the service.
+ *  Result is cached for a few seconds inside the service.
  *  Returns null (200) when no active match is found.
  */
 export async function GET() {
   try {
     const game = await fetchActiveGame();
-    return NextResponse.json(game ?? null);
+    return NextResponse.json(game ?? null, {
+      headers: { "Cache-Control": "no-store, max-age=0" },
+    });
   } catch (err) {
     console.error("[GET /api/schedule/matches/active]", err);
     return NextResponse.json(null);

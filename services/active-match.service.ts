@@ -4,13 +4,17 @@
  * Primary source: admin.mixer-cup.gg HTML scraping.
  * Fallback: local TournamentMatch table with status = "Active".
  *
- * Results are cached for 2 minutes in memory.
+ * Results are cached briefly to avoid duplicate admin requests from the UI.
  */
 
 import { adminLogin, getAdminHeaders } from "./admin-source.service";
 import { prisma } from "@/lib/prisma";
 
-const BASE = (process.env.ADMIN_SOURCE_URL ?? "").replace(/^\uFEFF/, "").trim();
+const BASE = (process.env.ADMIN_SOURCE_URL ?? "")
+  .replace(/^\uFEFF/, "")
+  .trim()
+  .replace(/(?:\\r|\\n)+$/g, "")
+  .trim();
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -48,7 +52,7 @@ export interface ActiveGame {
 
 // ── In-memory cache ────────────────────────────────────────────────────────────
 
-const CACHE_TTL_MS = 15 * 1000;
+const CACHE_TTL_MS = 5 * 1000;
 let cacheData: ActiveGame | null = null;
 let cacheFetchedAt = 0;
 
@@ -126,6 +130,7 @@ async function fetchRawGameFromAdmin(): Promise<RawGame | null> {
   // Descending order puts Pending/Active before the large Complete archive;
   // the active row currently sits after the pending pages.
   const candidates = [
+    `${BASE}/admin/tournaments/game/?status__exact=ACTIVE`,
     ...Array.from({ length: 10 }, (_, page) =>
       `${BASE}/admin/tournaments/game/?o=-2${page > 0 ? `&p=${page + 1}` : ""}`
     ),

@@ -176,12 +176,13 @@ export default function JudgePage() {
     queryFn: () => fetch("/api/substitution-pool?status=Active").then((r) => r.json()),
   });
 
-  // Active match — poll every 2 minutes
+  // Follow the authoritative admin status so the next game appears promptly.
   const { data: activeMatch, isLoading: loadingMatch, refetch: refetchMatch } = useQuery<ActiveGame | null>({
     queryKey: ["active-match"],
-    queryFn: () => fetch("/api/schedule/matches/active").then((r) => r.json()),
-    refetchInterval: 2 * 60 * 1000,
-    staleTime: 90 * 1000,
+    queryFn: () => fetch("/api/schedule/matches/active", { cache: "no-store" }).then((r) => r.json()),
+    refetchInterval: 10 * 1000,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
   });
 
   // Manual mode: team list + active session
