@@ -6,9 +6,13 @@
  *   ADMIN_SOURCE_PASSWORD — пароль
  */
 
-const BASE = process.env.ADMIN_SOURCE_URL ?? "";
-const USERNAME = process.env.ADMIN_SOURCE_USERNAME ?? "";
-const PASSWORD = process.env.ADMIN_SOURCE_PASSWORD ?? "";
+function cleanEnv(value: string | undefined): string {
+  return (value ?? "").replace(/^\uFEFF/, "").trim();
+}
+
+const BASE = cleanEnv(process.env.ADMIN_SOURCE_URL);
+const USERNAME = cleanEnv(process.env.ADMIN_SOURCE_USERNAME);
+const PASSWORD = cleanEnv(process.env.ADMIN_SOURCE_PASSWORD);
 
 let sessionCookie: string | null = null;
 

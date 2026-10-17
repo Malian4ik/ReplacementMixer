@@ -10,7 +10,7 @@
 import { adminLogin, getAdminHeaders } from "./admin-source.service";
 import { prisma } from "@/lib/prisma";
 
-const BASE = process.env.ADMIN_SOURCE_URL ?? "";
+const BASE = (process.env.ADMIN_SOURCE_URL ?? "").replace(/^\uFEFF/, "").trim();
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -48,7 +48,7 @@ export interface ActiveGame {
 
 // ── In-memory cache ────────────────────────────────────────────────────────────
 
-const CACHE_TTL_MS = 2 * 60 * 1000;
+const CACHE_TTL_MS = 15 * 1000;
 let cacheData: ActiveGame | null = null;
 let cacheFetchedAt = 0;
 
@@ -115,26 +115,28 @@ async function fetchRawGameFromAdmin(): Promise<RawGame | null> {
   if (!BASE) return null;
 
   try {
-    const probe = await fetch(`${BASE}/admin/`, { headers: getAdminHeaders(), redirect: "manual" });
-    if (probe.status === 302 || probe.url?.includes("/login/")) await adminLogin();
+    // Always refresh the Django session. A login page may otherwise be returned
+    // with HTTP 200 and silently force the stale local-match fallback.
+    await adminLogin();
   } catch {
-    try { await adminLogin(); } catch { return null; }
+    return null;
   }
 
-  // Unfiltered list sorted by status ascending (column 4) — "Активный" sorts first in Russian alphabet
-  // Also try first 3 pages in case the active match is not on page 1
+  // In the current Django list the status column is ordering field 2.
+  // Descending order puts Pending/Active before the large Complete archive;
+  // the active row currently sits after the pending pages.
   const candidates = [
-    `${BASE}/admin/tournaments/game/?o=4`,      // sort by status asc → Активный first
-    `${BASE}/admin/tournaments/game/?o=4&p=2`,
-    `${BASE}/admin/tournaments/game/?o=4&p=3`,
-    `${BASE}/admin/tournaments/game/`,           // fallback: default ordering
-    `${BASE}/admin/tournaments/game/?p=2`,
-    `${BASE}/admin/tournaments/game/?p=3`,
+    ...Array.from({ length: 10 }, (_, page) =>
+      `${BASE}/admin/tournaments/game/?o=-2${page > 0 ? `&p=${page + 1}` : ""}`
+    ),
+    ...Array.from({ length: 10 }, (_, page) =>
+      `${BASE}/admin/tournaments/game/${page > 0 ? `?p=${page + 1}` : ""}`
+    ),
   ];
 
   for (const url of candidates) {
     let res: Response;
-    try { res = await fetch(url, { headers: getAdminHeaders() }); }
+    try { res = await fetch(url, { headers: getAdminHeaders(), cache: "no-store" }); }
     catch { continue; }
     if (!res.ok) continue;
 
@@ -160,8 +162,8 @@ async function fetchRawGameFromDB(): Promise<RawGame | null> {
   const match = await prisma.tournamentMatch.findFirst({
     where: {
       OR: [
-        { status: "Live" },
-        { status: "Active" },
+        { status: "Live", endsAt: { gte: now } },
+        { status: "Active", endsAt: { gte: now } },
         {
           status: "Scheduled",
           scheduledAt: { lte: now },
@@ -259,7 +261,9 @@ export async function fetchActiveGame(): Promise<ActiveGame | null> {
     }
   }
 
-  if (!raw) {
+  // When the admin source is configured it is authoritative. Returning no
+  // match is safer than showing a stale/future local record as active.
+  if (!raw && !BASE) {
     try {
       raw = await fetchRawGameFromDB();
     } catch (err) {
