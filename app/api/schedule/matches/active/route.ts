@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { fetchActiveGame } from "@/services/active-match.service";
 
+export const preferredRegion = "fra1";
+
 /** GET /api/schedule/matches/active
  *  Returns the currently active tournament match with team rosters.
  *  Result is cached for 2 minutes inside the service.
