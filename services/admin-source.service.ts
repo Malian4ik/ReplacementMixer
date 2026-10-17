@@ -36,7 +36,12 @@ export async function adminLogin(): Promise<void> {
   const loginHtml = await loginPageRes.text();
 
   const csrfMatch = loginHtml.match(/name="csrfmiddlewaretoken"\s+value="([^"]+)"/);
-  if (!csrfMatch) throw new Error("CSRF token not found on login page");
+  if (!csrfMatch) {
+    const pageTitle = loginHtml.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.replace(/\s+/g, " ").trim() ?? "unknown";
+    throw new Error(
+      `CSRF token not found on login page (status=${loginPageRes.status}, url=${loginPageRes.url}, title=${pageTitle})`
+    );
+  }
   const csrfToken = csrfMatch[1];
 
   const setCookieHeader = loginPageRes.headers.get("set-cookie") ?? "";
