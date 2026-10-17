@@ -16,13 +16,23 @@ const PASSWORD = cleanEnv(process.env.ADMIN_SOURCE_PASSWORD);
 
 let sessionCookie: string | null = null;
 
+const BROWSER_HEADERS = {
+  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+  "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+};
+
 // ─── Auth ────────────────────────────────────────────────────────────────────
 
 export async function adminLogin(): Promise<void> {
   if (!BASE) throw new Error("ADMIN_SOURCE_URL not configured");
 
   // 1. GET login page → CSRF token + csrftoken cookie
-  const loginPageRes = await fetch(`${BASE}/admin/login/`);
+  const loginPageRes = await fetch(`${BASE}/admin/login/`, {
+    headers: BROWSER_HEADERS,
+    cache: "no-store",
+  });
   const loginHtml = await loginPageRes.text();
 
   const csrfMatch = loginHtml.match(/name="csrfmiddlewaretoken"\s+value="([^"]+)"/);
@@ -37,6 +47,7 @@ export async function adminLogin(): Promise<void> {
   const loginRes = await fetch(`${BASE}/admin/login/`, {
     method: "POST",
     headers: {
+      ...BROWSER_HEADERS,
       "Content-Type": "application/x-www-form-urlencoded",
       "Referer": `${BASE}/admin/login/`,
       "Cookie": `csrftoken=${csrfCookie}`,
@@ -61,8 +72,7 @@ export async function adminLogin(): Promise<void> {
 
 function makeHeaders(): HeadersInit {
   const h: Record<string, string> = {
-    Accept: "text/html,application/xhtml+xml",
-    "Accept-Language": "en-US,en;q=0.9",
+    ...BROWSER_HEADERS,
   };
   if (sessionCookie) h["Cookie"] = sessionCookie;
   return h;
