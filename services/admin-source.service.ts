@@ -758,17 +758,20 @@ export async function fetchTeamMemberNicks(
   const seen = new Set<string>();
 
   // Method 1: inline Russian text "Участник {nick} in «…»"
-  for (const [, nick] of html.matchAll(/Участник\s+(\S+)\s+in\s+/g)) {
+  for (const [, rawNick] of html.matchAll(/Участник\s+(\S+)\s+in\s+/g)) {
+    const nick = decodeHtmlEntities(rawNick);
     if (!seen.has(nick)) { seen.add(nick); nicks.push(nick); }
   }
-  if (nicks.length > 0) return nicks;
 
   // Method 2: participant UUID href links → resolve via map
   for (const [, uuid] of html.matchAll(/\/admin\/tournaments\/participant\/([0-9a-f-]{36})\//g)) {
     if (seen.has(uuid)) continue;
     seen.add(uuid);
     const nick = uuidToNick.get(uuid);
-    if (nick) nicks.push(nick);
+    if (nick && !seen.has(nick)) {
+      seen.add(nick);
+      nicks.push(nick);
+    }
   }
   return nicks;
 }
@@ -796,6 +799,11 @@ const EN_MONTHS: Record<string, number> = {
   July: 6, August: 7, September: 8, October: 9, November: 10, December: 11,
 };
 
+const RU_MONTHS: Record<string, number> = {
+  января: 0, февраля: 1, марта: 2, апреля: 3, мая: 4, июня: 5,
+  июля: 6, августа: 7, сентября: 8, октября: 9, ноября: 10, декабря: 11,
+};
+
 /** Parse a datetime string from Django admin display (multiple formats). */
 function parseAdminDateTime(s: string): Date | null {
   if (!s || s === "-" || s.trim() === "") return null;
@@ -819,6 +827,20 @@ function parseAdminDateTime(s: string): Date | null {
       if (isPM && hour !== 12) hour += 12;
       if (!isPM && hour === 12) hour = 0;
       // Store as UTC: MSK is UTC+3, so subtract 3 hours
+      d = new Date(Date.UTC(year, month, day, hour - 3, min));
+      if (!isNaN(d.getTime())) return d;
+    }
+  }
+
+  // Russian Django format: "17 октября 2026 г. 10:30"
+  const ruText = s.match(/(\d{1,2})\s+([а-яё]+)\s+(\d{4})\s*г?\.?\s+(\d{1,2}):(\d{2})/i);
+  if (ruText) {
+    const month = RU_MONTHS[ruText[2].toLowerCase()];
+    if (month !== undefined) {
+      const day = parseInt(ruText[1], 10);
+      const year = parseInt(ruText[3], 10);
+      const hour = parseInt(ruText[4], 10);
+      const min = parseInt(ruText[5], 10);
       d = new Date(Date.UTC(year, month, day, hour - 3, min));
       if (!isNaN(d.getTime())) return d;
     }
