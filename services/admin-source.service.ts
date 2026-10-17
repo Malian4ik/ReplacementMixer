@@ -7,7 +7,11 @@
  */
 
 function cleanEnv(value: string | undefined): string {
-  return (value ?? "").replace(/^\uFEFF/, "").trim();
+  return (value ?? "")
+    .replace(/^\uFEFF/, "")
+    .trim()
+    .replace(/(?:\\r|\\n)+$/g, "")
+    .trim();
 }
 
 const BASE = cleanEnv(process.env.ADMIN_SOURCE_URL);
@@ -131,13 +135,28 @@ export async function fetchTournaments(): Promise<AdminTournamentInfo[]> {
 }
 
 /** Extract text from a field-{name} cell (handles plain text and <a>-wrapped text) */
+function decodeHtmlEntities(value: string): string {
+  const named: Record<string, string> = {
+    amp: "&",
+    apos: "'",
+    gt: ">",
+    lt: "<",
+    quot: '"',
+  };
+
+  return value
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, decimal: string) => String.fromCodePoint(parseInt(decimal, 10)))
+    .replace(/&(amp|apos|gt|lt|quot);/gi, (_, entity: string) => named[entity.toLowerCase()]);
+}
+
 function fieldText(row: string, fieldName: string): string {
   const cellMatch = row.match(
     new RegExp(`class="field-${fieldName}[^"]*"[^>]*>([\\s\\S]*?)<\\/(?:td|th)>`)
   );
   if (!cellMatch) return "";
   // Strip all HTML tags, collapse whitespace
-  return cellMatch[1].replace(/<[^>]+>/g, "").trim().replace(/\s+/g, " ");
+  return decodeHtmlEntities(cellMatch[1].replace(/<[^>]+>/g, "")).trim().replace(/\s+/g, " ");
 }
 
 function parseTournamentList(html: string): AdminTournamentInfo[] {
@@ -187,12 +206,9 @@ async function fetchParticipantPage(
 
   const items: RawListParticipant[] = [];
   for (const [, row] of [...listMatch[1].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)]) {
-    // Nickname is in <th class="field-nickname"> data-label="Nickname"><a>TEXT</a></th>
-    const nickMatch = row.match(
-      /class="field-nickname[^"]*"[^>]*data-label="Nickname"[^>]*><a[^>]*>([^<]*)<\/a><\/th>/
-    );
-    if (!nickMatch) continue;
-    const nick = nickMatch[1].trim();
+    // Use the stable Django field name; the visible data-label is localized.
+    const nick = fieldText(row, "nickname");
+    if (!nick || nick.toLowerCase() === "nickname" || nick.toLowerCase() === "никнейм") continue;
 
     const uuidMatch = row.match(/\/admin\/tournaments\/participant\/([0-9a-f-]{36})\//);
     if (!uuidMatch) continue;

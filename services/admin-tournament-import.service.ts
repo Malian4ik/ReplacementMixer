@@ -69,6 +69,18 @@ export async function importTournamentParticipants(
 
   const participants = await fetchAllParticipants(externalTournamentId);
 
+  if (participants.length === 0) {
+    await prisma.adminTournamentSyncRun.update({
+      where: { id: syncRun.id },
+      data: {
+        status: "Failed",
+        finishedAt: new Date(),
+        errorLog: "Источник вернул пустой список участников; существующие данные сохранены",
+      },
+    });
+    throw new Error("Источник вернул пустой список участников; импорт отменён без изменения существующих данных");
+  }
+
   let created = 0;
   let updated = 0;
   let failed = 0;
@@ -335,6 +347,10 @@ export async function syncPoolFromAdminWaitingList(
 ): Promise<PoolSyncResult> {
   await adminLogin();
   const waitingList = await fetchWaitingList(externalTournamentId);
+
+  if (waitingList.length === 0) {
+    throw new Error("Источник вернул пустой список ожидания; текущий пул оставлен без изменений");
+  }
 
   // Deactivate all current Active entries — this is a full replacement of the pool
   // so entries from previous tournaments don't leak into the new one.
