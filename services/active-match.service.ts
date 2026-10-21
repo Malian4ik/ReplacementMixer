@@ -7,7 +7,7 @@
  * Results are cached briefly to avoid duplicate admin requests from the UI.
  */
 
-import { adminLogin, getAdminHeaders } from "./admin-source.service";
+import { adminLogin, fetchTournamentScheduleData, getAdminHeaders, type AdminMatchInfo } from "./admin-source.service";
 import { prisma } from "@/lib/prisma";
 
 const BASE = (process.env.ADMIN_SOURCE_URL ?? "")
@@ -159,6 +159,45 @@ async function fetchRawGameFromAdmin(): Promise<RawGame | null> {
   return null;
 }
 
+function isCompletedStatus(status: string | undefined): boolean {
+  return /complete|completed|finished|closed|заверш|окончен|отмен/i.test(status ?? "");
+}
+
+export function pickNextScheduledGame(
+  games: AdminMatchInfo[],
+  now = new Date()
+): AdminMatchInfo | null {
+  const nowMs = now.getTime();
+  return games
+    .filter((game) => {
+      if (!game.id || !game.homeTeam || !game.awayTeam || !game.scheduledAt) return false;
+      return game.scheduledAt.getTime() > nowMs && !isCompletedStatus(game.adminStatus);
+    })
+    .sort((left, right) => left.scheduledAt!.getTime() - right.scheduledAt!.getTime())[0] ?? null;
+}
+
+async function fetchNextRawGameFromAdmin(): Promise<RawGame | null> {
+  const tournament = await prisma.adminTournament.findFirst({
+    where: { isActive: true },
+    orderBy: { updatedAt: "desc" },
+    select: { externalId: true },
+  });
+  if (!tournament) return null;
+
+  const next = pickNextScheduledGame(
+    await fetchTournamentScheduleData(tournament.externalId)
+  );
+  if (!next?.id) return null;
+
+  return {
+    id: next.id,
+    round: next.round,
+    slot: 0,
+    homeTeamName: next.homeTeam,
+    awayTeamName: next.awayTeam,
+  };
+}
+
 // ── DB fallback ────────────────────────────────────────────────────────────────
 
 async function fetchRawGameFromDB(): Promise<RawGame | null> {
@@ -272,6 +311,7 @@ export async function fetchActiveGame(): Promise<ActiveGame | null> {
   if (BASE) {
     try {
       raw = await fetchRawGameFromAdmin();
+      if (!raw) raw = await fetchNextRawGameFromAdmin();
     } catch (err) {
       console.error("[active-match] admin scraping failed:", err);
     }
