@@ -168,10 +168,14 @@ export function pickNextScheduledGame(
   now = new Date()
 ): AdminMatchInfo | null {
   const nowMs = now.getTime();
+  const delayedMatchLookbackMs = 4 * 60 * 60 * 1000;
   return games
     .filter((game) => {
       if (!game.id || !game.homeTeam || !game.awayTeam || !game.scheduledAt) return false;
-      return game.scheduledAt.getTime() > nowMs && !isCompletedStatus(game.adminStatus);
+      return (
+        game.scheduledAt.getTime() >= nowMs - delayedMatchLookbackMs &&
+        !isCompletedStatus(game.adminStatus)
+      );
     })
     .sort((left, right) => left.scheduledAt!.getTime() - right.scheduledAt!.getTime())[0] ?? null;
 }
