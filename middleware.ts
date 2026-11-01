@@ -16,13 +16,8 @@ export async function middleware(req: NextRequest) {
   if (!token) return NextResponse.redirect(new URL("/login", req.url));
 
   try {
-    const { payload } = await jwtVerify(token, getSecret());
-    const res = NextResponse.next();
-    res.headers.set("x-user-id", String(payload.userId ?? ""));
-    res.headers.set("x-user-role", String(payload.role ?? ""));
-    res.headers.set("x-user-name", String(payload.name ?? ""));
-
-    return res;
+    await jwtVerify(token, getSecret());
+    return NextResponse.next();
   } catch {
     return NextResponse.redirect(new URL("/login", req.url));
   }

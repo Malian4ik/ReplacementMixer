@@ -41,6 +41,22 @@ interface TeamImportResult {
   errors: string[];
 }
 
+async function readApiJson(response: Response) {
+  const text = await response.text();
+  const contentType = response.headers.get("content-type") ?? "";
+
+  if (contentType.includes("application/json")) {
+    try {
+      return text ? JSON.parse(text) : {};
+    } catch {
+      throw new Error("Сервер вернул повреждённый JSON");
+    }
+  }
+
+  const message = text.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  throw new Error(message || `Сервер вернул ошибку ${response.status}`);
+}
+
 export default function ImportPage() {
   const { user } = useUser();
   const [selectedId, setSelectedId] = useState("");
@@ -73,7 +89,7 @@ export default function ImportPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tournamentId }),
       });
-      const data = await res.json();
+      const data = await readApiJson(res);
       if (!res.ok) throw new Error(data.error ?? "Ошибка импорта");
       return data as ImportResult;
     },
@@ -95,7 +111,7 @@ export default function ImportPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tournamentId }),
       });
-      const data = await res.json();
+      const data = await readApiJson(res);
       if (!res.ok) throw new Error(data.error ?? "Ошибка синхронизации пула");
       return data as { added: number; updated: number; notFound: number; errors: string[] };
     },
@@ -116,7 +132,7 @@ export default function ImportPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tournamentId }),
       });
-      const data = await res.json();
+      const data = await readApiJson(res);
       if (!res.ok) throw new Error(data.error ?? "Ошибка импорта команд");
       return data as TeamImportResult;
     },

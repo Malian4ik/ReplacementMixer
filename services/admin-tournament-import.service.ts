@@ -85,6 +85,7 @@ export async function importTournamentParticipants(
   let updated = 0;
   let failed = 0;
   const errors: string[] = [];
+  const claimedPlayerIds = new Set<string>();
 
   for (const p of participants) {
     if (!p.nick) {
@@ -94,17 +95,25 @@ export async function importTournamentParticipants(
     }
 
     try {
-      // Find existing player by nick
-      const existing = await prisma.player.findUnique({ where: { nick: p.nick } });
+      const existingByNick = await prisma.player.findUnique({ where: { nick: p.nick } });
+      const discordOwner = p.discordId
+        ? await prisma.player.findUnique({ where: { discordId: p.discordId } })
+        : null;
+
+      // A Discord account identifies a renamed player only while it has not
+      // already been claimed by another participant in this import. Duplicate
+      // Discord values in the source must not collapse two players into one.
+      const canMatchByDiscord = discordOwner && !claimedPlayerIds.has(discordOwner.id);
+      const existing = existingByNick ?? (canMatchByDiscord ? discordOwner : null);
+      const hasDiscordConflict = Boolean(
+        p.discordId && discordOwner && discordOwner.id !== existing?.id
+      );
       const playedBefore = existing != null;
 
       // If tournamentStatus contains "disqualif" → mark as disqualified on our site
       const isDisq = /disqualif/i.test(p.tournamentStatus ?? "");
 
-      // Upsert player
-      const player = await prisma.player.upsert({
-        where: { nick: p.nick },
-        create: {
+      const createData = {
           nick: p.nick,
           mmr: p.mmr ?? 0,
           stake: p.bidSize ?? 0,
@@ -112,30 +121,34 @@ export async function importTournamentParticipants(
           flexRole: p.flexRole ?? null,
           wallet: p.wallet ?? null,
           telegramId: p.telegramId ?? null,
-          discordId: p.discordId ?? null,
+          discordId: hasDiscordConflict ? null : (p.discordId ?? null),
           hasPlayedBefore: false,
           adminParticipationCount: 1,
           lastImportedTournamentName: tournamentInfo.name,
           lastSyncedAt: new Date(),
           isDisqualified: isDisq,
           isActiveInDatabase: !isDisq,
-        },
-        update: {
+      };
+      const updateData = {
+          ...(existing?.nick !== p.nick ? { nick: p.nick } : {}),
           ...(p.mmr != null ? { mmr: p.mmr } : {}),
           ...(p.bidSize != null ? { stake: p.bidSize } : {}),
           ...(p.mainRole != null ? { mainRole: p.mainRole } : {}),
           ...(p.flexRole != null ? { flexRole: p.flexRole } : {}),
           ...(p.wallet ? { wallet: p.wallet } : {}),
           ...(p.telegramId ? { telegramId: p.telegramId } : {}),
-          ...(p.discordId ? { discordId: p.discordId } : {}),
+          ...(p.discordId && !hasDiscordConflict ? { discordId: p.discordId } : {}),
           ...(p.steamAccountId ? { steamAccountId: p.steamAccountId } : {}),
           hasPlayedBefore: playedBefore,
           adminParticipationCount: { increment: 1 },
           lastImportedTournamentName: tournamentInfo.name,
           lastSyncedAt: new Date(),
           ...(isDisq ? { isDisqualified: true, isActiveInDatabase: false } : {}),
-        },
-      });
+      };
+      const player = existing
+        ? await prisma.player.update({ where: { id: existing.id }, data: updateData })
+        : await prisma.player.create({ data: createData });
+      claimedPlayerIds.add(player.id);
 
       // Upsert participation record
       await prisma.playerTournamentParticipation.upsert({
