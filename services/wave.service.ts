@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { scoreCandidates } from "./queue.service";
 import type { SubstitutionPoolEntry, RoleNumber } from "@/types";
 import { WAVE_DURATION_MS } from "@/lib/substitution-config";
+import { orderPoolEntries, uniquePoolPlayers } from "@/lib/pool-order";
 
 // ── Eligibility ───────────────────────────────────────────────────────────────
 
@@ -27,8 +28,7 @@ async function getInTeamPlayerIds(): Promise<Set<string>> {
 
 /**
  * Returns ALL eligible reserve players (no batch limit).
- * Primary sort: admin queuePosition from the most recently synced AdminTournament.
- * Fallback sort: joinTime asc (for players without an admin queuePosition).
+ * Uses the current pool order, including players returned to the end.
  *
  * Eligibility:
  * - SubstitutionPoolEntry.status === "Active"
@@ -47,35 +47,8 @@ export async function getAllEligiblePlayers(): Promise<SubstitutionPoolEntry[]> 
     orderBy: { joinTime: "asc" },
   });
 
-  const eligible = rawEntries.filter((e) => !inTeamIds.has(e.playerId));
-
-  // Overlay admin queue positions from the most recently synced tournament
-  const activeTournament = await prisma.adminTournament.findFirst({
-    where: { lastSyncedAt: { not: null } },
-    orderBy: { lastSyncedAt: "desc" },
-  });
-
-  if (activeTournament) {
-    const playerIds = eligible.map((e) => e.playerId);
-    const participations = await prisma.playerTournamentParticipation.findMany({
-      where: {
-        tournamentId: activeTournament.id,
-        playerId: { in: playerIds },
-        queuePosition: { not: null },
-      },
-      select: { playerId: true, queuePosition: true },
-    });
-    const queueMap = new Map(participations.map((p) => [p.playerId, p.queuePosition!]));
-
-    eligible.sort((a, b) => {
-      const posA = queueMap.get(a.playerId) ?? Infinity;
-      const posB = queueMap.get(b.playerId) ?? Infinity;
-      if (posA !== posB) return posA - posB;
-      return new Date(a.joinTime).getTime() - new Date(b.joinTime).getTime();
-    });
-  }
-
-  return eligible as unknown as SubstitutionPoolEntry[];
+  const eligible = rawEntries.filter((entry) => !inTeamIds.has(entry.playerId));
+  return uniquePoolPlayers(orderPoolEntries(eligible)) as unknown as SubstitutionPoolEntry[];
 }
 
 /**

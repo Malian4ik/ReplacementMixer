@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { orderPoolEntries } from "@/lib/pool-order";
 import { addPlayerToSubstitutionPool } from "@/services/pool.service";
 import { z } from "zod";
 
@@ -22,12 +23,6 @@ export async function GET(req: NextRequest) {
     orderBy: [{ joinTime: "asc" }],
   });
 
-  entries.sort((a, b) => {
-    const aq = a.adminQueuePosition ?? 999999;
-    const bq = b.adminQueuePosition ?? 999999;
-    return aq !== bq ? aq - bq : a.joinTime.getTime() - b.joinTime.getTime();
-  });
-
   const allTeams = await prisma.team.findMany({
     select: { player1Id: true, player2Id: true, player3Id: true, player4Id: true, player5Id: true },
   });
@@ -37,7 +32,7 @@ export async function GET(req: NextRequest) {
     )
   );
 
-  return NextResponse.json(entries.map(e => ({ ...e, inTeam: inTeamIds.has(e.playerId) })));
+  return NextResponse.json(orderPoolEntries(entries).map(e => ({ ...e, inTeam: inTeamIds.has(e.playerId) })));
 }
 
 export async function POST(req: NextRequest) {
