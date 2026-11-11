@@ -92,7 +92,15 @@ export async function assignSubstitution(
     if (existingEntry) {
       await prisma.substitutionPoolEntry.update({
         where: { id: existingEntry.id },
-        data: { status: "Active", assignedTeamId: null, pickedTime: null, replacedPlayerId: null, joinTime: endTime },
+        data: {
+          status: "Active",
+          source: "returned",
+          adminQueuePosition: null,
+          assignedTeamId: null,
+          pickedTime: null,
+          replacedPlayerId: null,
+          joinTime: endTime,
+        },
       });
     } else {
       await prisma.substitutionPoolEntry.create({
@@ -176,6 +184,8 @@ export async function returnSubstitutionToQueue(
     where: { id: poolEntryId },
     data: {
       status: "Active",
+      source: "returned",
+      adminQueuePosition: null,
       assignedTeamId: null,
       pickedTime: null,
       replacedPlayerId: null,

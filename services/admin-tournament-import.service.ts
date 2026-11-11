@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { isImportedQueueEntry } from "@/lib/pool-order";
 import { recalculateMatchStats } from "./match-stats.service";
 import {
   adminLogin,
@@ -365,37 +366,71 @@ export async function syncPoolFromAdminWaitingList(
     throw new Error("Источник вернул пустой список ожидания; текущий пул оставлен без изменений");
   }
 
-  // Deactivate all current Active entries — this is a full replacement of the pool
-  // so entries from previous tournaments don't leak into the new one.
-  await prisma.substitutionPoolEntry.updateMany({
-    where: { status: "Active", source: "admin_queue" },
-    data: { status: "Inactive" },
-  });
-
-  let added = 0, updated = 0, notFound = 0;
-  const errors: string[] = [];
-
+  const positionsByNick = new Map<string, number | null>();
   for (const item of waitingList) {
-    if (!item.nick) continue;
-    try {
-      const player = await prisma.player.findUnique({ where: { nick: item.nick } });
-      if (!player) { notFound++; continue; }
-
-      await prisma.substitutionPoolEntry.create({
-        data: {
-          playerId: player.id,
-          source: "admin_queue",
-          adminQueuePosition: item.queuePosition,
-          status: "Active",
-        },
-      });
-      added++;
-    } catch (err: unknown) {
-      errors.push(`${item.nick}: ${err instanceof Error ? err.message : String(err)}`);
+    if (item.nick && !positionsByNick.has(item.nick)) {
+      positionsByNick.set(item.nick, item.queuePosition ?? null);
     }
   }
 
-  return { added, updated, notFound, errors };
+  return prisma.$transaction(async (tx) => {
+    const players = await tx.player.findMany({
+      where: { nick: { in: [...positionsByNick.keys()] } },
+      select: { id: true, nick: true },
+    });
+    const notFound = positionsByNick.size - players.length;
+    if (players.length === 0) {
+      throw new Error("Игроки из списка ожидания не найдены в базе замен");
+    }
+
+    const entries = await tx.substitutionPoolEntry.findMany({
+      where: { status: "Active" },
+      orderBy: [{ joinTime: "asc" }, { id: "asc" }],
+    });
+    const manualPlayers = new Set(
+      entries.filter((entry) => !isImportedQueueEntry(entry)).map((entry) => entry.playerId)
+    );
+    const importedByPlayer = new Map<string, (typeof entries)[number]>();
+    for (const entry of entries) {
+      if (isImportedQueueEntry(entry) && !importedByPlayer.has(entry.playerId)) {
+        importedByPlayer.set(entry.playerId, entry);
+      }
+    }
+
+    let added = 0;
+    let updated = 0;
+    const retainedIds = entries
+      .filter((entry) => entry.source === "admin_queue" && !isImportedQueueEntry(entry))
+      .map((entry) => entry.id);
+    for (const player of players) {
+      if (manualPlayers.has(player.id)) continue;
+      const adminQueuePosition = positionsByNick.get(player.nick) ?? null;
+      const existing = importedByPlayer.get(player.id);
+      if (existing) {
+        retainedIds.push(existing.id);
+        if (existing.adminQueuePosition !== adminQueuePosition) {
+          await tx.substitutionPoolEntry.update({
+            where: { id: existing.id },
+            data: { adminQueuePosition },
+          });
+          updated++;
+        }
+      } else {
+        const created = await tx.substitutionPoolEntry.create({
+          data: { playerId: player.id, source: "admin_queue", adminQueuePosition, status: "Active" },
+        });
+        retainedIds.push(created.id);
+        added++;
+      }
+    }
+
+    await tx.substitutionPoolEntry.updateMany({
+      where: { status: "Active", source: "admin_queue", id: { notIn: retainedIds } },
+      data: { status: "Inactive" },
+    });
+
+    return { added, updated, notFound, errors: [] };
+  }, { timeout: 30_000 });
 }
 
 export interface ScheduleImportResult {
