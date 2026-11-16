@@ -187,9 +187,13 @@ export default function TeamsPage() {
   const [importResult, setImportResult] = useState<{ created: number; updated: number; failed: number; total: number; errors: string[] } | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
 
-  const { data: teams = [], isLoading } = useQuery<Team[]>({
-    queryKey: ["teams"],
-    queryFn: () => fetch("/api/teams").then(r => r.json()),
+  const { data: teams = [], isLoading, isError } = useQuery<Team[]>({
+    queryKey: ["teams", "tournament"],
+    queryFn: async () => {
+      const response = await fetch("/api/teams?scope=tournament");
+      if (!response.ok) throw new Error("Не удалось загрузить список команд турнира");
+      return response.json();
+    },
   });
 
   const { data: syncedTournaments = [] } = useQuery<{ id: string; externalId: string; name: string; participantCount: number | null }[]>({
@@ -332,7 +336,7 @@ export default function TeamsPage() {
       <div className="page-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
           <div className="page-title">Команды</div>
-          <div className="page-subtitle">{teams.length} команд · Avg MMR всех: {avgOfTeams.toLocaleString()}</div>
+          <div className="page-subtitle">{isError ? "Не удалось загрузить список команд турнира" : `${teams.length} команд · Avg MMR всех: ${avgOfTeams.toLocaleString()}`}</div>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           {teams.length > 0 && (
@@ -663,7 +667,7 @@ export default function TeamsPage() {
               );
             })}
 
-            {teams.length === 0 && !isLoading && (
+            {teams.length === 0 && !isLoading && !isError && (
               <div style={{
                 gridColumn: "1 / -1",
                 textAlign: "center",
