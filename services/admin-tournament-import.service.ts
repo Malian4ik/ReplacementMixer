@@ -7,7 +7,7 @@ import {
   fetchAllParticipants,
   fetchParticipantStatuses,
   fetchWaitingList,
-  buildParticipantUuidNickMap,
+  fetchParticipantList,
   fetchTournamentTeams,
   fetchTeamMemberNicks,
   fetchTournamentScheduleData,
@@ -221,12 +221,7 @@ export async function importTournamentTeams(
 ): Promise<TeamImportResult> {
   await adminLogin();
 
-  // Fetch all participants — they may carry a `team` field from the list view
-  const participants = await fetchAllParticipants(externalTournamentId);
-
-  // Build uuid→nick map (needed for team detail page scraping fallback)
-  // Note: uuid is not carried through fetchAllParticipants; we build from raw list via a separate call.
-  // For now: first try grouping by participant.team field
+  const participants = await fetchParticipantList(externalTournamentId);
   const teamMap = new Map<string, string[]>(); // teamName → [nick, ...]
 
   for (const p of participants) {
@@ -236,13 +231,7 @@ export async function importTournamentTeams(
   }
 
   if (teamMap.size === 0) {
-    // Fallback: try scraping from /admin/tournaments/team/
-    // Pass tournament name so we can filter only teams from this tournament
-    const adminTournament = await prisma.adminTournament.findUnique({
-      where: { externalId: String(externalTournamentId) },
-      select: { name: true },
-    });
-    const teamInfos = await fetchTournamentTeams(externalTournamentId, adminTournament?.name);
+    const teamInfos = await fetchTournamentTeams(externalTournamentId);
 
     if (teamInfos.length === 0) {
       return {
@@ -251,17 +240,20 @@ export async function importTournamentTeams(
       };
     }
 
-    // Build uuid→nick map from participant list pages (needed for team detail scraping)
-    const uuidToNick = await buildParticipantUuidNickMap(externalTournamentId);
+    const uuidToNick = new Map(participants.map(({ uuid, nick }) => [uuid, nick]));
     const nickSet = new Set(uuidToNick.values());
+    const batchSize = 6;
 
-    for (const info of teamInfos) {
-      // __idx_ prefix means no change-link was found — skip member fetch, create empty team
-      const nicks = info.id.startsWith("__idx_")
-        ? []
-        : await fetchTeamMemberNicks(info.id, uuidToNick, info.modelSlug);
-      const known = nicks.filter(n => nickSet.has(n));
-      teamMap.set(info.name, known);
+    for (let offset = 0; offset < teamInfos.length; offset += batchSize) {
+      const batch = teamInfos.slice(offset, offset + batchSize);
+      const members = await Promise.all(batch.map(info =>
+        info.id.startsWith("__idx_")
+          ? Promise.resolve([])
+          : fetchTeamMemberNicks(info.id, uuidToNick, info.modelSlug)
+      ));
+      for (const [index, info] of batch.entries()) {
+        teamMap.set(info.name, members[index].filter(nick => nickSet.has(nick)));
+      }
     }
   }
 

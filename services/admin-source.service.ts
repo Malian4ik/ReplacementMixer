@@ -461,11 +461,10 @@ async function batchMap<T, R>(
 
 // ─── Main export ──────────────────────────────────────────────────────────────
 
-/** Получить всех участников турнира с полными данными */
-export async function fetchAllParticipants(
+/** Read only the participant list, including team and participant ID when available. */
+export async function fetchParticipantList(
   tournamentId: string | number
-): Promise<AdminParticipant[]> {
-  // 1. Collect all pages of participant list
+): Promise<RawListParticipant[]> {
   const rawList: RawListParticipant[] = [];
   let page = 1;
   while (true) {
@@ -474,6 +473,14 @@ export async function fetchAllParticipants(
     if (!hasMore || page >= 50) break;
     page++;
   }
+  return rawList;
+}
+
+/** Получить всех участников турнира с полными данными */
+export async function fetchAllParticipants(
+  tournamentId: string | number
+): Promise<AdminParticipant[]> {
+  const rawList = await fetchParticipantList(tournamentId);
 
   // 2. Fetch participant details (qualifyRating + userUuid) in batches of 8
   const details = await batchMap(rawList, 8, (p) => fetchParticipantDetail(p.uuid));
@@ -520,15 +527,8 @@ export async function fetchAllParticipants(
 export async function buildParticipantUuidNickMap(
   tournamentId: string | number
 ): Promise<Map<string, string>> {
-  const map = new Map<string, string>();
-  let page = 1;
-  while (true) {
-    const { items, hasMore } = await fetchParticipantPage(tournamentId, page);
-    for (const p of items) map.set(p.uuid, p.nick);
-    if (!hasMore || page >= 50) break;
-    page++;
-  }
-  return map;
+  const participants = await fetchParticipantList(tournamentId);
+  return new Map(participants.map(({ uuid, nick }) => [uuid, nick]));
 }
 
 // ─── Participant statuses (lightweight — list pages only, no detail fetches) ──
@@ -579,123 +579,32 @@ const TEAM_URL_CANDIDATES = [
   "teams/team",
 ];
 
-/** Discover all model URLs on the Django admin home page, looking for team-related entries. */
-async function discoverTeamUrl(): Promise<string | null> {
-  const res = await fetch(`${BASE}/admin/`, { headers: makeHeaders() });
-  if (!res.ok) return null;
-  const html = await res.text();
-
-  // Django admin home lists models as <a href="/admin/app/model/">Name</a>
-  // Find any link whose text or path contains "team" or "команд" (case-insensitive)
-  const linkRe = /<a\s+href="(\/admin\/[^"]+\/)"[^>]*>([^<]*)<\/a>/gi;
-  for (const [, href, label] of html.matchAll(linkRe)) {
-    const lo = label.toLowerCase();
-    const hlo = href.toLowerCase();
-    if (
-      lo.includes("команд") || lo.includes("team") ||
-      hlo.includes("team") || lo.includes("group") || hlo.includes("group")
-    ) {
-      // Strip trailing slash + extract path without /admin/ prefix
-      return href.replace(/^\/admin\//, "").replace(/\/$/, "");
-    }
-  }
-  return null;
-}
-
-/** Scrape teams from the Django admin for a specific tournament.
- *  Step 1: fetch page 1 without filter to discover the Django tournament ID from row links.
- *  Step 2: re-fetch with ?tournament__id__exact={djangoId} to get only that tournament's teams.
- *  Fallback: filter client-side by tournament name if Django ID can't be determined. */
+/** Read team pages filtered by the selected Django tournament ID. */
 export async function fetchTournamentTeams(
-  _tournamentId: string | number,
-  tournamentName?: string
+  tournamentId: string | number
 ): Promise<AdminTeamInfo[]> {
-  const discovered = await discoverTeamUrl();
-  const candidates = discovered
-    ? [discovered, ...TEAM_URL_CANDIDATES.filter(c => c !== discovered)]
-    : TEAM_URL_CANDIDATES;
-
-  for (const path of candidates) {
+  for (const path of TEAM_URL_CANDIDATES) {
     const modelSlug = path.split("/").pop()!;
-    const baseUrl = `${BASE}/admin/${path}/`;
+    const teams: AdminTeamInfo[] = [];
+    const query = new URLSearchParams({ tournament__id__exact: String(tournamentId) });
 
-    // Step 1: fetch first page to discover Django tournament ID from field-tournament link
-    const firstRes = await fetch(baseUrl, { headers: makeHeaders() });
-    if (!firstRes.ok) continue;
-    const firstHtml = await firstRes.text();
-
-    // Extract Django tournament ID from a row whose tournament name matches
-    let djangoTournamentId: string | null = null;
-    const listMatch = firstHtml.match(/id="result_list"[^>]*>([\s\S]*)/);
-    if (listMatch && tournamentName) {
-      for (const [, row] of [...listMatch[1].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)]) {
-        const rowTournamentText = fieldText(row, "tournament");
-        if (tournamentName && !rowTournamentText.toLowerCase().includes(tournamentName.toLowerCase().slice(0, 15))) continue;
-        // Extract Django tournament ID from the href in field-tournament cell
-        const cellMatch = row.match(/class="field-tournament[^"]*"[^>]*>([\s\S]*?)<\/td>/);
-        const idFromLink = cellMatch?.[1]?.match(/\/admin\/[^/]+\/tournament\/(\d+)\/change\//)?.[1];
-        if (idFromLink) { djangoTournamentId = idFromLink; break; }
+    for (let page = 1; page <= 20; page++) {
+      if (page > 1) query.set("p", String(page));
+      const res = await fetch(`${BASE}/admin/${path}/?${query}`, { headers: makeHeaders() });
+      if (!res.ok) {
+        if (page > 1) throw new Error(`Не удалось загрузить страницу команд ${page}: ${res.status}`);
+        break;
       }
+
+      const html = await res.text();
+      teams.push(...parseTeamList(html, modelSlug));
+      const nextPage = new RegExp(`[?&]p=${page + 1}[&"]`);
+      if (!nextPage.test(html)) break;
     }
 
-    const fetchAllPages = async (qsBase: string) => {
-      const allTeams: AdminTeamInfo[] = [];
-      let page = 1;
-      while (true) {
-        const url = `${baseUrl}${qsBase}${qsBase ? "&" : "?"}p=${page}`;
-        const res = page === 1 && !qsBase ? firstRes : await fetch(
-          page === 1 ? `${baseUrl}${qsBase}` : url, { headers: makeHeaders() }
-        );
-        const html = page === 1 && !qsBase ? firstHtml : (res.ok ? await res.text() : "");
-        if (!html) break;
-        const pageTeams = parseTeamList(html, modelSlug);
-        allTeams.push(...pageTeams);
-        const hasMore = new RegExp(`[?&]p=${page + 1}[&"]`).test(html) ||
-          new RegExp(`[?&]p=${page + 1}&amp;`).test(html);
-        if (!hasMore || page >= 20) break;
-        page++;
-      }
-      return allTeams;
-    };
-
-    let allTeams: AdminTeamInfo[];
-
-    if (djangoTournamentId) {
-      // Use exact Django tournament filter
-      allTeams = await fetchAllPages(`?tournament__id__exact=${djangoTournamentId}`);
-    } else {
-      // Fetch all and filter client-side by tournament name
-      allTeams = await fetchAllPages("");
-      if (tournamentName) {
-        // We need tournament text per team — re-parse with tournament field
-        allTeams = filterTeamsByTournamentName(firstHtml, modelSlug, tournamentName);
-        // TODO: handle multiple pages if needed
-      }
-    }
-
-    if (allTeams.length > 0) return allTeams;
+    if (teams.length > 0) return teams;
   }
   return [];
-}
-
-function filterTeamsByTournamentName(html: string, modelSlug: string, tournamentName: string): AdminTeamInfo[] {
-  const listMatch = html.match(/id="result_list"[^>]*>([\s\S]*)/);
-  if (!listMatch) return [];
-  const HEADER_LABELS = new Set(["name of the team", "название", "name", "команда"]);
-  const needle = tournamentName.toLowerCase().slice(0, 20);
-  const teams: AdminTeamInfo[] = [];
-  let idx = 0;
-  for (const [, row] of [...listMatch[1].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)]) {
-    const rowTournament = fieldText(row, "tournament").toLowerCase();
-    if (!rowTournament.includes(needle)) continue;
-    const name = fieldText(row, "name") || fieldText(row, "title") || fieldText(row, "team_name");
-    if (!name || HEADER_LABELS.has(name.toLowerCase())) continue;
-    const slugPattern = new RegExp(`/admin/[^/]+/${modelSlug}/([0-9a-f-]{8,}|\\d+)/change/`);
-    const idMatch = row.match(slugPattern) ?? row.match(ADMIN_ID_RE);
-    const id = idMatch?.[1] ?? `__idx_${idx++}`;
-    teams.push({ id, name, modelSlug });
-  }
-  return teams;
 }
 
 // Matches both numeric IDs and UUIDs in Django admin URLs
