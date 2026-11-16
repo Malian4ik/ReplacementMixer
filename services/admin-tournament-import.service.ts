@@ -289,6 +289,13 @@ export async function importTournamentTeams(
     }
   }
 
+  if (failed === 0) {
+    await prisma.adminTournament.updateMany({
+      where: { externalId: String(externalTournamentId) },
+      data: { teamNamesJson: JSON.stringify([...teamMap.keys()]) },
+    });
+  }
+
   return { created, updated, failed, total: teamMap.size, errors };
 }
 
