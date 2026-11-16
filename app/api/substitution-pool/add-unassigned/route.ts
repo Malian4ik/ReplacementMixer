@@ -1,3 +1,4 @@
+import { currentTournamentTeamFilter } from "@/services/tournament-teams.service";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
@@ -5,6 +6,7 @@ export async function POST() {
   try {
     // Find all player IDs currently assigned to any team slot
     const teams = await prisma.team.findMany({
+      where: await currentTournamentTeamFilter(),
       select: { player1Id: true, player2Id: true, player3Id: true, player4Id: true, player5Id: true },
     });
     const assignedIds = new Set(

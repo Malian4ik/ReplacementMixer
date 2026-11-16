@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { currentTournamentTeamFilter } from "@/services/tournament-teams.service";
 import { prisma } from "@/lib/prisma";
 import { buildBaseQueue, scoreCandidates } from "@/services/queue.service";
 import type { SubstitutionPoolEntry, RoleNumber } from "@/types";
@@ -10,10 +11,10 @@ export async function GET(req: NextRequest) {
   const maxDeviation = Number(sp.get("maxDeviation") ?? 800);
   const neededRole = Number(sp.get("neededRole") ?? 1) as RoleNumber;
 
-  // Auto-calculate targetAvgMmr from all teams if not provided
+  const tournamentTeams = await currentTournamentTeamFilter();
   let targetAvgMmr = sp.get("targetAvgMmr") ? Number(sp.get("targetAvgMmr")) : 0;
   if (!targetAvgMmr) {
-    const allTeams = await prisma.team.findMany();
+    const allTeams = await prisma.team.findMany({ where: tournamentTeams });
     if (allTeams.length > 0) {
       const pids = [...new Set(allTeams.flatMap(t =>
         [t.player1Id, t.player2Id, t.player3Id, t.player4Id, t.player5Id].filter(Boolean)
@@ -50,6 +51,7 @@ export async function GET(req: NextRequest) {
 
   // Collect all player IDs currently assigned to any team
   const allTeamsForFilter = await prisma.team.findMany({
+    where: tournamentTeams,
     select: { player1Id: true, player2Id: true, player3Id: true, player4Id: true, player5Id: true },
   });
   const inTeamIds = new Set(

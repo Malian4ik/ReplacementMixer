@@ -1,3 +1,4 @@
+import { currentTournamentTeamFilter } from "@/services/tournament-teams.service";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
@@ -37,6 +38,7 @@ export async function GET(req: NextRequest) {
   });
 
   const allTeams = await prisma.team.findMany({
+    where: await currentTournamentTeamFilter(),
     select: { player1Id: true, player2Id: true, player3Id: true, player4Id: true, player5Id: true, captainId: true },
   });
   const inTeamIds = new Set(

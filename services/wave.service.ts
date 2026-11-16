@@ -1,3 +1,4 @@
+import { currentTournamentTeamFilter } from "@/services/tournament-teams.service";
 import { prisma } from "@/lib/prisma";
 import { scoreCandidates } from "./queue.service";
 import type { SubstitutionPoolEntry, RoleNumber } from "@/types";
@@ -9,6 +10,7 @@ import { orderPoolEntries, uniquePoolPlayers } from "@/lib/pool-order";
 /** Returns all player IDs that are currently on any team. */
 async function getInTeamPlayerIds(): Promise<Set<string>> {
   const teams = await prisma.team.findMany({
+    where: await currentTournamentTeamFilter(),
     select: {
       player1Id: true,
       player2Id: true,
