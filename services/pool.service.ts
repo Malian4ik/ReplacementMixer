@@ -1,3 +1,4 @@
+import { currentTournamentTeamFilter } from "@/services/tournament-teams.service";
 import { prisma } from "@/lib/prisma";
 import { createLog } from "./log.service";
 
@@ -13,6 +14,7 @@ export async function checkNoDuplicate(playerId: string): Promise<void> {
 export async function checkNotInTeam(playerId: string): Promise<void> {
   const team = await prisma.team.findFirst({
     where: {
+      ...await currentTournamentTeamFilter(),
       OR: [
         { player1Id: playerId },
         { player2Id: playerId },

@@ -3,6 +3,7 @@ import {
   SlashCommandBuilder,
   PermissionFlagsBits,
 } from "discord.js";
+import { currentTournamentTeamFilter } from "@/services/tournament-teams.service";
 import { prisma } from "@/lib/prisma";
 import { createSearchSession } from "@/services/search-session.service";
 import { startWave } from "@/bot/workers/wave-orchestrator";
@@ -84,7 +85,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       : 0;
 
   // Global target avg MMR across all teams
-  const allTeams = await prisma.team.findMany();
+  const allTeams = await prisma.team.findMany({ where: await currentTournamentTeamFilter() });
   const allPlayerIds = [
     ...new Set(
       allTeams.flatMap((t) =>

@@ -1,3 +1,4 @@
+import { currentTournamentTeamFilter } from "@/services/tournament-teams.service";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
@@ -5,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 // Sets Active pool entries to Picked for players who are currently in any team
 export async function POST() {
   const allTeams = await prisma.team.findMany({
+    where: await currentTournamentTeamFilter(),
     select: { id: true, player1Id: true, player2Id: true, player3Id: true, player4Id: true, player5Id: true },
   });
 
