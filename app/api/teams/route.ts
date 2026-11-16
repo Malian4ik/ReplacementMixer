@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
   let where: Awaited<ReturnType<typeof currentTournamentTeamFilter>>;
   if (req.nextUrl.searchParams.get("scope") === "tournament") {
     try {
-      where = await currentTournamentTeamFilter();
+      where = await currentTournamentTeamFilter(true);
       if (!where) return NextResponse.json([]);
     } catch {
       return NextResponse.json({ error: "Не удалось загрузить список команд турнира" }, { status: 502 });

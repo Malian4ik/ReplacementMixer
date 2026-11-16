@@ -1,36 +1,32 @@
 import { prisma } from "@/lib/prisma";
 import { adminLogin, fetchTournamentTeams } from "./admin-source.service";
 
-const rosterCache = new Map<string, { expiresAt: number; names: Promise<string[]> }>();
-
-export async function currentTournamentTeamFilter() {
+export async function currentTournamentTeamFilter(loadFromAdmin = false) {
+  const select = { id: true, externalId: true, teamNamesJson: true } as const;
   const tournament =
-    (await prisma.adminTournament.findFirst({
-      where: { isActive: true },
-      select: { externalId: true },
-    })) ??
+    (await prisma.adminTournament.findFirst({ where: { isActive: true }, select })) ??
     (await prisma.adminTournament.findFirst({
       where: { lastSyncedAt: { not: null } },
       orderBy: { lastSyncedAt: "desc" },
-      select: { externalId: true },
+      select,
     }));
   if (!tournament) return undefined;
 
-  const id = tournament.externalId;
-  let entry = rosterCache.get(id);
-  if (!entry || entry.expiresAt <= Date.now()) {
-    const names = (async () => {
-      await adminLogin();
-      const teams = await fetchTournamentTeams(id);
-      if (!teams.length) throw new Error("Не удалось подтвердить команды текущего турнира");
-      return teams.map(team => team.name);
-    })();
-    entry = { expiresAt: Date.now() + 60_000, names };
-    rosterCache.set(id, entry);
-    const pending = entry;
-    void names.catch(() => {
-      if (rosterCache.get(id) === pending) rosterCache.delete(id);
-    });
+  if (tournament.teamNamesJson) {
+    const names: string[] = JSON.parse(tournament.teamNamesJson);
+    return { name: { in: names } };
   }
-  return { name: { in: await entry.names } };
+
+  if (!loadFromAdmin) {
+    throw new Error("Сначала импортируйте команды текущего турнира в Replacement");
+  }
+  await adminLogin();
+  const teams = await fetchTournamentTeams(tournament.externalId);
+  if (!teams.length) throw new Error("Не удалось подтвердить команды текущего турнира");
+  const names = teams.map(team => team.name);
+  await prisma.adminTournament.updateMany({
+    where: { id: tournament.id, teamNamesJson: null },
+    data: { teamNamesJson: JSON.stringify(names) },
+  });
+  return { name: { in: names } };
 }
